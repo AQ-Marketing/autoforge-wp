@@ -1,6 +1,6 @@
 {
   "name": "autoforge-wp",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "private": true,
   "description": "AutoForge — client-agnostic WordPress platform: the AutoForge plugin (owns rendering + Boost) plus the AQM Base stub theme. Drives any client site from data.",
   "type": "module",

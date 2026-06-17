@@ -36,7 +36,7 @@ $pad  = $pads[$s['pad'] ?? 'normal'] ?? $pads['normal'];
 					<?php endforeach; ?>
 				</ul>
 				<?php endif; ?>
-				<?php if (!empty($s['cta_href'])) : ?>
+				<?php if (!empty($s['cta_href']) && !empty($s['cta_label'])) : ?>
 				<p class="mt-8">
 					<a<?php echo ka_field_attr('cta_label'); ?> href="<?php echo esc_url($s['cta_href']); ?>" class="btn-primary w-full sm:w-auto text-xs sm:text-sm uppercase tracking-wide sm:tracking-wider"><?php echo esc_html($s['cta_label'] ?? ''); ?></a>
 				</p>

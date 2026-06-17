@@ -80,69 +80,102 @@ class AQ_Updater {
 	}
 
 	/**
-	 * Fetch (and cache) the latest GitHub release for the product repo.
-	 * Returns ['version','zip','html','body','asset_api'] or null.
+	 * Latest GitHub release for the product repo. Memoized per request, and
+	 * cached across requests — but ONLY on success. A failed lookup is never
+	 * persisted (the transient is cleared), so a transient GitHub error, a repo
+	 * that was just made public, or a token that was just fixed recovers on the
+	 * very next check instead of silently hiding updates for CACHE_TTL.
+	 *
+	 * Returns ['version','zip','asset_api','theme_*','html','body'] or null.
 	 */
 	public static function latest_release(): ?array {
+		static $memo = [];
 		$repo = self::repo();
 		if ($repo === '') {
 			return null;
 		}
-		$cached = get_transient(self::CACHE_KEY);
-		if (is_array($cached) && ($cached['repo'] ?? '') === $repo) {
-			return $cached['release'];
+		if (array_key_exists($repo, $memo)) {
+			return $memo[$repo];
 		}
 
-		$resp = wp_remote_get(
-			'https://api.github.com/repos/' . $repo . '/releases/latest',
-			['timeout' => 15, 'headers' => self::api_headers()]
-		);
-		$release = null;
-		if (!is_wp_error($resp) && (int) wp_remote_retrieve_response_code($resp) === 200) {
-			$data = json_decode(wp_remote_retrieve_body($resp), true);
-			if (is_array($data) && !empty($data['tag_name'])) {
-				$version = ltrim((string) $data['tag_name'], 'vV');
-				// Sort the release assets: the THEME zip is aqm-base-*.zip (its
-				// version is read from the filename, since the theme tracks its own
-				// version line); the PLUGIN zip is any other .zip. The plugin falls
-				// back to the source zipball (fix_source_dir renames it). asset_api
-				// is api.github.com/.../assets/{id}, used for private-repo auth.
-				$zip = (string) ($data['zipball_url'] ?? '');
-				$asset_api = '';
-				$theme_zip = '';
-				$theme_asset_api = '';
-				$theme_version = '';
-				foreach (($data['assets'] ?? []) as $asset) {
-					$name = (string) ($asset['name'] ?? '');
-					if (substr($name, -4) !== '.zip') {
-						continue;
-					}
-					if (strpos($name, self::THEME_SLUG) === 0) {
-						$theme_zip       = (string) ($asset['browser_download_url'] ?? '');
-						$theme_asset_api = (string) ($asset['url'] ?? '');
-						if (preg_match('/^' . preg_quote(self::THEME_SLUG, '/') . '-(v?[0-9][0-9A-Za-z.\-]*)\.zip$/', $name, $mm)) {
-							$theme_version = ltrim($mm[1], 'vV');
-						}
-					} else {
-						$zip       = (string) ($asset['browser_download_url'] ?? '');
-						$asset_api = (string) ($asset['url'] ?? '');
-					}
+		$cached = get_transient(self::CACHE_KEY);
+		if (is_array($cached) && ($cached['repo'] ?? '') === $repo && !empty($cached['release'])) {
+			return $memo[$repo] = $cached['release'];
+		}
+
+		$release = self::fetch_release($repo);
+
+		if ($release) {
+			set_transient(self::CACHE_KEY, ['repo' => $repo, 'release' => $release], self::CACHE_TTL);
+		} else {
+			// Don't let a failed lookup persist and keep blocking update detection.
+			delete_transient(self::CACHE_KEY);
+		}
+		return $memo[$repo] = $release;
+	}
+
+	/**
+	 * One HTTP lookup + parse of /releases/latest. Our product repo is PUBLIC, so
+	 * no auth is needed; we still send the configured token (for private-repo
+	 * support), but if that token is REJECTED (401/403 — expired, revoked, wrong
+	 * scope) we retry anonymously. That way a stale import-only token can never
+	 * break updates for the public product repo.
+	 */
+	private static function fetch_release(string $repo): ?array {
+		$url  = 'https://api.github.com/repos/' . $repo . '/releases/latest';
+		$resp = wp_remote_get($url, ['timeout' => 15, 'headers' => self::api_headers()]);
+		$code = is_wp_error($resp) ? 0 : (int) wp_remote_retrieve_response_code($resp);
+
+		if (($code === 401 || $code === 403) && self::token() !== '') {
+			$resp = wp_remote_get($url, ['timeout' => 15, 'headers' => self::api_headers(false)]);
+			$code = is_wp_error($resp) ? 0 : (int) wp_remote_retrieve_response_code($resp);
+		}
+
+		if ($code !== 200) {
+			return null;
+		}
+		$data = json_decode(wp_remote_retrieve_body($resp), true);
+		if (!is_array($data) || empty($data['tag_name'])) {
+			return null;
+		}
+
+		// Sort the release assets: the THEME zip is aqm-base-*.zip (its version is
+		// read from the filename, since the theme tracks its own version line); the
+		// PLUGIN zip is any other .zip. The plugin falls back to the source zipball
+		// (fix_source_dir renames it). asset_api is api.github.com/.../assets/{id},
+		// used for private-repo auth.
+		$version         = ltrim((string) $data['tag_name'], 'vV');
+		$zip             = (string) ($data['zipball_url'] ?? '');
+		$asset_api       = '';
+		$theme_zip       = '';
+		$theme_asset_api = '';
+		$theme_version   = '';
+		foreach (($data['assets'] ?? []) as $asset) {
+			$name = (string) ($asset['name'] ?? '');
+			if (substr($name, -4) !== '.zip') {
+				continue;
+			}
+			if (strpos($name, self::THEME_SLUG) === 0) {
+				$theme_zip       = (string) ($asset['browser_download_url'] ?? '');
+				$theme_asset_api = (string) ($asset['url'] ?? '');
+				if (preg_match('/^' . preg_quote(self::THEME_SLUG, '/') . '-(v?[0-9][0-9A-Za-z.\-]*)\.zip$/', $name, $mm)) {
+					$theme_version = ltrim($mm[1], 'vV');
 				}
-				$release = [
-					'version'         => $version,
-					'zip'             => $zip,
-					'asset_api'       => $asset_api,
-					'theme_zip'       => $theme_zip,
-					'theme_asset_api' => $theme_asset_api,
-					'theme_version'   => $theme_version,
-					'html'            => (string) ($data['html_url'] ?? ''),
-					'body'            => (string) ($data['body'] ?? ''),
-				];
+			} else {
+				$zip       = (string) ($asset['browser_download_url'] ?? '');
+				$asset_api = (string) ($asset['url'] ?? '');
 			}
 		}
-
-		set_transient(self::CACHE_KEY, ['repo' => $repo, 'release' => $release], self::CACHE_TTL);
-		return $release;
+		return [
+			'version'         => $version,
+			'zip'             => $zip,
+			'asset_api'       => $asset_api,
+			'theme_zip'       => $theme_zip,
+			'theme_asset_api' => $theme_asset_api,
+			'theme_version'   => $theme_version,
+			'html'            => (string) ($data['html_url'] ?? ''),
+			'body'            => (string) ($data['body'] ?? ''),
+		];
 	}
 
 	public static function check_update($transient) {
@@ -269,10 +302,10 @@ class AQ_Updater {
 		return class_exists('AQ_Integrations') ? (string) AQ_Integrations::github_token() : '';
 	}
 
-	private static function api_headers(): array {
+	private static function api_headers(bool $auth = true): array {
 		$h = ['Accept' => 'application/vnd.github+json', 'User-Agent' => 'aq-core'];
 		$token = self::token();
-		if ($token !== '') {
+		if ($auth && $token !== '') {
 			$h['Authorization'] = 'Bearer ' . $token;
 		}
 		return $h;

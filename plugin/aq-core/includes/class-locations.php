@@ -135,8 +135,20 @@ class AQ_Locations {
 
 			// Keep the LocalBusiness JSON-LD areaServed list (config key 'areas',
 			// a "Town, ST" string list read by AQ_JsonLd) in sync with the towns.
-			$patch['areas'] = array_map(static function ($t) {
-				return $t['name'] . ', MA';
+			// Derive the state from the address being saved (or the currently
+			// saved config) — never hardcode it; the engine is client-agnostic.
+			$state = '';
+			if (isset($patch['address']['region'])) {
+				$state = trim((string) $patch['address']['region']);
+			}
+			if ($state === '' && class_exists('AQ_Site_Config')) {
+				$cfg  = AQ_Site_Config::get();
+				$addr = is_array($cfg['address'] ?? null) ? $cfg['address'] : [];
+				$state = trim((string) ($addr['region'] ?? ''));
+			}
+			$suffix = ($state !== '') ? ', ' . $state : '';
+			$patch['areas'] = array_map(static function ($t) use ($suffix) {
+				return $t['name'] . $suffix;
 			}, $patch['towns']);
 		}
 

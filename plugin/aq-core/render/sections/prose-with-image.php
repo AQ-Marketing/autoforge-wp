@@ -61,7 +61,7 @@ ob_start(); ?>
 		<?php if (!empty($s['footnote'])) : ?>
 		<p<?php echo ka_field_attr('footnote'); ?> class="<?php echo esc_attr($s['footnote_mt'] ?? 'mt-4'); ?> text-brand-700 text-sm"><?php echo wp_kses_post($s['footnote']); ?></p>
 		<?php endif; ?>
-		<?php if (!empty($s['cta_href'])) : ?>
+		<?php if (!empty($s['cta_href']) && !empty($s['cta_label'])) : ?>
 		<p class="mt-8">
 			<a<?php echo ka_field_attr('cta_label'); ?> href="<?php echo esc_url($s['cta_href']); ?>" class="btn-primary text-xs sm:text-sm uppercase tracking-wide sm:tracking-wider"><?php echo esc_html($s['cta_label'] ?? ''); ?></a>
 		</p>

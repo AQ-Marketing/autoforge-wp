@@ -285,6 +285,17 @@ class AQ_Importer {
 		$img_remaining = max(0, $img_total - $present - $missing);
 		$log[] = '— images: ' . $img_done . ' this pass, ' . $present . '/' . $img_total . ' present, ' . $img_remaining . ' to go —';
 
+		// Seed brand/site config (nav, mega-menu panels, footer, NAP, logo) and
+		// deliver the compiled CSS/JS on EVERY pass — not just the final one. This
+		// config is a single cheap, idempotent option write, so applying it up
+		// front means the header nav + mega-menu render correctly even when a later
+		// image batch or the page build is interrupted or times out. (Previously it
+		// ran only after the page build on the final pass, so a timed-out build left
+		// a site with pages but an empty header — no nav, no mega-menu links.) The
+		// logo attachment ID resolves on whichever pass its image lands.
+		$brand_applied  = self::apply_brand($root, $log);
+		$assets_applied = self::deliver_theme_assets($root, $log);
+
 		// Imported images this pass → return so the JS comes back for the next
 		// batch. Gating done:false on $img_done (a NEW image landed this pass) —
 		// never on $img_remaining — is what guarantees termination: a pass that
@@ -300,6 +311,8 @@ class AQ_Importer {
 				'images_total'       => $img_total,
 				'images_present'     => $present,
 				'imported_this_call' => $img_done,
+				'brand'              => $brand_applied,
+				'assets'             => $assets_applied,
 				'log'                => $log,
 			]);
 		}
@@ -308,10 +321,19 @@ class AQ_Importer {
 		// only ones left can't be imported (missing from repo / repeatedly failing).
 		// Either way build the pages now — this pass did no sideloading, so it stays
 		// bounded.
-		$warning = '';
+		$warns = [];
 		if ($missing > 0 || $img_remaining > 0) {
-			$warning = ($missing + $img_remaining) . ' image(s) unresolved (' . $missing . ' missing from the repo, ' . $img_remaining . ' failed to import); pages still built.';
-			$log[]   = '! ' . $warning;
+			$warns[] = ($missing + $img_remaining) . ' image(s) unresolved (' . $missing . ' missing from the repo, ' . $img_remaining . ' failed to import); pages still built.';
+		}
+		// A site with no brand config renders an empty header (no menu) and footer.
+		// apply_brand() returns false when content/brand.json is missing or invalid,
+		// so surface that loudly instead of reporting a silent "success".
+		if (!$brand_applied) {
+			$warns[] = 'no site config applied — content/brand.json is missing or invalid, so the header menu, footer links and logo will be empty.';
+		}
+		$warning = implode(' ', $warns);
+		foreach ($warns as $w) {
+			$log[] = '! ' . $w;
 		}
 
 		// Build the pages from the canonical JSON. import_path() skips pages whose
@@ -334,11 +356,8 @@ class AQ_Importer {
 			return new WP_Error('aq_import', 'Page import error: ' . $e->getMessage(), ['status' => 500]);
 		}
 
-		// Seed brand/site config (DB → survives plugin updates) and deliver the
-		// client's compiled CSS/JS into the active stub theme.
-		$brand_applied  = self::apply_brand($root, $log);
-		$assets_applied = self::deliver_theme_assets($root, $log);
-
+		// Brand/site config + theme assets were already applied above (every pass),
+		// so they survive even if the page build times out mid-way.
 		self::rrmdir($dest);
 
 		return rest_ensure_response([

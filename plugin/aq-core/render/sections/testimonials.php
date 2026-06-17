@@ -28,7 +28,7 @@ $bg   = ($s['bg'] ?? 'brand-50') === 'white' ? 'white' : 'brand-50';
 			</div>
 			<?php endforeach; ?>
 		</div>
-		<?php if (!empty($s['cta_href'])) : ?>
+		<?php if (!empty($s['cta_href']) && !empty($s['cta_label'])) : ?>
 		<div class="text-center mt-10">
 			<a<?php echo ka_field_attr('cta_label'); ?> href="<?php echo esc_url($s['cta_href']); ?>" class="btn-primary text-xs sm:text-sm uppercase tracking-wide sm:tracking-wider"><?php echo esc_html($s['cta_label'] ?? ''); ?></a>
 		</div>

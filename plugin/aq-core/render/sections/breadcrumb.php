@@ -16,7 +16,7 @@ if (!$items) {
 				$label = (string) ($it['label'] ?? '');
 				$url   = (string) ($it['url'] ?? ''); ?>
 			<li<?php echo $i > 0 ? ' class="flex items-center gap-1.5"' : ''; ?>>
-				<?php if ($i > 0) : ?><span class="text-brand-300">/</span><?php endif; ?>
+				<?php if ($i > 0) : ?><span aria-hidden="true" class="text-brand-300">/</span><?php endif; ?>
 				<?php if ($url === '') : ?>
 				<span<?php echo ka_field_attr('items', $i); ?> class="text-brand-700 font-medium"><?php echo esc_html($label); ?></span>
 				<?php else : ?>

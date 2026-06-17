@@ -79,11 +79,7 @@ class AQ_Cleanup {
 		// XML-RPC off
 		add_filter('xmlrpc_enabled', '__return_false');
 
-		// Comments off everywhere (site has none)
-		add_filter('comments_open', '__return_false', 20);
-		add_filter('pings_open', '__return_false', 20);
-		add_action('admin_menu', function () {
-			remove_menu_page('edit-comments.php');
-		});
+		// Comments are disabled site-wide by AQ_Comments (every surface, not
+		// just the front end) — kept out of here so there's one owner.
 	}
 }

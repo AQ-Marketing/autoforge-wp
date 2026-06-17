@@ -6,7 +6,9 @@
  *  (default) or left. Distinct from cta_band (fixed schedule/call band) and
  *  final_cta (full-bleed image band). Static markup, no JS. */
 $s    = $args['s'] ?? [];
-$btns = array_values(array_filter((array) ($s['buttons'] ?? []), fn($b) => is_array($b) && (($b['label'] ?? '') !== '' || ($b['href'] ?? '') !== '')));
+// Require a non-empty label: a button rendered from an href alone would be an
+// anchor with no accessible name (matches button_group's filter).
+$btns = array_values(array_filter((array) ($s['buttons'] ?? []), fn($b) => is_array($b) && ($b['label'] ?? '') !== ''));
 
 $bg = (string) ($s['bg'] ?? 'brand-50');
 $dark = $bg === 'brand-900';

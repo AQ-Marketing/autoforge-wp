@@ -3,7 +3,7 @@
  * Plugin Name: AutoForge
  * Plugin URI: https://aqmarketing.com
  * Description: Client-agnostic WordPress platform — one plugin owns front-end rendering (structured sections, header/footer, the visual builder), site config (NAP/license), SEO meta + titles, JSON-LD, ACF section schema, robots, JSON content sync, and the embedded Boost performance module. Every site is driven entirely from its own data; the theme is a near-empty stub.
- * Version: 0.2.3
+ * Version: 0.2.4
  * Requires PHP: 8.0
  * Author: AQ Marketing
  * Text Domain: aq-core
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.2.3');
+define('AQ_CORE_VERSION', '0.2.4');
 
 /**
  * Site-wide noindex posture, mirroring the Astro PUBLIC_NOINDEX behavior.
@@ -64,10 +64,12 @@ function aq_site(?string $path = null) {
 
 require_once AQ_CORE_DIR . 'includes/class-site-config.php'; // load first: aq_site() overlay
 require_once AQ_CORE_DIR . 'includes/class-cleanup.php';
+require_once AQ_CORE_DIR . 'includes/class-comments.php';
 require_once AQ_CORE_DIR . 'includes/class-seo-meta.php';
 require_once AQ_CORE_DIR . 'includes/class-jsonld.php';
 require_once AQ_CORE_DIR . 'includes/class-robots.php';
 require_once AQ_CORE_DIR . 'includes/class-sitemap.php';
+require_once AQ_CORE_DIR . 'includes/class-llms.php';
 require_once AQ_CORE_DIR . 'includes/class-redirects.php';
 require_once AQ_CORE_DIR . 'includes/class-content-sync.php';
 require_once AQ_CORE_DIR . 'includes/class-admin-hub.php';
@@ -86,10 +88,12 @@ require_once AQ_CORE_DIR . 'includes/class-updater.php';
 require_once AQ_CORE_DIR . 'render/class-renderer.php';
 
 AQ_Cleanup::register();
+AQ_Comments::register();
 AQ_SEO_Meta::register();
 AQ_JsonLd::register();
 AQ_Robots::register();
 AQ_Sitemap::register();
+AQ_LLMs::register();
 AQ_Redirects::register();
 AQ_Content_Sync::register();
 AQ_Admin_Hub::register();
@@ -147,17 +151,42 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 	});
 
 	/**
-	 * Boost is the self-contained Pressable edition — strip the upstream promo
-	 * navigation sections that point at third-party services (Image Optimization
-	 * / Imagify, Tutorials videos, "Our Plugins" by WP Media). Runs late so it
-	 * also removes anything the PluginFamily controller re-adds.
+	 * Boost is the self-contained Pressable edition — trim the settings nav to
+	 * only what is functional on Pressable. Runs late so it also removes anything
+	 * the PluginFamily controller re-adds.
+	 *
+	 * Two groups are removed:
+	 *
+	 * 1. Upstream PROMO sections that point at third-party services — Image
+	 *    Optimization/Imagify, Tutorials videos, "Our Plugins" (WP Media), Add-ons.
+	 *
+	 * 2. PAGE-CACHE / CDN sections that are inert or counter-productive on
+	 *    Pressable, whose docs are explicit here:
+	 *      • 'advanced_cache' ("Advanced Rules") — Cache Lifespan + every
+	 *        page-cache rule (never-cache URLs, cache cookies/query strings,
+	 *        purge URLs). Pressable serves pages from Batcache + Edge Cache and
+	 *        the embedded Boost already disables WP Rocket's own page cache
+	 *        (see ThirdParty\Hostings\Pressable: no advanced-cache.php, no
+	 *        WP_CACHE, no caching files), so the whole tab is dead UI. Pressable
+	 *        cache is purged via WP Admin → Settings → Edge Cache.
+	 *      • 'page_cdn' ("CDN") — Pressable bundles a 28-PoP Edge Cache CDN and
+	 *        explicitly recommends AGAINST stacking a third-party CDN on top of
+	 *        it; Boost already registers Pressable's own CDN cname internally.
+	 *        Exposing the CDN tab only invites a conflicting/​slower setup.
+	 *
+	 * Left intact: File Optimization, Media (lazyload/fonts), Preload (link/font
+	 * preloading), Database, Heartbeat — all host-agnostic and useful here.
 	 */
 	add_filter('rocket_settings_menu_navigation', function ($navigation) {
 		unset(
+			// 1. promo / third-party
 			$navigation['imagify'],
 			$navigation['tutorials'],
 			$navigation['plugins'],
-			$navigation['addons']
+			$navigation['addons'],
+			// 2. page-cache + CDN: non-functional / discouraged on Pressable
+			$navigation['advanced_cache'],
+			$navigation['page_cdn']
 		);
 		return $navigation;
 	}, 100);
