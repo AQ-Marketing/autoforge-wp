@@ -42,20 +42,21 @@ class AQ_JsonLd {
 		$base = self::base();
 		$site = aq_site();
 
-		$hours = [
-			[
+		$hours = [];
+		if (!empty($site['hours']['monFri'])) {
+			$hours[] = [
 				'@type' => 'OpeningHoursSpecification',
 				'dayOfWeek' => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-				'opens' => $site['hours']['monFri']['opens'],
-				'closes' => $site['hours']['monFri']['closes'],
-			],
-		];
+				'opens' => $site['hours']['monFri']['opens'] ?? '',
+				'closes' => $site['hours']['monFri']['closes'] ?? '',
+			];
+		}
 		if (!empty($site['hours']['sat'])) {
 			$hours[] = [
 				'@type' => 'OpeningHoursSpecification',
 				'dayOfWeek' => 'Saturday',
-				'opens' => $site['hours']['sat']['opens'],
-				'closes' => $site['hours']['sat']['closes'],
+				'opens' => $site['hours']['sat']['opens'] ?? '',
+				'closes' => $site['hours']['sat']['closes'] ?? '',
 			];
 		}
 
