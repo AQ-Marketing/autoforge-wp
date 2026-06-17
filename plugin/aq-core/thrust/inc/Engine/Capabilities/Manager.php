@@ -133,7 +133,7 @@ class Manager implements ActivationInterface, DeactivationInterface {
 	 */
 	public function add_group_to_ure( $groups ) {
 		$groups['wp_rocket'] = [
-			'caption' => esc_html( 'WP Rocket' ),
+			'caption' => esc_html( rocket_get_constant( 'WP_ROCKET_PLUGIN_NAME', 'Boost' ) ),
 			'parent'  => 'custom',
 			'level'   => 2,
 		];
@@ -149,7 +149,7 @@ class Manager implements ActivationInterface, DeactivationInterface {
 		\members_register_cap_group(
 			'wp_rocket',
 			[
-				'label'    => esc_html( 'WP Rocket' ),
+				'label'    => esc_html( rocket_get_constant( 'WP_ROCKET_PLUGIN_NAME', 'Boost' ) ),
 				'priority' => 42,
 				'caps'     => $this->get_capabilities(),
 			]

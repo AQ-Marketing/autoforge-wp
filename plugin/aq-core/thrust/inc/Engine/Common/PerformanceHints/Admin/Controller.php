@@ -142,7 +142,7 @@ class Controller {
 			'message' => sprintf(
 				// translators: %1$s = plugin name.
 				__( '%1$s: Stored optimization data for Automatic Lazy Rendering, Critical Images, Preconnect to External Domains, and Preload Fonts has been cleared! New data will be generated as needed.', 'rocket' ),
-				'<strong>WP Rocket</strong>'
+				'<strong>' . rocket_get_constant( 'WP_ROCKET_PLUGIN_NAME', 'WP Rocket' ) . '</strong>'
 			),
 		];
 	}

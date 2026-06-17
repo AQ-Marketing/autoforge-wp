@@ -3,7 +3,7 @@
  * Plugin Name: AutoForge
  * Plugin URI: https://aqmarketing.com
  * Description: Client-agnostic WordPress platform — one plugin owns front-end rendering (structured sections, header/footer, the visual builder), site config (NAP/license), SEO meta + titles, JSON-LD, ACF section schema, robots, JSON content sync, and the embedded Boost performance module. Every site is driven entirely from its own data; the theme is a near-empty stub.
- * Version: 0.2.2
+ * Version: 0.2.3
  * Requires PHP: 8.0
  * Author: AQ Marketing
  * Text Domain: aq-core
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.2.2');
+define('AQ_CORE_VERSION', '0.2.3');
 
 /**
  * Site-wide noindex posture, mirroring the Astro PUBLIC_NOINDEX behavior.
@@ -164,17 +164,23 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 
 	/**
 	 * Safety net for residual brand text: some upstream option descriptions and
-	 * notices still read "WP Rocket"/"Rocketeers". Rewrite the visible output of
-	 * the 'rocket' text-domain so nothing user-facing references the upstream
-	 * product. This filters TRANSLATED STRINGS ONLY — code identifiers, hook
-	 * names and option keys are never touched.
+	 * notices still read "WP Rocket", "RocketCDN", "Rocket Analytics" or
+	 * "Rocketeers". Rewrite the visible output of the 'rocket' text-domain so
+	 * nothing user-facing references the upstream product. This filters
+	 * TRANSLATED STRINGS ONLY — code identifiers, hook names and option keys are
+	 * never touched, and lowercase technical strings (e.g. the docs.wp-rocket.me
+	 * URLs, which contain no capital "Rocket") are skipped by the guard below.
+	 *
+	 * Replacement order matters: longer/more specific tokens are listed before
+	 * the bare "Rocket" catch-all so "RocketCDN" → "Boost CDN" (not "BoostCDN")
+	 * and "Rocketeers" → "the Boost team" (not "Boosteers").
 	 */
 	$aq_boost_brandwash = function ($translation, $text = '', $a = '', $b = '') {
 		$domain = func_num_args() >= 4 ? $b : $a; // gettext: 3rd arg; gettext_with_context: 4th arg
 		if ($domain === 'rocket' && is_string($translation) && strpos($translation, 'Rocket') !== false) {
 			$translation = str_replace(
-				['WP Rocket', 'Rocketeers', 'Rocketeer'],
-				['Boost', 'the Boost team', 'the Boost team'],
+				['WP Rocket', 'RocketCDN', 'Rocketeers', 'Rocketeer', 'Rocket'],
+				['Boost',     'Boost CDN', 'the Boost team', 'the Boost team', 'Boost'],
 				$translation
 			);
 		}
