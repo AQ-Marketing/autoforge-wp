@@ -94,11 +94,16 @@ class AQ_Importer {
 				btn.disabled = true; st.textContent = 'Importing… this can take a minute.'; st.style.color = '#5b6471';
 				logEl.style.display = 'none'; logEl.textContent = '';
 				fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': nonce, 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: repo, branch: branch }) })
-					.then(function (r) { return r.json(); })
-					.then(function (d) {
+					.then(function (r) { return r.json().then(function (d) { return { httpOk: r.ok, status: r.status, d: d || {} }; }); })
+					.then(function (res) {
 						btn.disabled = false;
-						if (!d || d.ok === false) {
-							st.textContent = '✕ ' + ((d && (d.message || d.code)) || 'Import failed.'); st.style.color = '#d63638';
+						var d = res.d;
+						// A successful import returns { ok:true, ... }. A failure (e.g. a private
+						// repo the token can't read) comes back as a WP_Error { code, message,
+						// data:{status} } with a non-2xx status and NO ok flag — surface that
+						// message instead of falsely reporting "0 pages, 0 images".
+						if (!res.httpOk || d.ok !== true) {
+							st.textContent = '✕ ' + (d.message || d.code || ('Import failed (HTTP ' + res.status + ').')); st.style.color = '#d63638';
 						} else {
 							st.textContent = '✓ ' + (d.pages || 0) + ' pages, ' + (d.images || 0) + ' images imported' + (d.skipped ? ', ' + d.skipped + ' images already present' : '') + '.';
 							st.style.color = '#1a8f4f';
