@@ -2,17 +2,22 @@
  * build-release.mjs — package the AutoForge WP plugin (aq-core) AND the
  * companion stub theme (aqm-base) into distributable zips for WordPress.
  *
- * The AQ_Updater (plugin/aq-core/includes/class-updater.php) downloads the
- * PLUGIN asset on one-click update; attach dist/autoforge-wp-<version>.zip to
- * the GitHub release. The theme zip (dist/aqm-base-<version>.zip) is installed
- * once via Appearance → Themes → Add New → Upload.
+ * The AQ_Updater (plugin/aq-core/includes/class-updater.php) serves BOTH the
+ * plugin and the companion theme from the same GitHub release; attach both
+ * dist/aq-core-<version>.zip and dist/aqm-base-<version>.zip to the release.
+ *
+ * Asset naming matters: GitHub returns release assets ALPHABETICALLY, and the
+ * legacy (≤0.2.0) updater grabbed the FIRST .zip as the plugin. Naming the
+ * plugin zip "aq-core-*" (matching its folder slug) keeps it sorted before
+ * "aqm-base-*", so even old installs pick the plugin — not the theme — on
+ * one-click update. The current updater selects by name and is order-agnostic.
  *
  * Each archive's top-level folder matches the installed slug (aq-core/,
  * aqm-base/) so WordPress installs/updates in place. Boost (thrust/) ships
  * inside the plugin. Dev-only files are excluded.
  *
  * Usage: node migration/build-release.mjs   (or: npm run build:release)
- * Output: dist/autoforge-wp-<version>.zip, dist/aqm-base-<version>.zip
+ * Output: dist/aq-core-<version>.zip, dist/aqm-base-<version>.zip
  */
 
 import fs from 'fs';
@@ -72,8 +77,9 @@ async function main() {
   fs.mkdirSync(DIST_DIR, { recursive: true });
 
   // Plugin — the updater downloads this asset; top-level folder = aq-core/.
+  // Named "aq-core-*" so it sorts before "aqm-base-*" (see header note).
   const pluginVer = readVersion(path.join(PLUGIN_DIR, 'aq-core.php'), 'plugin/aq-core/aq-core.php');
-  const pluginZip = path.join(DIST_DIR, `autoforge-wp-${pluginVer}.zip`);
+  const pluginZip = path.join(DIST_DIR, `aq-core-${pluginVer}.zip`);
   await zipDir(PLUGIN_DIR, 'aq-core', pluginZip);
   report(pluginZip, pluginVer);
 
@@ -83,8 +89,8 @@ async function main() {
   await zipDir(THEME_DIR, 'aqm-base', themeZip);
   report(themeZip, themeVer);
 
-  console.log('  Next: create a GitHub release tagged v' + pluginVer + ' and attach the plugin zip as an asset.');
-  console.log('        Install the theme once via Appearance → Themes → Add New → Upload.');
+  console.log('  Next: create a GitHub release tagged v' + pluginVer + ' and attach BOTH zips as assets.');
+  console.log('        WordPress then surfaces updates for the plugin AND the aqm-base theme.');
 }
 
 // Minimal glob matcher for the simple ** patterns above (no external dep).
