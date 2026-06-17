@@ -37,6 +37,13 @@ if ( ! defined( 'WP_ROCKET_WHITE_LABEL_ACCOUNT' ) ) {
 	define( 'WP_ROCKET_WHITE_LABEL_ACCOUNT', true );
 }
 
+// White-label the cached-HTML footprint comment so the page source carries no
+// "like a Rocket … wp-rocket.me" brand leak — visitors only see a neutral
+// "<!-- Cached for great performance -->" marker.
+if ( ! defined( 'WP_ROCKET_WHITE_LABEL_FOOTPRINT' ) ) {
+	define( 'WP_ROCKET_WHITE_LABEL_FOOTPRINT', true );
+}
+
 /**
  * Settings-page slug. Rebranded to 'boost' so the admin URL is
  * options-general.php?page=boost (no "wprocket" exposed — this is AQ Core's
