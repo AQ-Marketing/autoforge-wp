@@ -4,7 +4,7 @@ _Pick up here when you log back in._
 
 ## What this is
 A new **client-agnostic WordPress product** built at
-`C:\Users\justi\Apps\Work\Websites\AutoForge WP`, extracted from the Ken Arnold
+`C:\Users\justi\Apps\Work\AutoForge WP`, extracted from the Ken Arnold
 pilot (`C:\Users\justi\Apps\Work\Websites\ken-arnold-wp`, left untouched as the
 read-only reference). The "Breakdance model": **one plugin owns all rendering**
 via WordPress's `template_include` hook; the theme is a near-empty stub. Every
