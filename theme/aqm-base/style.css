@@ -4,7 +4,7 @@ Theme URI: https://aqmarketing.com
 Author: AQ Marketing
 Author URI: https://aqmarketing.com
 Description: Client-agnostic stub theme for the AQM platform. Rendering is owned by the AutoForge plugin (sections, header/footer, the visual builder) — this theme only enqueues the per-client compiled CSS/JS that the content import delivers. Identical PHP on every client; only assets/css/main.css differs per site.
-Version: 1.0.0
+Version: 1.0.1
 Requires at least: 6.0
 Requires PHP: 8.0
 License: GPL-2.0-or-later

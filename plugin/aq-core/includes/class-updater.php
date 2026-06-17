@@ -1,10 +1,14 @@
 <?php
 /**
- * AQ_Updater — GitHub-release auto-update for the AutoForge plugin.
+ * AQ_Updater — GitHub-release auto-update for the AutoForge plugin AND its
+ * companion aqm-base stub theme.
  *
  * Surfaces the normal WordPress "update available" button by comparing the
  * plugin's header Version to the latest GitHub release of the PRODUCT repo, and
- * points the one-click updater at the release's .zip asset.
+ * points the one-click updater at the release's .zip asset. The same release
+ * also carries the theme zip (aqm-base-<version>.zip); this class surfaces the
+ * theme update from that asset too, so the stub theme needs no update code of
+ * its own (and the theme tracks its own version line, read from the asset name).
  *
  * This is DISTINCT from the content importer (AQ_Importer), which pulls a
  * client's CONTENT repo (pages/images/brand/CSS). The updater pulls new builds
@@ -30,6 +34,9 @@ class AQ_Updater {
 	const CACHE_KEY = 'aq_updater_release';
 	const CACHE_TTL = 6 * HOUR_IN_SECONDS;
 
+	/** Stub-theme folder slug the companion theme installs/updates into. */
+	const THEME_SLUG = 'aqm-base';
+
 	/**
 	 * Built-in product repo the updater checks for new releases. Override per
 	 * site with the AQ_UPDATE_REPO constant (wp-config), the aq_update_repo
@@ -39,6 +46,7 @@ class AQ_Updater {
 
 	public static function register(): void {
 		add_filter('pre_set_site_transient_update_plugins', [__CLASS__, 'check_update']);
+		add_filter('pre_set_site_transient_update_themes', [__CLASS__, 'check_theme_update']);
 		add_filter('plugins_api', [__CLASS__, 'plugins_api'], 10, 3);
 		add_filter('upgrader_source_selection', [__CLASS__, 'fix_source_dir'], 10, 4);
 		add_filter('http_request_args', [__CLASS__, 'auth_download'], 10, 2);
@@ -94,23 +102,41 @@ class AQ_Updater {
 			$data = json_decode(wp_remote_retrieve_body($resp), true);
 			if (is_array($data) && !empty($data['tag_name'])) {
 				$version = ltrim((string) $data['tag_name'], 'vV');
-				// Prefer an attached .zip asset (built with the correct folder
-				// name); fall back to the source zipball (fix_source_dir renames).
+				// Sort the release assets: the THEME zip is aqm-base-*.zip (its
+				// version is read from the filename, since the theme tracks its own
+				// version line); the PLUGIN zip is any other .zip. The plugin falls
+				// back to the source zipball (fix_source_dir renames it). asset_api
+				// is api.github.com/.../assets/{id}, used for private-repo auth.
 				$zip = (string) ($data['zipball_url'] ?? '');
 				$asset_api = '';
+				$theme_zip = '';
+				$theme_asset_api = '';
+				$theme_version = '';
 				foreach (($data['assets'] ?? []) as $asset) {
-					if (substr((string) ($asset['name'] ?? ''), -4) === '.zip') {
-						$zip       = (string) $asset['browser_download_url'];
-						$asset_api = (string) ($asset['url'] ?? ''); // api.github.com/.../assets/{id} (for private auth)
-						break;
+					$name = (string) ($asset['name'] ?? '');
+					if (substr($name, -4) !== '.zip') {
+						continue;
+					}
+					if (strpos($name, self::THEME_SLUG) === 0) {
+						$theme_zip       = (string) ($asset['browser_download_url'] ?? '');
+						$theme_asset_api = (string) ($asset['url'] ?? '');
+						if (preg_match('/^' . preg_quote(self::THEME_SLUG, '/') . '-(v?[0-9][0-9A-Za-z.\-]*)\.zip$/', $name, $mm)) {
+							$theme_version = ltrim($mm[1], 'vV');
+						}
+					} else {
+						$zip       = (string) ($asset['browser_download_url'] ?? '');
+						$asset_api = (string) ($asset['url'] ?? '');
 					}
 				}
 				$release = [
-					'version'   => $version,
-					'zip'       => $zip,
-					'asset_api' => $asset_api,
-					'html'      => (string) ($data['html_url'] ?? ''),
-					'body'      => (string) ($data['body'] ?? ''),
+					'version'         => $version,
+					'zip'             => $zip,
+					'asset_api'       => $asset_api,
+					'theme_zip'       => $theme_zip,
+					'theme_asset_api' => $theme_asset_api,
+					'theme_version'   => $theme_version,
+					'html'            => (string) ($data['html_url'] ?? ''),
+					'body'            => (string) ($data['body'] ?? ''),
 				];
 			}
 		}
@@ -140,6 +166,41 @@ class AQ_Updater {
 			'slug'        => self::slug(),
 			'plugin'      => $basename,
 			'new_version' => $release['version'],
+			'url'         => $release['html'],
+			'package'     => $package,
+		];
+		return $transient;
+	}
+
+	/**
+	 * Surface the companion stub theme's update from the SAME GitHub release.
+	 * The theme version comes from the aqm-base-<version>.zip asset name (the
+	 * theme has its own version line, independent of the plugin/release tag), so
+	 * we compare it to the installed theme's Version. The theme asset zip already
+	 * unzips to the correct aqm-base/ folder, so no source-dir fix is needed.
+	 */
+	public static function check_theme_update($transient) {
+		if (!is_object($transient) || empty($transient->checked)) {
+			return $transient;
+		}
+		$installed = isset($transient->checked[self::THEME_SLUG]) ? (string) $transient->checked[self::THEME_SLUG] : '';
+		if ($installed === '') {
+			return $transient; // companion theme not installed on this site
+		}
+		$release = self::latest_release();
+		if (!$release || empty($release['theme_version']) || empty($release['theme_zip'])) {
+			return $transient;
+		}
+		if (version_compare($release['theme_version'], $installed, '<=')) {
+			return $transient;
+		}
+		// Private repos: route through the asset API URL so auth_download() can
+		// attach the token + octet-stream Accept; public repos use the direct URL.
+		$package = (self::token() !== '' && !empty($release['theme_asset_api'])) ? $release['theme_asset_api'] : $release['theme_zip'];
+
+		$transient->response[self::THEME_SLUG] = [
+			'theme'       => self::THEME_SLUG,
+			'new_version' => $release['theme_version'],
 			'url'         => $release['html'],
 			'package'     => $package,
 		];
