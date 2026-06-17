@@ -125,6 +125,24 @@ class AQ_Content_Sync {
 				$log[] = "OK (dry run): {$data['path']}";
 				continue;
 			}
+			// Skip pages whose live content already matches the repo — the same
+			// canonical comparison `reconcile` uses. Keeps re-imports incremental:
+			// only new/changed pages are written. Posts always upsert (cheap, and
+			// serialize_page is page-shaped).
+			if (($data['type'] ?? 'page') === 'page') {
+				$existing = self::page_by_path($data['path']);
+				if ($existing) {
+					// serialize_page() never emits a top-level `type` for pages, so drop
+					// it from the repo side before comparing — otherwise a file that
+					// carries "type":"page" would never match and re-import every pass.
+					$repo = self::normalize_page($data);
+					unset($repo['type']);
+					if (wp_json_encode(self::serialize_page($existing)) === wp_json_encode($repo)) {
+						$log[] = "Unchanged {$data['path']}";
+						continue;
+					}
+				}
+			}
 			$id = self::upsert_page($data);
 			$log[] = "Imported {$data['path']} -> post {$id}";
 		}

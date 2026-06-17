@@ -91,26 +91,47 @@ class AQ_Importer {
 				var branch = document.getElementById('aq-imp-branch').value.trim() || 'main';
 				if (!repo) { st.textContent = 'Enter a repository URL.'; st.style.color = '#d63638'; return; }
 				if (!window.confirm('Import this site from ' + repo + ' (' + branch + ')? This will create/update pages and import images.')) { return; }
-				btn.disabled = true; st.textContent = 'Importing… this can take a minute.'; st.style.color = '#5b6471';
-				logEl.style.display = 'none'; logEl.textContent = '';
-				fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': nonce, 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: repo, branch: branch }) })
-					.then(function (r) { return r.json().then(function (d) { return { httpOk: r.ok, status: r.status, d: d || {} }; }); })
-					.then(function (res) {
-						btn.disabled = false;
-						var d = res.d;
-						// A successful import returns { ok:true, ... }. A failure (e.g. a private
-						// repo the token can't read) comes back as a WP_Error { code, message,
-						// data:{status} } with a non-2xx status and NO ok flag — surface that
-						// message instead of falsely reporting "0 pages, 0 images".
-						if (!res.httpOk || d.ok !== true) {
-							st.textContent = '✕ ' + (d.message || d.code || ('Import failed (HTTP ' + res.status + ').')); st.style.color = '#d63638';
-						} else {
-							st.textContent = '✓ ' + (d.pages || 0) + ' pages, ' + (d.images || 0) + ' images imported' + (d.skipped ? ', ' + d.skipped + ' images already present' : '') + '.';
-							st.style.color = '#1a8f4f';
-						}
-						if (d && d.log && d.log.length) { logEl.style.display = 'block'; logEl.textContent = d.log.join('\n'); }
-					})
-					.catch(function (e) { btn.disabled = false; st.textContent = '✕ ' + e.message; st.style.color = '#d63638'; });
+				btn.disabled = true; st.style.color = '#5b6471'; logEl.style.display = 'none'; logEl.textContent = '';
+				// The import runs in bounded passes — images are batched across
+				// requests so a single pass can't time out. Loop the endpoint until
+				// it reports {done:true}. Finished work persists, so an interruption
+				// just means clicking Import again to resume.
+				var pass = 0, lastPresent = -1, stalls = 0;
+				function fail(msg, log) {
+					btn.disabled = false; st.textContent = '✕ ' + msg; st.style.color = '#d63638';
+					if (log && log.length) { logEl.style.display = 'block'; logEl.textContent = log.join('\n'); }
+				}
+				function step() {
+					pass++;
+					if (pass > 1000) { fail('Import did not converge — stopped. Click Import to resume (finished work is saved).'); return; }
+					fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': nonce, 'Content-Type': 'application/json' }, body: JSON.stringify({ repo: repo, branch: branch }) })
+						.then(function (r) { return r.json().then(function (d) { return { httpOk: r.ok, status: r.status, d: d || {} }; }); })
+						.then(function (res) {
+							var d = res.d;
+							// Success is { ok:true, ... }. A WP_Error (e.g. a private repo the
+							// token can't read) has no ok flag + non-2xx status — surface it.
+							if (!res.httpOk || d.ok !== true) { fail(d.message || d.code || ('Import failed (HTTP ' + res.status + ').'), d.log); return; }
+							if (d.log && d.log.length) { logEl.style.display = 'block'; logEl.textContent = d.log.join('\n'); }
+							if (!d.done) {
+								var present = d.images_present || 0;
+								// Keep going while images keep importing; stop only on NO forward
+								// progress (defends a stuck loop without capping a legitimately
+								// large import — big sites continue as long as the count rises).
+								if (present > lastPresent) { stalls = 0; lastPresent = present; }
+								else if (++stalls >= 3) { fail('Import stalled at ' + present + '/' + (d.images_total || 0) + ' images — stopped. Click Import to resume; if it persists, see the log below.', d.log); return; }
+								st.textContent = 'Importing images… ' + present + '/' + (d.images_total || 0) + ' (pass ' + pass + ')';
+								st.style.color = '#5b6471';
+								step(); // next batch
+								return;
+							}
+							btn.disabled = false;
+							var summary = (d.pages || 0) + ' pages' + (d.unchanged ? ' (' + d.unchanged + ' unchanged)' : '') + ', ' + (d.images_present || 0) + ' images';
+							if (d.warning) { st.textContent = '⚠ ' + summary + ' — ' + d.warning; st.style.color = '#b26a00'; }
+							else { st.textContent = '✓ ' + summary + '.'; st.style.color = '#1a8f4f'; }
+						})
+						.catch(function (e) { fail('Interrupted (' + e.message + '). Click Import to resume — finished work is saved.'); });
+				}
+				st.textContent = 'Importing… runs in passes, may take a minute.'; step();
 			});
 		})();
 		</script>
@@ -222,16 +243,30 @@ class AQ_Importer {
 		require_once ABSPATH . 'wp-admin/includes/media.php';
 		require_once ABSPATH . 'wp-admin/includes/image.php';
 
-		$img_done = 0;
-		$img_skip = 0;
+		// Sideload referenced images IN BATCHES across requests so a single request
+		// can't time out on a large media set. Already-present images are skipped;
+		// each pass imports up to $img_batch NEW ones. Pages/brand/assets run only
+		// on a pass that does NO image work (everything already present), keeping
+		// every request bounded. The admin JS calls this repeatedly until
+		// {done:true}; partial progress persists (each image/page commits as it
+		// lands), so a re-run resumes.
+		$img_batch = (int) apply_filters('aq_import_image_batch', 20);
+		$img_total = count($referenced);
+		$img_done  = 0; // imported on THIS pass
+		$present   = 0; // referenced images now in the library (incl. this pass)
+		$missing   = 0; // referenced but absent from the repo (can never import)
 		foreach ($referenced as $bname) {
-			if (!isset($imgmap[$bname])) {
-				$log[] = 'image not found in repo: ' . $bname;
+			if (self::media_exists($bname)) {
+				$present++;
 				continue;
 			}
-			if (self::media_exists($bname)) {
-				$img_skip++;
+			if (!isset($imgmap[$bname])) {
+				$log[] = 'image not found in repo: ' . $bname;
+				$missing++;
 				continue;
+			}
+			if ($img_done >= $img_batch) {
+				continue; // defer the rest to the next pass
 			}
 			$tmp = trailingslashit(get_temp_dir()) . wp_generate_password(6, false, false) . '-' . $bname;
 			if (!@copy($imgmap[$bname], $tmp)) {
@@ -245,17 +280,53 @@ class AQ_Importer {
 				continue;
 			}
 			$img_done++;
+			$present++;
 		}
-		$log[] = '— images: ' . $img_done . ' imported, ' . $img_skip . ' already present —';
+		$img_remaining = max(0, $img_total - $present - $missing);
+		$log[] = '— images: ' . $img_done . ' this pass, ' . $present . '/' . $img_total . ' present, ' . $img_remaining . ' to go —';
 
-		// 4. Build the pages from the canonical JSON.
-		$pages = 0;
+		// Imported images this pass → return so the JS comes back for the next
+		// batch. Gating done:false on $img_done (a NEW image landed this pass) —
+		// never on $img_remaining — is what guarantees termination: a pass that
+		// imports nothing (all present, or only missing/failing images left) falls
+		// through to the page build + done:true. Pages are deferred to such a
+		// no-sideload pass so the build never shares a request with an image batch.
+		if ($img_done > 0) {
+			self::rrmdir($dest);
+			return rest_ensure_response([
+				'ok'                 => true,
+				'done'               => false,
+				'phase'              => 'images',
+				'images_total'       => $img_total,
+				'images_present'     => $present,
+				'imported_this_call' => $img_done,
+				'log'                => $log,
+			]);
+		}
+
+		// No image work this pass: everything is present ($img_remaining 0), or the
+		// only ones left can't be imported (missing from repo / repeatedly failing).
+		// Either way build the pages now — this pass did no sideloading, so it stays
+		// bounded.
+		$warning = '';
+		if ($missing > 0 || $img_remaining > 0) {
+			$warning = ($missing + $img_remaining) . ' image(s) unresolved (' . $missing . ' missing from the repo, ' . $img_remaining . ' failed to import); pages still built.';
+			$log[]   = '! ' . $warning;
+		}
+
+		// Build the pages from the canonical JSON. import_path() skips pages whose
+		// content is unchanged, so re-imports are incremental and a timed-out page
+		// build resumes on the next run.
+		$pages     = 0;
+		$unchanged = 0;
 		try {
 			$page_log = AQ_Content_Sync::import_path($pages_dir, false);
 			foreach ((array) $page_log as $line) {
 				$log[] = is_string($line) ? $line : wp_json_encode($line);
 				if (is_string($line) && strpos($line, 'Imported ') === 0) {
 					$pages++;
+				} elseif (is_string($line) && strpos($line, 'Unchanged ') === 0) {
+					$unchanged++;
 				}
 			}
 		} catch (\Throwable $e) {
@@ -263,25 +334,27 @@ class AQ_Importer {
 			return new WP_Error('aq_import', 'Page import error: ' . $e->getMessage(), ['status' => 500]);
 		}
 
-		// 4b. Seed the client's brand/site config (content/brand.json) into the
-		//     aq_site_config option. Lives in the DB → safe across plugin updates.
-		$brand_applied = self::apply_brand($root, $log);
-
-		// 4c. Deliver the client's compiled CSS/JS into the active stub theme so
-		//     the design ships per client (the theme PHP stays identical).
+		// Seed brand/site config (DB → survives plugin updates) and deliver the
+		// client's compiled CSS/JS into the active stub theme.
+		$brand_applied  = self::apply_brand($root, $log);
 		$assets_applied = self::deliver_theme_assets($root, $log);
 
-		// 5. Clean up.
 		self::rrmdir($dest);
 
 		return rest_ensure_response([
-			'ok'      => true,
-			'pages'   => $pages,
-			'images'  => $img_done,
-			'skipped' => $img_skip,
-			'brand'   => $brand_applied,
-			'assets'  => $assets_applied,
-			'log'     => $log,
+			'ok'                 => true,
+			'done'               => true,
+			'phase'              => 'pages',
+			'pages'              => $pages,
+			'unchanged'          => $unchanged,
+			'images'             => $present,
+			'images_total'       => $img_total,
+			'images_present'     => $present,
+			'imported_this_call' => $img_done,
+			'brand'              => $brand_applied,
+			'assets'             => $assets_applied,
+			'warning'            => $warning,
+			'log'                => $log,
 		]);
 	}
 
@@ -403,13 +476,28 @@ class AQ_Importer {
 		return $map;
 	}
 
-	/** True if a media-library attachment already exists for this filename. */
+	/**
+	 * True if a media-library attachment already exists for this filename.
+	 *
+	 * ANY match counts as present (LIMIT 1) — deliberately UNLIKE
+	 * AQ_Content_Sync::resolve_image(), which returns 0 on an ambiguous >1-match
+	 * so callers never bind the wrong image. For the batched importer's "already
+	 * imported?" gate we must treat a duplicate/ambiguous basename as PRESENT;
+	 * otherwise the import would re-sideload it every pass, mint another
+	 * duplicate, deepen the ambiguity, and never terminate.
+	 */
 	private static function media_exists(string $basename): bool {
-		if (!class_exists('AQ_Content_Sync')) {
-			return false;
-		}
-		$info = AQ_Content_Sync::image_info($basename);
-		return !empty($info['id']);
+		global $wpdb;
+		$base  = basename($basename);
+		$found = $wpdb->get_var($wpdb->prepare(
+			"SELECT post_id FROM {$wpdb->postmeta}
+			 WHERE meta_key = '_wp_attached_file'
+			   AND (meta_value = %s OR meta_value LIKE %s)
+			 LIMIT 1",
+			$base,
+			'%/' . $wpdb->esc_like($base)
+		));
+		return $found !== null;
 	}
 
 	/** Recursively delete a temp directory. */
