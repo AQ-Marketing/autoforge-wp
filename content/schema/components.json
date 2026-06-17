@@ -1,0 +1,599 @@
+{
+  "$comment": "Component manifest — documents the section types and their intended content fields. plugin/aq-core/includes/fields/sections.php registers these as ACF layouts and plugin/aq-core/render/sections/<type>.php renders them (underscores become hyphens in filenames). Page JSON in content/pages/ must only use these types. NOTE: this manifest is documentation and may omit later-added design/layout fields (bg, pad, col_ratio, h2_mt, …); the AUTHORITATIVE field order + schema version + bool/int typing used by the round-trip normalizer lives in plugin/aq-core/config/field-order.json (transcribed 1:1 from sections.php). Every section instance carries a 'v' (schema version) for future migrations.",
+  "version": 1,
+  "imageRef": {
+    "$comment": "Shared shape for image fields. 'file' is the base WebP filename in wp-content/uploads/site/images/ (pre-optimized AVIF/WebP variants at 480/768/1280 + original exist on disk). 'max' = actual pixel width of the original file.",
+    "fields": {
+      "file": "string",
+      "alt": "string",
+      "width": "int",
+      "height": "int",
+      "max": "int",
+      "sizes": "string?"
+    }
+  },
+  "sections": {
+    "hero": {
+      "v": 1,
+      "renders": "Full-bleed background image + navy overlay, pill eyebrow, white H1 + gold subtitle, intro, CTA buttons.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string (H1 line 1, white)",
+        "subheading": "string (H1 line 2, gold)",
+        "intro": "string",
+        "intro_max": "int — intro max-width px; 860 default, home uses 930",
+        "image": "imageRef (loading=eager, fetchpriority=high, sizes=100vw)",
+        "ctas": "[{label, href, style: primary|secondary}]"
+      }
+    },
+    "why_overview": {
+      "v": 1,
+      "renders": "White section, 2-col grid [55fr_40fr], text left (eyebrow, H2 + gold sub, paragraphs), image right.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "paragraphs": "[{html}] — paragraph HTML, inline links allowed",
+        "image": "imageRef"
+      }
+    },
+    "journey_cards": {
+      "v": 1,
+      "renders": "bg-brand-50, centered heading block, 4-up white cards with gold top border and big serif numbers.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "intro": "string",
+        "cards": "[{number, title, body(html)}]"
+      }
+    },
+    "dark_card_grid": {
+      "v": 1,
+      "renders": "bg-brand-900, centered heading block, 3-col translucent cards with round icon badge, optional gold Learn More arrow link.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "intro": "string",
+        "cards": "[{icon_svg (full <svg> markup), title, body(html), link_label?, link_href?, link_aria?}]"
+      }
+    },
+    "trust_image_left": {
+      "v": 1,
+      "renders": "White section, 2-col grid [45fr_55fr], image left, text + gold-check list + CTA button right.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "paragraphs": "[{html}]",
+        "checklist": "[{text}]",
+        "cta_label": "string",
+        "cta_href": "string",
+        "image": "imageRef"
+      }
+    },
+    "testimonials": {
+      "v": 1,
+      "renders": "bg-brand-50, centered heading, 3-up white cards with 5 gold stars, italic quote, name/role, optional CTA below.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "intro": "string",
+        "items": "[{quote (include surrounding quotation marks), name, role}]",
+        "cta_label": "string",
+        "cta_href": "string"
+      }
+    },
+    "faq": {
+      "v": 1,
+      "renders": "bg-forest-600 accordion. When schema=true, aq-core emits FAQPage JSON-LD from these rows (answers stripped to plain text).",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string (gold-300 line)",
+        "items": "[{q, a(html)}]",
+        "schema": "bool"
+      }
+    },
+    "final_cta": {
+      "v": 1,
+      "renders": "Full-bleed background image + navy overlay, centered H2 + gold sub, body, gold Schedule button + outlined Call button (phone from site config), small footnote.",
+      "fields": {
+        "heading": "string",
+        "subheading": "string",
+        "body": "string",
+        "image": "imageRef (sizes=100vw, lazy)",
+        "cta_label": "string",
+        "cta_href": "string",
+        "footnote": "string"
+      }
+    },
+    "raw_html": {
+      "v": 1,
+      "renders": "Verbatim HTML — escape hatch for bespoke utility pages (contact, pricing, schedule iframe, legal). Not client-editable in a friendly way; promote recurring patterns to real layouts.",
+      "fields": {
+        "html": "string"
+      }
+    },
+    "post_feed": {
+      "v": 1,
+      "renders": "Resources index (/blog/): a full-bleed hero (media-library image + navy overlay, breadcrumb, pill eyebrow, two-line H1 white + gold sub, intro), then a featured lead article (newest post) as a large split card, then a responsive image-card grid (render/parts/post-card.php) of the remaining posts — all from a live WP_Query over published posts, newest first, closing with the shared schedule CTA. Single posts render via plugin/aq-core/render/templates/single.php (editorial header + showcased featured image + .article-body prose + related-articles block; date, category, excerpt, reading time, and featured image come from native post fields).",
+      "fields": {
+        "eyebrow": "string — pill eyebrow above the hero heading (default 'Resources')",
+        "heading": "string — H1 line 1 (default 'Resources & Articles')",
+        "subheading": "string — H1 line 2, gold (optional)",
+        "intro": "string — lead paragraph under the heading",
+        "image": "imageRef — full-bleed hero background (loading=eager, fetchpriority=high, sizes=100vw)",
+        "limit": "int — max posts to list (0 = default 24)"
+      }
+    },
+    "breadcrumb": {
+      "v": 1,
+      "renders": "Breadcrumb trail. variant: plain (inline), wide (full-width band), wide_index (wide band for index hubs). A crumb with a blank url = current page.",
+      "fields": {
+        "items": "[{label, url (blank = current page)}]",
+        "variant": "plain|wide|wide_index"
+      }
+    },
+    "page_header": {
+      "v": 1,
+      "renders": "Simple centered page header: eyebrow, H1, and a meta line.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string (H1)",
+        "meta": "string"
+      }
+    },
+    "city_hero": {
+      "v": 1,
+      "renders": "Town/landing hero: full-bleed background image + overlay, eyebrow, H1 line 1 + second line, intro, optional badges row, CTA buttons. sub_style: gold underline (h1-sub) or solid gold (text-accent-500).",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string (H1 line 1)",
+        "subheading": "string (H1 line 2)",
+        "intro": "string",
+        "image": "imageRef",
+        "badges": "[{text}]",
+        "ctas": "[{label, href, style: primary|secondary}]",
+        "sub_style": "h1-sub|text-accent-500"
+      }
+    },
+    "media_hero": {
+      "v": 1,
+      "renders": "Hero with a background image and a freeform rich-text content block (heading/subhead/buttons authored as rich text).",
+      "fields": {
+        "image": "imageRef",
+        "body": "richtext"
+      }
+    },
+    "prose": {
+      "v": 1,
+      "renders": "Centered prose column: optional H2 + a list of paragraph blocks (each normal or lead style). margin_top controls top spacing.",
+      "fields": {
+        "heading": "string (H2)",
+        "blocks": "[{html(richtext), variant: normal|lead}]",
+        "margin_top": "mt-10|mt-8"
+      }
+    },
+    "prose_with_image": {
+      "v": 1,
+      "renders": "2-col prose + image. eyebrow/heading/subheading, paragraphs, optional gold-check list, optional link rows, footnote, CTA button, image. image_side left/right; align top/center; bg white/brand-50.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "paragraphs": "[{html}]",
+        "checklist": "[{text}]",
+        "link_list": "[{label, link_text, href}]",
+        "footnote": "string",
+        "cta_label": "string",
+        "cta_href": "string",
+        "image": "imageRef",
+        "bg": "white|brand-50",
+        "image_side": "left|right",
+        "align": "start|center"
+      }
+    },
+    "prose_article": {
+      "v": 1,
+      "renders": "Long-form article body rendered inside .prose, with an optional sticky sidebar (At-a-Glance / CTA box). Both are rich text.",
+      "fields": {
+        "body": "richtext",
+        "aside": "richtext (optional sidebar)"
+      }
+    },
+    "legal_doc": {
+      "v": 1,
+      "renders": "Legal/utility document: H1, a sub-line (e.g. Last updated…), and a rich-text body.",
+      "fields": {
+        "heading": "string (H1)",
+        "meta": "string",
+        "body": "richtext"
+      }
+    },
+    "link_card_grid": {
+      "v": 1,
+      "renders": "Heading block + grid of link cards (title, description, optional small note, link). variant: bare|light|dark; cols: 3|4; bg: brand-50|white. Optional CTA button below.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "intro": "string",
+        "cards": "[{title, body, note?, href, aria?}]",
+        "cta_label": "string",
+        "cta_href": "string",
+        "variant": "bare|light|dark",
+        "cols": "3|4",
+        "bg": "brand-50|white"
+      }
+    },
+    "service_card_grid": {
+      "v": 1,
+      "renders": "Heading block + grid of service cards with icon badge, title, body, two price lines, and a link.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "intro": "string",
+        "cards": "[{icon_svg (full <svg> markup), title, body, price_primary, price_secondary, link_label, link_href}]"
+      }
+    },
+    "town_card_grid": {
+      "v": 1,
+      "renders": "Heading block + grid of town cards (county eyebrow, title, body, link). bg white/brand-50; card_heading_size base/xl; line_clamp toggles a 3-line clamp; cta_label sets the per-card link text.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "intro": "string",
+        "cta_label": "string (per-card link text, e.g. View Town Profile)",
+        "cards": "[{county, title, body, href}]",
+        "bg": "white|brand-50",
+        "card_heading_size": "base|xl",
+        "line_clamp": "bool"
+      }
+    },
+    "feature_cards": {
+      "v": 1,
+      "renders": "Centered heading block + grid of bespoke cards. Each card has a wrapper_class and a freeform rich-text body — used for heterogeneous one-off layouts (contact info, numbered steps, download cards, pricing tables). bg white/brand-50; header_mb mb-12/mb-10; grid_class sets the grid.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "intro": "string",
+        "grid_class": "string (Tailwind grid classes)",
+        "cards": "[{wrapper_class, html(richtext)}]",
+        "bg": "white|brand-50",
+        "header_mb": "mb-12|mb-10"
+      }
+    },
+    "step_cards": {
+      "v": 1,
+      "renders": "Centered heading block + grid of structured numbered-step cards. Same header/grid as feature_cards, but each card is number + title + text (plain fields, not a raw-HTML sink). Used by /thank-you/.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string",
+        "intro": "string",
+        "grid_class": "string (Tailwind grid classes)",
+        "cards": "[{wrapper_class, number, title, text}]",
+        "bg": "white|brand-50",
+        "header_mb": "mb-12|mb-10"
+      }
+    },
+    "faq_dl": {
+      "v": 1,
+      "renders": "FAQ rendered as a definition list (no accordion). When schema=true, aq-core emits FAQPage JSON-LD (answers stripped to plain text).",
+      "fields": {
+        "heading": "string",
+        "items": "[{q, a(richtext)}]",
+        "schema": "bool"
+      }
+    },
+    "cta_band": {
+      "v": 1,
+      "renders": "Compact CTA band: headline, body, a primary button and a secondary button (secondary defaults to Call phone / tel: from site config when left blank).",
+      "fields": {
+        "headline": "string",
+        "body": "string",
+        "primary_label": "string",
+        "primary_href": "string",
+        "secondary_label": "string (blank = Call phone)",
+        "secondary_href": "string (blank = tel:)"
+      }
+    },
+    "rich_section": {
+      "v": 1,
+      "renders": "Advanced HTML section — verbatim inner HTML for genuine embeds (tables, iframes, widgets). Not friendly-editable; use ONLY for real embeds, never for normal content.",
+      "fields": {
+        "body": "string (raw HTML — advanced)"
+      }
+    },
+    "gallery": {
+      "v": 1,
+      "renders": "A static, responsive image grid of media-library images (2, 3, or 4 columns) with an optional centered header (eyebrow / H2 / subheading / intro) above it. Each image is rendered as a <figure> with rounded corners and an optional <figcaption> caption beneath it. Columns are a `columns` select (2|3|4) that maps to a fixed responsive grid (1 col on mobile, 2 at sm, then 2/3/4 at lg) — pure CSS grid, no lightbox, no JavaScript. An optional `bg` toggles bg-white vs bg-brand-50. Images go through ka_picture_field() (media-library attachment IDs, lazy-loaded with 4/3 aspect ratio). Built for future portfolio / sample-report / property-photo rows.",
+      "fields": {
+        "eyebrow": "string — pill eyebrow above the heading (optional)",
+        "heading": "string — section H2",
+        "subheading": "string — second H2 line, gold (optional)",
+        "intro": "string — intro paragraph below the heading (optional)",
+        "bg": "select white|brand-50 — section background (default white)",
+        "columns": "select 2|3|4 — max grid columns at lg breakpoint (default 3)",
+        "items": "[{image: imageRef, caption?: string}] — gallery images, each an optional caption below"
+      }
+    },
+    "video": {
+      "v": 1,
+      "renders": "A centered-header section (optional eyebrow / H2 / subheading / intro) above a single responsive video frame. The frame holds either a YouTube or Vimeo embed (built from just the video id) or a self-hosted file URL rendered with a native <video> element, locked to a 16:9 or 4:3 aspect ratio via a static CSS aspect box (no JS). Supports an optional caption beneath the frame, a max-width cap to keep the player centered, and the standard bg / section_class background controls used by the other section types. YouTube embeds use the privacy-friendly youtube-nocookie.com host.",
+      "fields": {
+        "eyebrow": "text — small pill eyebrow above the heading (optional)",
+        "heading": "text — section H2 (optional)",
+        "subheading": "text — secondary line shown under the H2 as h2-sub (optional)",
+        "intro": "textarea — intro paragraph below the heading, inline links allowed (optional)",
+        "provider": "select — video source: youtube | vimeo | file (default youtube)",
+        "video_id": "text — the YouTube or Vimeo video id only (e.g. dQw4w9WgXcQ), not a full URL; used when provider is youtube/vimeo",
+        "file_url": "url — direct .mp4/.webm file URL; used when provider is file",
+        "poster": "image — media-library poster/thumbnail shown before a self-hosted file plays (file provider only, optional)",
+        "aspect": "select — frame aspect ratio: 16/9 | 4/3 (default 16/9)",
+        "max_width": "select — max width cap for the player wrapper: 4xl | 3xl | 5xl | full (default 4xl)",
+        "caption": "text — caption line shown beneath the video frame (optional)",
+        "bg": "select — section background: white | brand-50 (default white)",
+        "section_class": "text — full <section> class string that overrides bg when set"
+      }
+    },
+    "columns": {
+      "v": 1,
+      "renders": "An optional centered header (eyebrow / H2 + gold subheading / intro) above a static CSS grid of 2, 3, or 4 equal-width columns, each holding its own rich-text body. Column count, the gap between columns, and the vertical alignment of the columns (top / center / stretch) are all configurable from selects. No JavaScript: pure responsive CSS grid that stacks to 1 column on mobile and expands to the chosen count at the sm/lg breakpoints. Background (white / brand-50) and the H2 top-margin style match the rest of the section library. Each column body renders inside the theme's .prose-content wrapper so inline links, lists, and paragraphs are styled on-brand. NOTE: in sectionsLayout the column 'body' subfield registers as ACF type 'wysiwyg' (the editor's 'richtext' kind), matching the existing card.html pattern. field-order.json entry to add in lockstep: \"columns\": { \"v\": 1, \"fields\": [\"eyebrow\",\"heading\",\"subheading\",\"h2_mt\",\"intro\",\"bg\",\"cols\",\"gap\",\"align\",\"columns\"], \"repeaters\": { \"columns\": [\"body\"] } }.",
+      "fields": {
+        "eyebrow": "string — optional pill eyebrow above the heading",
+        "heading": "string — optional H2 heading line",
+        "subheading": "string — optional second H2 line, gold (h2-sub)",
+        "h2_mt": "mt-0|mt-4 — H2 top margin (home vs service/city style)",
+        "intro": "string — optional intro paragraph under the heading",
+        "bg": "white|brand-50 — section background",
+        "cols": "2|3|4 — number of equal columns at the desktop breakpoint",
+        "gap": "sm|md|lg — gap between columns (gap-6 / gap-8 / gap-10)",
+        "align": "start|center|stretch — vertical alignment of the columns in their row",
+        "columns": "[{body(richtext)}] — one rich-text body per column"
+      }
+    },
+    "team": {
+      "v": 1,
+      "renders": "A centered header (eyebrow / H2 / optional subheading / optional intro) above a responsive 2-, 3-, or 4-column grid of team member cards. Each card shows a square photo (from the WP media library), the member's name, their role/title, an optional short bio, and an optional link (e.g. \"Read bio\" or an email/LinkedIn URL). Static markup only — a CSS grid whose column count is driven by the `cols` select; no JavaScript. Uses the theme's brand tokens and component classes (container-edge--wide, pill-eyebrow, h2-sub, card, text-brand-*, text-accent-500).",
+      "fields": {
+        "eyebrow": "text — small pill-eyebrow label above the heading (optional)",
+        "heading": "text — H2 section heading",
+        "subheading": "text — optional second-line subheading rendered as h2-sub (optional)",
+        "h2_mt": "select — H2 top margin: mt-0 (home default) or mt-4 (service/testing/city style)",
+        "intro": "textarea — optional intro paragraph below the heading",
+        "bg": "select — section background: white or brand-50",
+        "cols": "select — desktop grid column count: 2, 3, or 4 (mobile 1, tablet 2)",
+        "members": "repeater — team member cards (photo, name, role, optional bio, optional link)"
+      }
+    },
+    "logos": {
+      "v": 1,
+      "renders": "A centered-header (eyebrow / H2 / subheading / intro) \"logos\" section above a responsive, evenly spaced grid of client/partner logos. Each logo is a media-library image with its own alt text and an optional link (anchor wraps the image when a URL is set). The column count is selectable (3-6, defaults to 4 and steps down on small screens), and a single optional grayscale toggle renders all logos muted by default with full color on hover. Static markup only — no JavaScript; the grid is a plain CSS grid and the hover effect is pure CSS. Uses the theme's container-edge--wide, pill-eyebrow, h2-sub, brand-* / accent-* tokens.",
+      "fields": {
+        "eyebrow": "text — small pill label above the heading (pill-eyebrow)",
+        "heading": "text — section H2 main line",
+        "subheading": "text — optional secondary H2 line rendered as a block h2-sub",
+        "intro": "textarea — optional lead paragraph under the heading (inline links allowed)",
+        "bg": "select — section background: white | brand-50",
+        "columns": "select — logo grid columns at desktop: 3 | 4 | 5 | 6 (default 4)",
+        "grayscale": "true_false — render logos desaturated by default, full color on hover",
+        "logos": "repeater — list of logos; each has image (media-library attachment ID), alt (text), href (optional link URL)"
+      }
+    },
+    "embed": {
+      "v": 1,
+      "renders": "A generic responsive iframe embed for maps, calendars, scheduler iframes, video, or any embeddable URL. Renders an optional centered header (eyebrow / H2 / subheading + intro) above a fixed-aspect-ratio iframe (16:9, 4:3, or 1:1) held by a static CSS wrapper (no JavaScript). The iframe width is constrained by a selectable max-width and centered; an optional caption renders below. The iframe URL, accessible title, and aspect ratio are all editable in the AQ builder. Background and vertical padding are configurable. If no URL is set, the iframe is skipped so an empty section never renders a broken frame.",
+      "fields": {
+        "eyebrow": "text — optional small pill eyebrow above the heading",
+        "heading": "text — section H2 (optional; whole header is skipped if heading + eyebrow + intro are all empty)",
+        "subheading": "text — optional second line shown under the heading as a muted h2-sub",
+        "intro": "textarea/rich — optional intro paragraph below the header (inline links allowed)",
+        "bg": "select — section background: white | brand-50",
+        "embed_url": "url — the iframe src (map, calendar, scheduler, video, etc.); if empty the iframe is not rendered",
+        "aspect": "select — iframe aspect ratio: 16:9 (default) | 4:3 | 1:1",
+        "iframe_title": "text — accessible title attribute for the iframe (screen readers); defaults to the heading or 'Embedded content'",
+        "max_width": "select — max width of the embed: full | 4xl | 3xl | 2xl, centered within the container",
+        "allow_fullscreen": "true_false — add allowfullscreen to the iframe (videos, maps)",
+        "caption": "textarea/rich — optional small caption rendered below the embed"
+      }
+    },
+    "accordion": {
+      "v": 1,
+      "renders": "A no-JavaScript, FAQ-style accordion built on native <details>/<summary>. Renders a centered header (pill eyebrow, H2 + optional gold subheading, intro paragraph) above a vertical stack of expandable panels. Each item is a bold title with a \"+\" chevron that rotates to \"x\" on open (group-open:rotate-45 — pure CSS, zero JS) and a rich-text body. Optional first_open toggle opens the first panel on load; bg select switches between white and the brand-50 tint; h2_mt controls the heading gap. On-brand throughout (container-edge, pill-eyebrow, h2-sub, brand/accent tokens, prose body). Distinct from the forest-green faq accordion (JS toggle + FAQ JSON-LD) and faq_dl (bare <dl>): this is a general-purpose content accordion with no schema coupling, for future pages. Editable end-to-end in the AQ visual builder. Template file written to plugin/aq-core/render/sections/accordion.php (lint-clean).",
+      "fields": {
+        "eyebrow": "text — pill eyebrow above the heading (optional)",
+        "heading": "text — section H2 (line 1)",
+        "subheading": "text — optional gold second H2 line (h2-sub)",
+        "h2_mt": "select — heading top gap: mt-0 (home default) | mt-4 (service/testing/city)",
+        "intro": "textarea — optional lead paragraph under the heading",
+        "bg": "select — section background: white | brand-50",
+        "first_open": "true_false — open the first item on load (all others collapsed)",
+        "items": "repeater — accordion items (title + body)",
+        "title": "text (items subfield) — the clickable item title shown in <summary>",
+        "body": "textarea (items subfield) — item body, inline links/basic HTML allowed, rendered in .prose"
+      }
+    },
+    "button_group": {
+      "v": 1,
+      "renders": "A standalone, alignable row of one or more on-brand buttons. Each button has a label, link (href), and style choice — primary (copper), secondary (navy), or ghost (outlined). An optional eyebrow + heading + intro can sit above the row. Buttons stack full-width on mobile and become an inline wrapping row from sm:. Pure static markup, no JavaScript: the row is a flex container and each button is an <a> using the theme's .btn-primary / .btn-secondary / .btn-outline component classes. The whole block can be left/center/right aligned and sits on a white or brand-50 background. Ideal as a flexible call-to-action block on future pages where the prebuilt cta_band / hero CTA layouts don't fit.",
+      "fields": {
+        "eyebrow": "text — optional pill-eyebrow label above the heading",
+        "heading": "text — optional H2 heading above the button row",
+        "intro": "textarea — optional supporting paragraph (inline HTML allowed) below the heading",
+        "align": "select — horizontal alignment of the block + button row: left | center | right (default center)",
+        "bg": "select — section background: white | brand-50 (default white)",
+        "buttons": "repeater — one or more buttons; each subfield: label (text), href (url), style (select: primary|secondary|ghost)"
+      }
+    },
+    "callout": {
+      "v": 1,
+      "renders": "A self-contained alert / notice box. Renders a centered max-w-3xl panel with a colored left border (border-l-4) and a tinted background in one of four on-brand styles — info (navy), success (forest green), warning (copper), danger (red) — holding an optional leading icon (curated inline SVG), an optional bold title, and a rich-text body. The style → color mapping is a static PHP lookup (no JavaScript); the whole block is purely CSS-driven. Background of the wrapping section is a white / brand-50 toggle. Template at plugin/aq-core/render/sections/callout.php; no existing page — a new building block for future pages.",
+      "fields": {
+        "style": "select — visual variant: info (navy) | success (forest) | warning (copper) | danger (deep copper). The brand palette is navy/copper/forest only (no red). Default info.",
+        "title": "text — optional bold heading line at the top of the box.",
+        "icon_svg": "icon — optional leading inline-SVG glyph from the icon picker (raw <svg>, code-mode-only sink like dark_card_grid.icon_svg).",
+        "body": "richtext — the notice body copy (inline links/lists allowed; rendered with wp_kses_post inside a .prose-content wrapper).",
+        "bg": "select — section background: white | brand-50. Default white."
+      }
+    },
+    "cta": {
+      "v": 1,
+      "renders": "A generic, standalone call-to-action band. Renders a centered (or left-aligned) header block — optional pill eyebrow, H2 heading, gold subheading line, and intro body paragraph — above a row of one or more buttons from a repeater (each button picks a primary/secondary style). The whole band sits on a selectable background: bg-white, bg-brand-50 (soft tint), or bg-brand-900 (full navy). On the navy background, text and button styles automatically flip to their light/on-dark variants. It is distinct from the existing cta_band (fixed two-button schedule/call band) and final_cta (full-bleed image band) — this one is a flexible, content-driven CTA for any future page, with no image and no hard-coded phone logic. No JavaScript; static markup only.",
+      "fields": {
+        "eyebrow": "string — small pill eyebrow above the heading (optional)",
+        "heading": "string — main H2 heading",
+        "subheading": "string — second heading line, rendered in the accent/gold sub style (optional)",
+        "body": "string — intro paragraph below the heading (optional; inline links allowed)",
+        "bg": "white|brand-50|brand-900 — band background; brand-900 flips text + buttons to light/on-dark variants",
+        "align": "center|left — header + button row alignment",
+        "buttons": "[{label, href, style(primary|secondary)}] — one or more CTA buttons"
+      }
+    },
+    "divider": {
+      "v": 1,
+      "renders": "A static horizontal rule used to separate sections. Renders an on-brand <hr> with three editable controls: line style (solid or dashed), width (full-bleed within the content edge, or a short centered rule), and vertical spacing (compact / normal / spacious). An optional \"accent\" toggle swaps the subtle border-gray line for the copper accent color (and, on the narrow width, a slightly thicker centered bar) for a more emphatic divider. No images, no repeaters, no JavaScript — pure CSS via Tailwind tokens.",
+      "fields": {
+        "style": "select — line style: solid | dashed (maps to border-solid / border-dashed)",
+        "width": "select — rule width: full (spans container) | narrow (short centered rule, max-w-xs mx-auto)",
+        "spacing": "select — vertical spacing around the rule: compact (my-6) | normal (my-10 md:my-12) | spacious (my-16 md:my-20)",
+        "accent": "true_false — when on, uses the copper accent color (border-accent-500) and a thicker narrow bar instead of subtle border-brand-200"
+      }
+    },
+    "heading_block": {
+      "v": 1,
+      "renders": "A standalone, self-contained heading block: an optional eyebrow pill, a heading (selectable H2 or H3), an optional gold-underlined subheading line, and an optional supporting intro line. Alignment is left or center; background is white or a light brand tint with normal/compact/spacious vertical padding. No cards, no image, no JS — just an on-brand section header you can drop anywhere to introduce the content that follows.",
+      "fields": {
+        "eyebrow": "text — optional small pill-eyebrow label above the heading (pill-eyebrow). Omitted when empty.",
+        "heading": "text — the main heading line; rendered as H2 or H3 per the level field.",
+        "subheading": "text — optional second heading line, rendered as a gold-underlined h2-sub span inside the heading. Omitted when empty.",
+        "level": "select — heading tag/size: 'h2' (default, section heading) or 'h3' (sub-section heading).",
+        "intro": "textarea — optional supporting paragraph/lede below the heading (text-brand-700, inline links allowed). Omitted when empty.",
+        "align": "select (design) — text alignment: 'center' (default) or 'left'.",
+        "bg": "select (design) — section background: 'white' (default) or 'brand-50' (light tint).",
+        "pad": "select (design) — vertical padding: 'normal' (default), 'compact', or 'spacious'."
+      }
+    },
+    "icon_list": {
+      "v": 1,
+      "renders": "A centered-header section (eyebrow / H2 / subheading / intro) above a list of icon + text rows. Each row pairs an inline-SVG icon badge with a bold title and a description paragraph. The list renders as a static CSS grid in either 1 or 2 columns (controlled by a `columns` select), responsive down to a single column on mobile. Optional `bg` toggle (white / brand-50). No JavaScript — pure static markup using the theme's Tailwind tokens and component classes (pill-eyebrow, h2-sub, container-edge--wide, icon-badge, text-brand-700/900, bg-accent-500). Built for future feature/benefit, checklist-style, or \"what's included\" rows.",
+      "fields": {
+        "eyebrow": "text — small pill eyebrow label above the heading",
+        "heading": "text — section H2 heading",
+        "subheading": "text — optional secondary line rendered as h2-sub below the heading",
+        "intro": "textarea — optional intro paragraph under the header (inline links allowed)",
+        "bg": "select — section background: white | brand-50 (default white)",
+        "columns": "select — number of list columns on desktop: 1 | 2 (default 2); always 1 column on mobile",
+        "items": "repeater — icon + text rows; each item has icon_svg (inline SVG icon), title (text), text (textarea description)"
+      }
+    },
+    "image_block": {
+      "v": 1,
+      "renders": "Renders ONE media-library image inside a centered <section>, wrapped in a <figure>. The image width is capped by a selectable max-width and aligned left/center/right. Optional fields: an editable caption (<figcaption>), an optional link that wraps the image (internal or external — external links get target=_blank rel=noopener noreferrer), a rounded-corners toggle, a soft drop-shadow toggle, and a fixed aspect-ratio crop select. Design controls (background tint, vertical padding) live in the inspector's Design group. Fully static — no JavaScript. On-brand: container-edge--wide, brand/accent tokens, rounded-lg/shadow-lg idioms, accent-500 ring on linked images, text-brand-500 caption. Template lives at plugin/aq-core/render/sections/image-block.php.",
+      "fields": {
+        "image": "image — media-library attachment ID (return_format id); the single image rendered via ka_picture_field()",
+        "alt": "text — optional alt-text/aria-label override; falls back to the attachment's own alt when blank",
+        "caption": "textarea — optional caption shown in a <figcaption> below the image (inline links allowed via wp_kses_post)",
+        "link_href": "url — optional; when set the image is wrapped in an <a>; external http(s) hrefs render target=_blank rel=noopener noreferrer",
+        "align": "select (design) — horizontal alignment of the capped image block: left | center (default) | right",
+        "max_width": "select (design) — max-width of the image block: sm (max-w-md) | md (max-w-2xl) | lg (max-w-4xl, default) | full (max-w-none)",
+        "aspect": "select (design) — optional fixed crop: auto (natural, default) | 16/9 | 4/3 | 1/1 | 3/4",
+        "rounded": "true_false (design) — rounded corners (rounded-lg); default on",
+        "shadow": "true_false (design) — soft drop shadow (shadow-lg); default off",
+        "bg": "select (design) — section background: white (default) | brand-50 light tint",
+        "pad": "select (design) — vertical section padding: normal (default) | compact | spacious"
+      }
+    },
+    "pricing_table": {
+      "v": 1,
+      "renders": "Centered heading block (eyebrow / H2 / subheading / intro) above a responsive 2/3/4-column grid of pricing-plan cards. Each plan card shows a name, a large price with a period suffix (e.g. \"/inspection\"), a rich-text feature list (authored as a <ul>), and a CTA button (btn-primary on featured plans, btn-outline otherwise). An optional per-plan \"featured\" toggle lifts the card with an accent ring and a copper badge (badge text set by the section-level featured_label). Columns, background tint, and header spacing are editable design controls. Static markup only — no JavaScript.",
+      "fields": {
+        "eyebrow": "string — pill-eyebrow label above the heading",
+        "heading": "string — section H2 (plain text)",
+        "subheading": "string — optional gold second line under the H2 (h2-sub)",
+        "intro": "string — optional intro paragraph under the heading",
+        "bg": "white|brand-50 — section background tint",
+        "cols": "2|3|4 — number of plan columns on desktop",
+        "header_mb": "mb-12|mb-10 — spacing below the centered header",
+        "featured_label": "string — badge text shown on plans flagged featured (e.g. \"Most Popular\")",
+        "plans": "[{name, price, period, features(richtext <ul>), cta_label, cta_href(url), featured(bool), wrapper_class}]"
+      }
+    },
+    "quote": {
+      "v": 1,
+      "renders": "A single emphasized pull-quote / blockquote section. Renders an optional eyebrow + small heading above a large serif quote with a decorative accent quote mark, then an optional attribution line (name in accent gold, role in muted brand text). Configurable alignment (left adds an accent-500 left bar; center is symmetric with a centered glyph) and background (white or brand-50). No repeater — exactly one quote per section. Static, no JavaScript.",
+      "fields": {
+        "eyebrow": "string — optional pill-eyebrow label above the quote",
+        "heading": "string — optional small heading line above the quote",
+        "quote": "string (textarea) — the pull-quote text (rendered large + serif italic, no manual quotation marks needed)",
+        "name": "string — optional attribution name (rendered in accent gold)",
+        "role": "string — optional attribution role/title under the name",
+        "align": "left|center — text + glyph alignment; left adds an accent-500 left bar",
+        "bg": "white|brand-50 — section background"
+      }
+    },
+    "spacer": {
+      "v": 1,
+      "renders": "Renders an empty, responsive vertical-spacing block between sections — no text or imagery. A size select (sm / md / lg / xl) maps to a fixed set of on-brand responsive height utilities. An optional thin horizontal divider rule (brand-100, centered, max-width container) can be toggled on to visually separate the sections above and below, and an optional background tint (white / brand-50) lets the gap blend into either neighbor. Purely static CSS — no JavaScript.",
+      "fields": {
+        "size": "select — vertical gap size: sm | md | lg | xl (maps to responsive height utilities; default md)",
+        "divider": "true_false — when on, draws a thin centered brand-100 horizontal rule through the middle of the gap",
+        "bg": "select — background tint of the spacer block: white | brand-50 (default white)"
+      }
+    },
+    "stats": {
+      "v": 1,
+      "renders": "A centered heading block (eyebrow / H2 + optional subheading / intro) above a responsive grid of stat figures. Each stat is a big serif value with an optional prefix and suffix (e.g. \"$\", \"+\", \"%\", \"yrs\") and a label underneath. The column count is selectable (2, 3, or 4 across at lg; always 1-up on mobile, 2-up at sm). Background toggles white / brand-50. Pure static CSS grid, no JavaScript — ideal for \"by the numbers\" proof rows.",
+      "fields": {
+        "eyebrow": "string — pill-eyebrow text above the heading",
+        "heading": "string — H2 main line",
+        "subheading": "string — optional second H2 line (h2-sub)",
+        "h2_mt": "mt-0|mt-4 — H2 top margin (home vs service spacing)",
+        "intro": "string — optional lead paragraph under the heading",
+        "bg": "white|brand-50 — section background",
+        "cols": "2|3|4 — number of stat columns at lg",
+        "stats": "[{value, prefix, suffix, label}] — value is the big figure; prefix/suffix are small flanking glyphs (e.g. $ / + / %); label is the caption line"
+      }
+    },
+    "text_block": {
+      "v": 1,
+      "renders": "A generic rich-text paragraph block for free-flow copy on future pages. Renders an optional pill eyebrow and H2 heading above a single rich-text body, with configurable horizontal alignment (left / center / right), a max-width preset (prose 70ch / narrow / wide / full), a background (white / brand-50), and vertical padding (compact / normal / spacious). The body uses the on-brand `.prose` styles; everything is static (no JS).",
+      "fields": {
+        "eyebrow": "text — optional pill label",
+        "heading": "text — optional H2",
+        "body": "richtext — main rich-text body in .prose",
+        "align": "select — left|center|right",
+        "max_width": "select — prose|narrow|wide|full",
+        "bg": "select — white|brand-50",
+        "pad": "select — compact|normal|spacious"
+      }
+    },
+    "timeline": {
+      "v": 1,
+      "renders": "A static vertical timeline. Renders a centered header block (pill eyebrow, H2 with optional gold subheading, optional intro paragraph) above a single-column vertical timeline. Each item shows a small date/label pill, a bold title, and a rich-text body, connected by a left-side accent rail with a gold dot per item. Background toggles white / bg-brand-50. Pure CSS — no JavaScript.",
+      "fields": {
+        "eyebrow": "string",
+        "heading": "string",
+        "subheading": "string (gold sub-line under H2)",
+        "intro": "string",
+        "bg": "select white|brand-50 — section background",
+        "items": "[{date, title, body(html)}] — vertical timeline entries top-to-bottom"
+      }
+    }
+  },
+  "pageLevel": {
+    "seo": {
+      "title": "string — without the brand-name suffix (e.g. ' | <Brand>'); the plugin appends it. Total rendered title ≤60 chars",
+      "description": "string ≤160 chars",
+      "canonical": "absolute URL — city × service pages MUST canonicalize to the parent service page",
+      "noindex": "bool",
+      "ogImage": "absolute URL or path",
+      "services": "[{name, description, url, serviceType}] — each emits a Service JSON-LD block"
+    }
+  }
+}

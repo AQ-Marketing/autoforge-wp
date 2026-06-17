@@ -1,0 +1,19 @@
+{
+  "name": "autoforge-wp",
+  "version": "0.2.0",
+  "private": true,
+  "description": "AutoForge — client-agnostic WordPress platform: the AutoForge plugin (owns rendering + Boost) plus the AQM Base stub theme. Drives any client site from data.",
+  "type": "module",
+  "scripts": {
+    "css": "tailwindcss -c theme/aqm-base/tailwind.config.cjs -i theme/aqm-base/assets/css/src/global.css -o theme/aqm-base/assets/css/main.css --minify",
+    "css:watch": "tailwindcss -c theme/aqm-base/tailwind.config.cjs -i theme/aqm-base/assets/css/src/global.css -o theme/aqm-base/assets/css/main.css --watch",
+    "lint": "node migration/lint-php.mjs",
+    "lint:baseline": "node migration/lint-php.mjs --baseline",
+    "build:release": "node migration/build-release.mjs"
+  },
+  "devDependencies": {
+    "archiver": "^7.0.1",
+    "php-parser": "^3.7.0",
+    "tailwindcss": "^3.4.17"
+  }
+}

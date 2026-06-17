@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "autoforge-wp",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "-e",
+        "console.log('AutoForge runs inside the WordPress Studio site at http://localhost:8886 . Studio serves it externally; this placeholder lets the preview/run tooling attach to the already-running server. If Studio assigns a different port, update \"port\" below.'); setInterval(function(){}, 2147483647);"
+      ],
+      "port": 8886
+    }
+  ]
+}

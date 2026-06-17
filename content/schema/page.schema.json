@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aqmarketing.com/autoforge/page.schema.json",
+  "title": "AQ page file",
+  "type": "object",
+  "required": ["path", "title", "sections"],
+  "additionalProperties": false,
+  "properties": {
+    "path": { "type": "string", "pattern": "^/([a-z0-9-]+/)*$", "description": "URL path with trailing slash; '/' for the front page" },
+    "title": { "type": "string" },
+    "status": { "enum": ["publish", "draft"], "default": "publish" },
+    "seo": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string", "maxLength": 160 },
+        "canonical": { "type": "string", "format": "uri" },
+        "noindex": { "type": "boolean" },
+        "ogImage": { "type": "string" },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "url": { "type": "string" },
+              "serviceType": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "v"],
+        "properties": {
+          "type": {
+            "enum": ["hero", "why_overview", "journey_cards", "dark_card_grid", "trust_image_left", "testimonials", "faq", "final_cta", "raw_html", "post_feed", "breadcrumb", "page_header", "prose", "faq_dl", "link_card_grid", "cta_band", "city_hero", "prose_with_image", "prose_article", "legal_doc", "town_card_grid", "service_card_grid", "feature_cards", "step_cards", "rich_section", "media_hero", "gallery", "video", "columns", "team", "logos", "embed", "accordion", "button_group", "callout", "cta", "divider", "heading_block", "icon_list", "image_block", "pricing_table", "quote", "spacer", "stats", "text_block", "timeline"]
+          },
+          "v": { "type": "integer", "minimum": 1 }
+        }
+      }
+    }
+  }
+}

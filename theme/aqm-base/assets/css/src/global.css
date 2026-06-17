@@ -1,0 +1,457 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-white text-brand-700 font-sans antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Serif headings to match the brand logo wordmark. Color inherits. */
+  h1, h2, h3, h4 {
+    @apply font-serif;
+    text-wrap: balance;
+    color: inherit;
+    letter-spacing: -0.01em;
+  }
+
+  h1 { @apply text-4xl md:text-5xl lg:text-6xl font-bold leading-[1.1]; }
+  h2 { @apply text-3xl md:text-4xl font-bold leading-tight mt-12 mb-4; }
+  h3 { @apply text-xl md:text-2xl font-semibold leading-snug mt-8 mb-3; }
+
+  /* On light surfaces, headings default to midnight navy. */
+  main h1, main h2, main h3, main h4,
+  article h1, article h2, article h3, article h4,
+  section h1, section h2, section h3, section h4 {
+    @apply text-brand-800;
+  }
+
+  /* On dark sections, headings inherit from parent text color. */
+  .bg-brand-700 :is(h1, h2, h3, h4),
+  .bg-brand-800 :is(h1, h2, h3, h4),
+  .bg-brand-900 :is(h1, h2, h3, h4) {
+    color: inherit;
+  }
+
+  p {
+    @apply leading-relaxed;
+    text-wrap: pretty;
+  }
+
+  a {
+    @apply underline-offset-4;
+    color: #8b5408;
+  }
+
+  /* Inline text links (in paragraphs, lists, FAQ answers) — green text on hover.
+     Excludes buttons so they keep their own hover styling. */
+  main p a:not(.btn):not(.btn-primary):not(.hero-btn),
+  main li a:not(.btn):not(.btn-primary):not(.hero-btn),
+  main blockquote a, main details a, main summary a {
+    transition: color 150ms;
+  }
+  main p a:not(.btn):not(.btn-primary):not(.hero-btn):hover,
+  main li a:not(.btn):not(.btn-primary):not(.hero-btn):hover,
+  main blockquote a:hover, main details a:hover, main summary a:hover {
+    color: #455c36 !important;
+  }
+
+  /* Tabular eyebrow / kicker style — used over headings */
+  .eyebrow {
+    @apply text-xs md:text-sm font-semibold uppercase tracking-[0.2em] text-accent-500;
+  }
+
+  /* Decorative divider — small copper line, often paired with eyebrow */
+  .divider-accent {
+    @apply inline-block w-12 h-0.5 bg-accent-500 mb-4;
+  }
+
+  /* skip link */
+  .skip-to-content {
+    @apply sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:bg-accent-500 focus:text-white focus:px-4 focus:py-2 focus:rounded;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 px-6 py-3 font-sans font-semibold text-base no-underline transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 border-2 border-transparent;
+    border-radius: 4px;
+    text-decoration: none !important;
+    box-sizing: border-box;
+  }
+  .btn:hover, .btn:focus { text-decoration: none !important; }
+  .btn-primary {
+    @apply btn text-white;
+    background: #f9ab3d;
+    color: #4A4A4A;
+  }
+  .btn-primary:hover {
+    background: #455c36;
+    color: #fff;
+  }
+  .btn-secondary {
+    @apply btn bg-brand-800 text-white hover:bg-brand-900;
+  }
+  .btn-outline {
+    @apply btn border-brand-800 text-brand-800 hover:bg-brand-50;
+  }
+  .btn-outline-light {
+    @apply btn border-white text-white hover:bg-white/10;
+  }
+
+  .container-x {
+    @apply max-w-content mx-auto px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Full-bleed container with percentage gutters — matches staging header/footer */
+  .container-edge {
+    width: 100%;
+    padding-left: 30px;
+    padding-right: 30px;
+  }
+  @media (min-width: 768px) {
+    .container-edge { padding-left: 3%; padding-right: 3%; }
+    .container-edge--wide { padding-left: 6%; padding-right: 6%; }
+  }
+
+  .prose-content {
+    @apply max-w-prose mx-auto;
+  }
+  .prose-content p { @apply mb-4; }
+  .prose-content ul { @apply list-disc pl-6 my-4 space-y-1; }
+  .prose-content ol { @apply list-decimal pl-6 my-4 space-y-1; }
+
+  .card {
+    @apply rounded-lg border border-brand-100 bg-white p-6 shadow-sm hover:shadow-md hover:border-brand-200 transition;
+  }
+
+  /* Pill eyebrow — copper outlined chip used above section headings */
+  .pill-eyebrow {
+    display: inline-block;
+    font-family: Poppins, sans-serif;
+    background: #f9ab3d30;
+    border: 1px solid #faab3c;
+    color: #f9ab3d;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 5px 12px 4px 12px;
+    border-radius: 50px;
+  }
+
+  /* Hero CTA buttons — copper primary, translucent white secondary */
+  .hero-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    font-family: Poppins, sans-serif;
+    font-size: 16px;
+    font-weight: 600;
+    text-transform: uppercase;
+    padding: 14px 28px;
+    border-radius: 4px;
+    border: 1px solid transparent;
+    text-decoration: none !important;
+    transition: background-color 200ms, color 200ms, border-color 200ms;
+  }
+  @media (min-width: 640px) {
+    .hero-btn { width: auto; }
+  }
+  .hero-btn:hover { text-decoration: none !important; }
+  .hero-btn--primary { background: #f9ab3d; color: #4A4A4A; }
+  .hero-btn--primary:hover { background: #455c36; color: #fff; }
+  .hero-btn--secondary {
+    background: rgba(255,255,255,0.25);
+    color: #fff;
+    border-color: rgba(255,255,255,0.4);
+  }
+  .hero-btn--secondary:hover {
+    background: #455c36;
+    color: #fff;
+    border-color: #455c36;
+  }
+
+  /* Outlined call button used in dark CTA bands */
+  .cta-call-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 13px 24px;
+    border: 1px solid #fff;
+    border-radius: 4px;
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none !important;
+    transition: background-color 200ms, color 200ms, border-color 200ms;
+    box-sizing: border-box;
+  }
+  .cta-call-btn:hover {
+    background: #455c36;
+    border-color: #455c36;
+    color: #fff;
+  }
+}
+
+/* FAQ accordion — used on home and interior pages */
+.faq-question {
+  font-family: Merriweather, Georgia, serif;
+  font-weight: 700;
+  font-size: 1rem;
+}
+.faq-answer, .faq-answer p, .faq-answer li {
+  font-family: "Open Sans", system-ui, sans-serif;
+}
+.faq-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 320ms ease;
+}
+.faq-content-inner { overflow: hidden; }
+.faq-item[data-open="true"] .faq-content { grid-template-rows: 1fr; }
+.faq-icon { transition: transform 320ms ease; display: inline-block; }
+.faq-item[data-open="true"] .faq-icon { transform: rotate(45deg); }
+
+/* H2 subtitle gold — #c47f0a gives 3.26:1 on white, passes WCAG AA Large (≥3:1).
+   Use only on heading-scale text (≥24px) where the large-text threshold applies. */
+.h2-sub { color: #f9ab3d; }
+
+/* H1 hero subtitle — smaller, lighter gold line stacked under the white H1 line.
+   letter-spacing reset to 0 to cancel the heading default (-0.01em). */
+.h1-sub {
+  color: #f9ab3d;
+  font-size: 0.72em;
+  font-weight: 500;
+  letter-spacing: 0;
+}
+
+/* Dark-band overlays sit over a background image inside bg-brand-900 sections.
+   Two near-identical shades preserve the original hero vs final-CTA distinction. */
+.overlay-hero { background-color: rgba(38, 43, 71, 0.9); }
+.overlay-cta  { background-color: rgba(37, 42, 70, 0.9); }
+
+/* Round icon badge — translucent copper fill behind a copper SVG icon */
+.icon-badge { background-color: rgba(249, 171, 61, 0.15); }
+.icon-badge--bordered {
+  background-color: rgba(249, 171, 61, 0.15);
+  color: #f9ab3d;
+  border: 1px solid rgba(249, 171, 61, 0.3);
+}
+
+/* Body copy on dark sections (bg-brand-900 etc.) — three tints */
+.text-on-dark        { color: rgba(255, 255, 255, 0.85); line-height: 1.7em; }
+.text-on-dark-base   { color: rgba(255, 255, 255, 0.85); }
+.text-on-dark-muted  { color: rgba(255, 255, 255, 0.75); }
+.text-on-dark-faint  { color: rgba(255, 255, 255, 0.7); }
+
+/* Gold "Learn More →" link used in dark service-card grids */
+.link-learn-more {
+  color: #f9ab3d;
+  font-family: Inter, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+}
+.link-learn-more--lg {
+  color: #f9ab3d;
+  font-family: Inter, sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* Eyebrow / kicker rendered in Poppins (matches the rest of the dashboard chrome) */
+.font-poppins { font-family: Poppins, sans-serif; }
+
+/* Calendly / scheduling iframe embed */
+.embed-iframe {
+  width: 100%;
+  min-height: 850px;
+  border: 0;
+}
+
+.reveal {
+  opacity: 0;
+  transform: translateY(24px);
+  transition: opacity 700ms ease-out, transform 700ms ease-out;
+  will-change: opacity, transform;
+}
+.reveal-in {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
+
+.mega-panel {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px);
+  transition: opacity 200ms ease-out, transform 200ms ease-out, visibility 0s linear 200ms;
+  pointer-events: none;
+}
+.mega-panel.mega-open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+  transition: opacity 200ms ease-out, transform 200ms ease-out, visibility 0s linear 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mega-panel { transition: none; transform: none; }
+}
+
+/* Sticky call bar — folded in from the Astro StickyCallBar.astro scoped styles.
+   (In Astro these were component-scoped; class names are unique so global is safe.) */
+.sticky-bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100000001;
+  background: #1a1f3a;
+  border-top: 1px solid rgba(249, 171, 61, 0.25);
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35);
+  transform: translateY(100%);
+  transition: transform 340ms cubic-bezier(0.32, 0, 0.14, 1);
+  will-change: transform;
+}
+.sticky-bar.is-visible {
+  transform: translateY(0);
+}
+.sticky-bar.is-dismissed {
+  transform: translateY(100%);
+  pointer-events: none;
+}
+.sticky-bar__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.sticky-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex-shrink: 1;
+}
+.sticky-bar__label {
+  font-family: Poppins, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+}
+.sticky-bar__phone {
+  font-family: Poppins, sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 160ms;
+}
+.sticky-bar__phone:hover {
+  color: #f9ab3d;
+  text-decoration: none;
+}
+.sticky-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.sticky-bar__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 18px;
+  background: #f9ab3d;
+  color: #1a1f3a;
+  font-family: Poppins, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background 160ms, color 160ms;
+  white-space: nowrap;
+}
+.sticky-bar__cta:hover {
+  background: #455c36;
+  color: #fff;
+  text-decoration: none;
+}
+.sticky-bar__dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  transition: border-color 160ms, color 160ms, background 160ms;
+  flex-shrink: 0;
+  padding: 0;
+}
+.sticky-bar__dismiss:hover {
+  border-color: rgba(255, 255, 255, 0.5);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+@media (max-width: 639px) {
+  .sticky-bar {
+    display: none !important;
+  }
+}
+
+/* ---------- Blog article body ---------- */
+/* Editorial typography for single-post content (single.php → .article-body).
+   Kept scoped so it never affects the parity-locked section templates. */
+@layer components {
+  .article-body {
+    @apply text-brand-700;
+    font-size: 1.0625rem;
+    line-height: 1.8;
+  }
+  .article-body > p:first-of-type {
+    @apply text-lg leading-relaxed text-brand-800;
+  }
+  .article-body p { @apply my-5; }
+  .article-body h2 { @apply mt-12 mb-4 text-2xl text-brand-800 md:text-3xl; }
+  .article-body h3 { @apply mt-9 mb-3 text-xl text-brand-800; }
+  .article-body ul { @apply my-5 list-disc space-y-2 pl-6; }
+  .article-body ol { @apply my-5 list-decimal space-y-2 pl-6; }
+  .article-body li { @apply pl-1; }
+  .article-body strong { @apply font-semibold text-brand-800; }
+  .article-body a { @apply font-medium text-accent-700 underline; }
+  .article-body blockquote {
+    @apply my-7 border-l-4 border-accent-500 pl-5 italic text-brand-700;
+  }
+  /* Tables (e.g. the radon levels table) */
+  .article-body table {
+    @apply my-8 w-full border-collapse overflow-hidden rounded-lg text-sm;
+    box-shadow: 0 0 0 1px theme('colors.brand.100');
+  }
+  .article-body thead { @apply bg-brand-800 text-white; }
+  .article-body th,
+  .article-body td { @apply border-b border-brand-100 px-4 py-3 text-left align-top; }
+  .article-body thead th { @apply border-brand-800 font-semibold; }
+  .article-body tbody tr:nth-child(even) { @apply bg-brand-50; }
+  .article-body tbody tr:last-child td { @apply border-b-0; }
+}

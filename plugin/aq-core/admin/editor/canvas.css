@@ -1,0 +1,49 @@
+/* AQ Editor — canvas overlays (injected into the front-end iframe in edit mode).
+   Outlines hovered/selected sections without affecting page layout. */
+.aq-cv-box {
+	position: absolute;
+	pointer-events: none;
+	z-index: 2147483646;
+	border-radius: 2px;
+}
+.aq-cv-box--hover {
+	outline: 2px dashed rgba(200, 16, 46, .7);
+	outline-offset: -2px;
+	background: rgba(200, 16, 46, .06);
+}
+.aq-cv-box--sel {
+	outline: 2px solid #c8102e;
+	outline-offset: -2px;
+	box-shadow: 0 0 0 2px rgba(200, 16, 46, .25);
+}
+/* Inner element-level hover: a finer blue outline over the exact editable element. */
+.aq-cv-box--field {
+	outline: 1px dashed rgba(37, 99, 235, .8);
+	outline-offset: -1px;
+	background: rgba(37, 99, 235, .07);
+}
+.aq-cv-box--field.is-flash {
+	outline: 2px solid #2563eb;
+	background: rgba(37, 99, 235, .14);
+	transition: opacity .2s;
+}
+.aq-cv-tag {
+	position: absolute;
+	z-index: 2147483647;
+	pointer-events: none;
+	background: #0d1014;
+	color: #fff;
+	font: 600 11px/1 Inter, system-ui, sans-serif;
+	text-transform: capitalize;
+	padding: 4px 8px;
+	border-radius: 4px 4px 4px 0;
+	white-space: nowrap;
+}
+.aq-cv-tag--field {
+	background: #2563eb;
+	border-radius: 4px 4px 0 4px;
+	font-size: 10px;
+	padding: 3px 7px;
+}
+/* In edit mode, show a grab cursor over editable sections. */
+[data-aq-section] { cursor: pointer; }

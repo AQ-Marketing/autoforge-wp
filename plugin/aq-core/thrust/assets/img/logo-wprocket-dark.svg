@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="163" height="44" viewBox="0 0 163 44" role="img" aria-label="Boost by AQM">
+  <!-- AQM return-mark, #AC000A, from aqm-logo-2026.svg -->
+  <g transform="translate(0,2) scale(0.05997) translate(-595.4,0.03)">
+    <path fill="#AC000A" fill-rule="evenodd" d="M1129.09,419.225a217.618,217.618,0,0,0,17.52-85.811c0-120.523-97.7-218.227-218.223-218.227S710.16,212.891,710.16,333.414s97.7,218.227,218.227,218.227a218.908,218.908,0,0,0,48.3-5.374l87.024,91.967a333.677,333.677,0,0,1-351.484-50.951l-10.567-21.845L595.4,315.91C604.506,139.9,750.106-.022,928.387-0.022c184.153,0,333.443,149.286,333.443,333.44a331.849,331.849,0,0,1-47.39,171.4Zm-21.06,35.06,211.98,212.586H1142.9L941.738,454.285H1108.03Z"/>
+  </g>
+  <text x="50" y="26" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="20" font-weight="700" letter-spacing="1.5" fill="#FFFFFF">BOOST</text>
+  <text x="51" y="39" font-family="'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="9" font-weight="600" letter-spacing="3.4" fill="#C8121D">BY AQM</text>
+</svg>

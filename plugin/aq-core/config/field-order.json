@@ -1,0 +1,897 @@
+{
+  "$comment": "Canonical field order + schema version for every section type, transcribed from plugin/aq-core/includes/fields/sections.php (the ACF registration). This is the SINGLE source the round-trip normalizer reads — both the PHP runtime (AQ_Content_Sync::normalize_page) and the JS repo tooling (migration/lib/normalize-page.mjs). ACF returns sub-fields in registration order and emits every declared sub-field even when empty; the normalizer reorders to this order and drops empties so import->serialize matches the curated content/pages/*.json. When a layout's sub_fields change in sections.php, update this file in lockstep (migration/verify-normalize.mjs flags any content field missing here).",
+  "topLevel": [
+    "path",
+    "type",
+    "title",
+    "status",
+    "body",
+    "excerpt",
+    "date",
+    "category",
+    "hero",
+    "seo",
+    "sections"
+  ],
+  "seo": [
+    "title",
+    "description",
+    "canonical",
+    "noindex",
+    "ogImage",
+    "services"
+  ],
+  "seoBool": [
+    "noindex"
+  ],
+  "seoService": [
+    "name",
+    "description",
+    "url",
+    "serviceType"
+  ],
+  "sections": {
+    "hero": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "intro_max",
+        "image",
+        "ctas"
+      ],
+      "int": [
+        "intro_max"
+      ],
+      "repeaters": {
+        "ctas": [
+          "label",
+          "href",
+          "style"
+        ]
+      }
+    },
+    "why_overview": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "bg",
+        "pad",
+        "paragraphs",
+        "image"
+      ],
+      "repeaters": {
+        "paragraphs": [
+          "html"
+        ]
+      }
+    },
+    "journey_cards": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "h2_mt",
+        "intro",
+        "cards"
+      ],
+      "repeaters": {
+        "cards": [
+          "number",
+          "title",
+          "body"
+        ]
+      }
+    },
+    "dark_card_grid": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "h2_mt",
+        "compact",
+        "intro",
+        "cards"
+      ],
+      "bool": [
+        "compact"
+      ],
+      "repeaters": {
+        "cards": [
+          "icon_svg",
+          "title",
+          "body",
+          "link_label",
+          "link_href",
+          "link_aria"
+        ]
+      }
+    },
+    "trust_image_left": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "bg",
+        "pad",
+        "paragraphs",
+        "checklist",
+        "cta_label",
+        "cta_href",
+        "image"
+      ],
+      "repeaters": {
+        "paragraphs": [
+          "html"
+        ],
+        "checklist": [
+          "text"
+        ]
+      }
+    },
+    "testimonials": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "h2_mt",
+        "bg",
+        "intro",
+        "items",
+        "cta_label",
+        "cta_href"
+      ],
+      "repeaters": {
+        "items": [
+          "quote",
+          "name",
+          "role"
+        ]
+      }
+    },
+    "faq": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "h2_mt",
+        "items",
+        "schema"
+      ],
+      "bool": [
+        "schema"
+      ],
+      "repeaters": {
+        "items": [
+          "q",
+          "a"
+        ]
+      }
+    },
+    "final_cta": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "body",
+        "image",
+        "cta_label",
+        "cta_href",
+        "footnote"
+      ],
+      "repeaters": {}
+    },
+    "breadcrumb": {
+      "v": 1,
+      "fields": [
+        "variant",
+        "items"
+      ],
+      "repeaters": {
+        "items": [
+          "label",
+          "url"
+        ]
+      }
+    },
+    "page_header": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "meta",
+        "open_article"
+      ],
+      "bool": [
+        "open_article"
+      ],
+      "repeaters": {}
+    },
+    "prose": {
+      "v": 1,
+      "fields": [
+        "heading",
+        "margin_top",
+        "blocks"
+      ],
+      "repeaters": {
+        "blocks": [
+          "html",
+          "variant"
+        ]
+      }
+    },
+    "faq_dl": {
+      "v": 1,
+      "fields": [
+        "heading",
+        "items",
+        "schema"
+      ],
+      "bool": [
+        "schema"
+      ],
+      "repeaters": {
+        "items": [
+          "q",
+          "a"
+        ]
+      }
+    },
+    "link_card_grid": {
+      "v": 1,
+      "fields": [
+        "variant",
+        "wrapper_class",
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "cols",
+        "bg",
+        "cards",
+        "cta_label",
+        "cta_href",
+        "close_article"
+      ],
+      "bool": [
+        "close_article"
+      ],
+      "repeaters": {
+        "cards": [
+          "title",
+          "body",
+          "note",
+          "href",
+          "aria"
+        ]
+      }
+    },
+    "city_hero": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "sub_style",
+        "intro",
+        "image",
+        "badges",
+        "ctas"
+      ],
+      "repeaters": {
+        "badges": [
+          "text"
+        ],
+        "ctas": [
+          "label",
+          "href",
+          "style"
+        ]
+      }
+    },
+    "prose_with_image": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "bg",
+        "image_side",
+        "col_ratio",
+        "align",
+        "paragraphs",
+        "checklist",
+        "link_list",
+        "footnote",
+        "footnote_mt",
+        "cta_label",
+        "cta_href",
+        "image_wrap_class",
+        "image"
+      ],
+      "repeaters": {
+        "paragraphs": [
+          "html"
+        ],
+        "checklist": [
+          "text"
+        ],
+        "link_list": [
+          "label",
+          "link_text",
+          "href"
+        ]
+      }
+    },
+    "service_card_grid": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "cards"
+      ],
+      "repeaters": {
+        "cards": [
+          "icon_svg",
+          "title",
+          "body",
+          "price_primary",
+          "price_secondary",
+          "link_label",
+          "link_href"
+        ]
+      }
+    },
+    "town_card_grid": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "bg",
+        "grid_class",
+        "card_heading_size",
+        "line_clamp",
+        "cta_label",
+        "cards"
+      ],
+      "bool": [
+        "line_clamp"
+      ],
+      "repeaters": {
+        "cards": [
+          "county",
+          "title",
+          "body",
+          "href"
+        ]
+      }
+    },
+    "cta_band": {
+      "v": 1,
+      "fields": [
+        "headline",
+        "body",
+        "primary_label",
+        "primary_href",
+        "secondary_label",
+        "secondary_href"
+      ],
+      "repeaters": {}
+    },
+    "prose_article": {
+      "v": 1,
+      "fields": [
+        "col_ratio",
+        "body",
+        "aside"
+      ],
+      "repeaters": {}
+    },
+    "legal_doc": {
+      "v": 1,
+      "fields": [
+        "heading",
+        "meta",
+        "body"
+      ],
+      "repeaters": {}
+    },
+    "feature_cards": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "section_class",
+        "bg",
+        "header_mb",
+        "eyebrow_class",
+        "h2_class",
+        "grid_class",
+        "cards"
+      ],
+      "repeaters": {
+        "cards": [
+          "wrapper_class",
+          "html"
+        ]
+      }
+    },
+    "step_cards": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "section_class",
+        "bg",
+        "header_mb",
+        "eyebrow_class",
+        "h2_class",
+        "grid_class",
+        "cards"
+      ],
+      "repeaters": {
+        "cards": [
+          "wrapper_class",
+          "number",
+          "title",
+          "text"
+        ]
+      }
+    },
+    "rich_section": {
+      "v": 1,
+      "fields": [
+        "section_class",
+        "body"
+      ],
+      "repeaters": {}
+    },
+    "media_hero": {
+      "v": 1,
+      "fields": [
+        "image",
+        "image_class",
+        "overlay_class",
+        "overlay_style",
+        "content_class",
+        "body"
+      ],
+      "repeaters": {}
+    },
+    "raw_html": {
+      "v": 1,
+      "fields": [
+        "html"
+      ],
+      "repeaters": {}
+    },
+    "post_feed": {
+      "v": 1,
+      "fields": [
+        "heading",
+        "intro",
+        "limit"
+      ],
+      "int": [
+        "limit"
+      ],
+      "repeaters": {}
+    },
+    "gallery": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "bg",
+        "columns",
+        "items"
+      ],
+      "repeaters": {
+        "items": [
+          "image",
+          "caption"
+        ]
+      },
+      "bool": [],
+      "int": []
+    },
+    "video": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "provider",
+        "video_id",
+        "file_url",
+        "poster",
+        "aspect",
+        "max_width",
+        "caption",
+        "bg",
+        "section_class"
+      ],
+      "repeaters": {},
+      "bool": [],
+      "int": []
+    },
+    "columns": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "h2_mt",
+        "intro",
+        "bg",
+        "cols",
+        "gap",
+        "align",
+        "columns"
+      ],
+      "repeaters": {
+        "columns": [
+          "body"
+        ]
+      },
+      "bool": [],
+      "int": []
+    },
+    "team": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "h2_mt",
+        "intro",
+        "bg",
+        "cols",
+        "members"
+      ],
+      "repeaters": {
+        "members": [
+          "photo",
+          "name",
+          "role",
+          "bio",
+          "link_label",
+          "link_href"
+        ]
+      },
+      "bool": [],
+      "int": []
+    },
+    "logos": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "bg",
+        "columns",
+        "grayscale",
+        "logos"
+      ],
+      "repeaters": {
+        "logos": [
+          "image",
+          "alt",
+          "href"
+        ]
+      },
+      "bool": [
+        "grayscale"
+      ],
+      "int": []
+    },
+    "embed": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "bg",
+        "embed_url",
+        "aspect",
+        "iframe_title",
+        "max_width",
+        "allow_fullscreen",
+        "caption"
+      ],
+      "repeaters": {},
+      "bool": [
+        "allow_fullscreen"
+      ],
+      "int": []
+    },
+    "accordion": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "h2_mt",
+        "intro",
+        "bg",
+        "first_open",
+        "items"
+      ],
+      "repeaters": {
+        "items": [
+          "title",
+          "body"
+        ]
+      },
+      "bool": [
+        "first_open"
+      ],
+      "int": []
+    },
+    "button_group": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "intro",
+        "align",
+        "bg",
+        "buttons"
+      ],
+      "repeaters": {
+        "buttons": [
+          "label",
+          "href",
+          "style"
+        ]
+      },
+      "bool": [],
+      "int": []
+    },
+    "callout": {
+      "v": 1,
+      "fields": [
+        "style",
+        "title",
+        "icon_svg",
+        "body",
+        "bg"
+      ],
+      "repeaters": {},
+      "bool": [],
+      "int": []
+    },
+    "cta": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "body",
+        "bg",
+        "align",
+        "buttons"
+      ],
+      "repeaters": {
+        "buttons": [
+          "label",
+          "href",
+          "style"
+        ]
+      },
+      "bool": [],
+      "int": []
+    },
+    "divider": {
+      "v": 1,
+      "fields": [
+        "style",
+        "width",
+        "spacing",
+        "accent"
+      ],
+      "repeaters": {},
+      "bool": [
+        "accent"
+      ],
+      "int": []
+    },
+    "heading_block": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "level",
+        "intro",
+        "align",
+        "bg",
+        "pad"
+      ],
+      "repeaters": {},
+      "bool": [],
+      "int": []
+    },
+    "icon_list": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "bg",
+        "columns",
+        "items"
+      ],
+      "repeaters": {
+        "items": [
+          "icon_svg",
+          "title",
+          "text"
+        ]
+      },
+      "bool": [],
+      "int": []
+    },
+    "image_block": {
+      "v": 1,
+      "fields": [
+        "image",
+        "alt",
+        "caption",
+        "link_href",
+        "align",
+        "max_width",
+        "aspect",
+        "rounded",
+        "shadow",
+        "bg",
+        "pad"
+      ],
+      "repeaters": {},
+      "bool": [
+        "rounded",
+        "shadow"
+      ],
+      "int": []
+    },
+    "pricing_table": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "intro",
+        "bg",
+        "cols",
+        "header_mb",
+        "featured_label",
+        "plans"
+      ],
+      "repeaters": {
+        "plans": [
+          "name",
+          "price",
+          "period",
+          "features",
+          "cta_label",
+          "cta_href",
+          "featured",
+          "wrapper_class"
+        ]
+      },
+      "bool": [],
+      "int": []
+    },
+    "quote": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "quote",
+        "name",
+        "role",
+        "align",
+        "bg"
+      ],
+      "repeaters": {},
+      "bool": [],
+      "int": []
+    },
+    "spacer": {
+      "v": 1,
+      "fields": [
+        "size",
+        "divider",
+        "bg"
+      ],
+      "repeaters": {},
+      "bool": [
+        "divider"
+      ],
+      "int": []
+    },
+    "stats": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "h2_mt",
+        "intro",
+        "bg",
+        "cols",
+        "stats"
+      ],
+      "repeaters": {
+        "stats": [
+          "value",
+          "prefix",
+          "suffix",
+          "label"
+        ]
+      },
+      "bool": [],
+      "int": []
+    },
+    "text_block": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "body",
+        "align",
+        "max_width",
+        "bg",
+        "pad"
+      ],
+      "repeaters": {},
+      "bool": [],
+      "int": []
+    },
+    "timeline": {
+      "v": 1,
+      "fields": [
+        "eyebrow",
+        "heading",
+        "subheading",
+        "h2_mt",
+        "intro",
+        "bg",
+        "items"
+      ],
+      "repeaters": {
+        "items": [
+          "date",
+          "title",
+          "body"
+        ]
+      },
+      "bool": [],
+      "int": []
+    }
+  }
+}
