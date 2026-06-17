@@ -44,7 +44,7 @@ $cards = (array) ($s['cards'] ?? []);
 				<?php if (!empty($card['link_href'])) : ?>
 				<a<?php echo ka_field_attr('link_label'); ?> href="<?php echo esc_url($card['link_href']); ?>" class="inline-flex items-center gap-2 mt-4 no-underline link-learn-more">
 					<?php echo esc_html($card['link_label'] ?: 'Full Details'); ?>
-					<svg width="13" height="13" viewBox="0 0 448 512" fill="#f9ab3d"><path d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z"></path></svg>
+					<svg width="13" height="13" viewBox="0 0 448 512" fill="currentColor" class="text-accent-500"><path d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z"></path></svg>
 				</a>
 				<?php endif; ?>
 			</div>

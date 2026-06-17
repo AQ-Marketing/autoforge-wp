@@ -9,7 +9,7 @@
  *
  * How the override works: the compiled theme CSS (assets/css/main.css) names the
  * token in every utility selector, e.g.
- *     .bg-brand-900{--tw-bg-opacity:1;background-color:rgb(37 42 70/var(--tw-bg-opacity,1))}
+ *     .bg-brand-900{--tw-bg-opacity:1;background-color:rgb(15 23 42/var(--tw-bg-opacity,1))}
  * For a changed color we scan main.css for every rule whose selector contains
  * that token slug and re-emit the SAME selector with the rgb triple swapped
  * (opacity variable preserved). The override is injected right after main.css via
@@ -49,17 +49,16 @@ class AQ_Global_Styles {
 		// (.btn-primary, .pill-eyebrow, .h2-sub, …) that uses that exact value.
 		return [
 			'colors' => [
-				['key' => 'navy',      'label' => 'Primary navy',         'help' => 'Dark sections, headings, footer, hero overlay.', 'default' => '#252a46'],
-				['key' => 'body_navy', 'label' => 'Body text navy',       'help' => 'Main paragraph text.',                            'default' => '#2b3158'],
-				['key' => 'tint',      'label' => 'Light background tint', 'help' => 'Soft section backgrounds.',                       'default' => '#f4f5fa'],
-				['key' => 'gold',      'label' => 'Primary gold',         'help' => 'Buttons, links and highlights.',                  'default' => '#f9ab3d'],
-				['key' => 'amber',     'label' => 'Gold hover / amber',   'help' => 'Hover state for gold elements.',                  'default' => '#e39336'],
-				['key' => 'dark_gold', 'label' => 'Dark gold',            'help' => 'Gold links on light backgrounds.',                'default' => '#c47f0a'],
-				['key' => 'green',     'label' => 'Green accent',         'help' => 'Secondary green accent (used sparingly).',        'default' => '#5e7d44'],
+				['key' => 'navy',      'label' => 'Primary dark',          'help' => 'Dark sections, headings, footer, hero overlay.', 'default' => '#0f172a'],
+				['key' => 'body_navy', 'label' => 'Body text',             'help' => 'Main paragraph text.',                            'default' => '#334155'],
+				['key' => 'tint',      'label' => 'Light background tint',  'help' => 'Soft section backgrounds.',                       'default' => '#f8fafc'],
+				['key' => 'gold',      'label' => 'Primary accent',        'help' => 'Buttons, links and highlights.',                  'default' => '#3b82f6'],
+				['key' => 'amber',     'label' => 'Accent hover',          'help' => 'Hover state for accent elements.',                'default' => '#1d4ed8'],
+				['key' => 'dark_gold', 'label' => 'Accent link',           'help' => 'Accent links on light backgrounds.',              'default' => '#2563eb'],
 			],
 			'fonts' => [
-				['key' => 'serif', 'label' => 'Heading font', 'help' => 'Used for all headings.',     'default' => 'Merriweather, Georgia, Cambria, serif'],
-				['key' => 'sans',  'label' => 'Body font',    'help' => 'Used for body text and UI.', 'default' => 'Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'],
+				['key' => 'serif', 'label' => 'Heading font', 'help' => 'Used for all headings.',     'default' => 'Georgia, Cambria, "Times New Roman", serif'],
+				['key' => 'sans',  'label' => 'Body font',    'help' => 'Used for body text and UI.', 'default' => 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'],
 			],
 		];
 	}
@@ -275,7 +274,7 @@ class AQ_Global_Styles {
 			<div class="notice notice-success is-dismissible"><p>Global styles saved.</p></div>
 		<?php endif; ?>
 		<?php if (isset($_GET['reset'])) : ?>
-			<div class="notice notice-success is-dismissible"><p>Reset to brand defaults.</p></div>
+			<div class="notice notice-success is-dismissible"><p>Reset to defaults.</p></div>
 		<?php endif; ?>
 
 		<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
@@ -324,8 +323,8 @@ class AQ_Global_Styles {
 					<?php endforeach; ?>
 				</div>
 				<datalist id="aq-gs-fontlist">
-					<option value="Merriweather, Georgia, Cambria, serif"></option>
-					<option value="Inter, system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, sans-serif"></option>
+					<option value="Georgia, Cambria, &quot;Times New Roman&quot;, serif"></option>
+					<option value="system-ui, -apple-system, &quot;Segoe UI&quot;, Roboto, sans-serif"></option>
 					<option value="Georgia, &quot;Times New Roman&quot;, serif"></option>
 					<option value="Arial, Helvetica, sans-serif"></option>
 					<option value="system-ui, -apple-system, sans-serif"></option>
@@ -335,7 +334,7 @@ class AQ_Global_Styles {
 
 			<div class="aq-gs-actions">
 				<?php submit_button('Save styles', 'primary', 'submit', false); ?>
-				<button type="submit" name="reset" value="1" class="button">Reset to brand defaults</button>
+				<button type="submit" name="reset" value="1" class="button">Reset to defaults</button>
 				<span class="aq-gs-help">Nothing changes on the live site until you save a different value.</span>
 			</div>
 		</form>

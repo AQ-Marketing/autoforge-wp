@@ -2,8 +2,8 @@
 /** Pricing Table — centered header (eyebrow / H2 / subheading / intro) above a
  *  responsive 2/3/4-column grid of plan cards. Each card: name, large price +
  *  period suffix, a rich-text feature list (authored as a <ul>), and a CTA
- *  button. A per-plan "featured" toggle lifts the card with an accent ring and a
- *  copper badge (label from featured_label). Static markup only — no JS. */
+ *  button. A per-plan "featured" toggle lifts the card with an accent ring and an
+ *  accent badge (label from featured_label). Static markup only — no JS. */
 $s     = $args['s'] ?? [];
 $plans = (array) ($s['plans'] ?? []);
 

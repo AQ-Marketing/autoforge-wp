@@ -15,11 +15,11 @@
   "sections": {
     "hero": {
       "v": 1,
-      "renders": "Full-bleed background image + navy overlay, pill eyebrow, white H1 + gold subtitle, intro, CTA buttons.",
+      "renders": "Full-bleed background image + dark overlay, pill eyebrow, white H1 + accent subtitle, intro, CTA buttons.",
       "fields": {
         "eyebrow": "string",
         "heading": "string (H1 line 1, white)",
-        "subheading": "string (H1 line 2, gold)",
+        "subheading": "string (H1 line 2, accent)",
         "intro": "string",
         "intro_max": "int — intro max-width px; 860 default, home uses 930",
         "image": "imageRef (loading=eager, fetchpriority=high, sizes=100vw)",
@@ -28,7 +28,7 @@
     },
     "why_overview": {
       "v": 1,
-      "renders": "White section, 2-col grid [55fr_40fr], text left (eyebrow, H2 + gold sub, paragraphs), image right.",
+      "renders": "White section, 2-col grid [55fr_40fr], text left (eyebrow, H2 + accent sub, paragraphs), image right.",
       "fields": {
         "eyebrow": "string",
         "heading": "string",
@@ -39,7 +39,7 @@
     },
     "journey_cards": {
       "v": 1,
-      "renders": "bg-brand-50, centered heading block, 4-up white cards with gold top border and big serif numbers.",
+      "renders": "bg-brand-50, centered heading block, 4-up white cards with accent top border and big serif numbers.",
       "fields": {
         "eyebrow": "string",
         "heading": "string",
@@ -50,7 +50,7 @@
     },
     "dark_card_grid": {
       "v": 1,
-      "renders": "bg-brand-900, centered heading block, 3-col translucent cards with round icon badge, optional gold Learn More arrow link.",
+      "renders": "bg-brand-900, centered heading block, 3-col translucent cards with round icon badge, optional accent Learn More arrow link.",
       "fields": {
         "eyebrow": "string",
         "heading": "string",
@@ -61,7 +61,7 @@
     },
     "trust_image_left": {
       "v": 1,
-      "renders": "White section, 2-col grid [45fr_55fr], image left, text + gold-check list + CTA button right.",
+      "renders": "White section, 2-col grid [45fr_55fr], image left, text + accent-check list + CTA button right.",
       "fields": {
         "eyebrow": "string",
         "heading": "string",
@@ -75,7 +75,7 @@
     },
     "testimonials": {
       "v": 1,
-      "renders": "bg-brand-50, centered heading, 3-up white cards with 5 gold stars, italic quote, name/role, optional CTA below.",
+      "renders": "bg-brand-50, centered heading, 3-up white cards with 5 accent stars, italic quote, name/role, optional CTA below.",
       "fields": {
         "eyebrow": "string",
         "heading": "string",
@@ -87,18 +87,18 @@
     },
     "faq": {
       "v": 1,
-      "renders": "bg-forest-600 accordion. When schema=true, aq-core emits FAQPage JSON-LD from these rows (answers stripped to plain text).",
+      "renders": "bg-brand-600 accordion. When schema=true, aq-core emits FAQPage JSON-LD from these rows (answers stripped to plain text).",
       "fields": {
         "eyebrow": "string",
         "heading": "string",
-        "subheading": "string (gold-300 line)",
+        "subheading": "string (accent-300 line)",
         "items": "[{q, a(html)}]",
         "schema": "bool"
       }
     },
     "final_cta": {
       "v": 1,
-      "renders": "Full-bleed background image + navy overlay, centered H2 + gold sub, body, gold Schedule button + outlined Call button (phone from site config), small footnote.",
+      "renders": "Full-bleed background image + dark overlay, centered H2 + accent sub, body, accent Schedule button + outlined Call button (phone from site config), small footnote.",
       "fields": {
         "heading": "string",
         "subheading": "string",
@@ -118,11 +118,11 @@
     },
     "post_feed": {
       "v": 1,
-      "renders": "Resources index (/blog/): a full-bleed hero (media-library image + navy overlay, breadcrumb, pill eyebrow, two-line H1 white + gold sub, intro), then a featured lead article (newest post) as a large split card, then a responsive image-card grid (render/parts/post-card.php) of the remaining posts — all from a live WP_Query over published posts, newest first, closing with the shared schedule CTA. Single posts render via plugin/aq-core/render/templates/single.php (editorial header + showcased featured image + .article-body prose + related-articles block; date, category, excerpt, reading time, and featured image come from native post fields).",
+      "renders": "Resources index (/blog/): a full-bleed hero (media-library image + dark overlay, breadcrumb, pill eyebrow, two-line H1 white + accent sub, intro), then a featured lead article (newest post) as a large split card, then a responsive image-card grid (render/parts/post-card.php) of the remaining posts — all from a live WP_Query over published posts, newest first, closing with the shared schedule CTA. Single posts render via plugin/aq-core/render/templates/single.php (editorial header + showcased featured image + .article-body prose + related-articles block; date, category, excerpt, reading time, and featured image come from native post fields).",
       "fields": {
         "eyebrow": "string — pill eyebrow above the hero heading (default 'Resources')",
         "heading": "string — H1 line 1 (default 'Resources & Articles')",
-        "subheading": "string — H1 line 2, gold (optional)",
+        "subheading": "string — H1 line 2, accent (optional)",
         "intro": "string — lead paragraph under the heading",
         "image": "imageRef — full-bleed hero background (loading=eager, fetchpriority=high, sizes=100vw)",
         "limit": "int — max posts to list (0 = default 24)"
@@ -147,7 +147,7 @@
     },
     "city_hero": {
       "v": 1,
-      "renders": "Town/landing hero: full-bleed background image + overlay, eyebrow, H1 line 1 + second line, intro, optional badges row, CTA buttons. sub_style: gold underline (h1-sub) or solid gold (text-accent-500).",
+      "renders": "Town/landing hero: full-bleed background image + overlay, eyebrow, H1 line 1 + second line, intro, optional badges row, CTA buttons. sub_style: accent underline (h1-sub) or solid accent (text-accent-500).",
       "fields": {
         "eyebrow": "string",
         "heading": "string (H1 line 1)",
@@ -178,7 +178,7 @@
     },
     "prose_with_image": {
       "v": 1,
-      "renders": "2-col prose + image. eyebrow/heading/subheading, paragraphs, optional gold-check list, optional link rows, footnote, CTA button, image. image_side left/right; align top/center; bg white/brand-50.",
+      "renders": "2-col prose + image. eyebrow/heading/subheading, paragraphs, optional accent-check list, optional link rows, footnote, CTA button, image. image_side left/right; align top/center; bg white/brand-50.",
       "fields": {
         "eyebrow": "string",
         "heading": "string",
@@ -316,7 +316,7 @@
       "fields": {
         "eyebrow": "string — pill eyebrow above the heading (optional)",
         "heading": "string — section H2",
-        "subheading": "string — second H2 line, gold (optional)",
+        "subheading": "string — second H2 line, accent (optional)",
         "intro": "string — intro paragraph below the heading (optional)",
         "bg": "select white|brand-50 — section background (default white)",
         "columns": "select 2|3|4 — max grid columns at lg breakpoint (default 3)",
@@ -344,11 +344,11 @@
     },
     "columns": {
       "v": 1,
-      "renders": "An optional centered header (eyebrow / H2 + gold subheading / intro) above a static CSS grid of 2, 3, or 4 equal-width columns, each holding its own rich-text body. Column count, the gap between columns, and the vertical alignment of the columns (top / center / stretch) are all configurable from selects. No JavaScript: pure responsive CSS grid that stacks to 1 column on mobile and expands to the chosen count at the sm/lg breakpoints. Background (white / brand-50) and the H2 top-margin style match the rest of the section library. Each column body renders inside the theme's .prose-content wrapper so inline links, lists, and paragraphs are styled on-brand. NOTE: in sectionsLayout the column 'body' subfield registers as ACF type 'wysiwyg' (the editor's 'richtext' kind), matching the existing card.html pattern. field-order.json entry to add in lockstep: \"columns\": { \"v\": 1, \"fields\": [\"eyebrow\",\"heading\",\"subheading\",\"h2_mt\",\"intro\",\"bg\",\"cols\",\"gap\",\"align\",\"columns\"], \"repeaters\": { \"columns\": [\"body\"] } }.",
+      "renders": "An optional centered header (eyebrow / H2 + accent subheading / intro) above a static CSS grid of 2, 3, or 4 equal-width columns, each holding its own rich-text body. Column count, the gap between columns, and the vertical alignment of the columns (top / center / stretch) are all configurable from selects. No JavaScript: pure responsive CSS grid that stacks to 1 column on mobile and expands to the chosen count at the sm/lg breakpoints. Background (white / brand-50) and the H2 top-margin style match the rest of the section library. Each column body renders inside the theme's .prose-content wrapper so inline links, lists, and paragraphs are styled on-brand. NOTE: in sectionsLayout the column 'body' subfield registers as ACF type 'wysiwyg' (the editor's 'richtext' kind), matching the existing card.html pattern. field-order.json entry to add in lockstep: \"columns\": { \"v\": 1, \"fields\": [\"eyebrow\",\"heading\",\"subheading\",\"h2_mt\",\"intro\",\"bg\",\"cols\",\"gap\",\"align\",\"columns\"], \"repeaters\": { \"columns\": [\"body\"] } }.",
       "fields": {
         "eyebrow": "string — optional pill eyebrow above the heading",
         "heading": "string — optional H2 heading line",
-        "subheading": "string — optional second H2 line, gold (h2-sub)",
+        "subheading": "string — optional second H2 line, accent (h2-sub)",
         "h2_mt": "mt-0|mt-4 — H2 top margin (home vs service/city style)",
         "intro": "string — optional intro paragraph under the heading",
         "bg": "white|brand-50 — section background",
@@ -405,11 +405,11 @@
     },
     "accordion": {
       "v": 1,
-      "renders": "A no-JavaScript, FAQ-style accordion built on native <details>/<summary>. Renders a centered header (pill eyebrow, H2 + optional gold subheading, intro paragraph) above a vertical stack of expandable panels. Each item is a bold title with a \"+\" chevron that rotates to \"x\" on open (group-open:rotate-45 — pure CSS, zero JS) and a rich-text body. Optional first_open toggle opens the first panel on load; bg select switches between white and the brand-50 tint; h2_mt controls the heading gap. On-brand throughout (container-edge, pill-eyebrow, h2-sub, brand/accent tokens, prose body). Distinct from the forest-green faq accordion (JS toggle + FAQ JSON-LD) and faq_dl (bare <dl>): this is a general-purpose content accordion with no schema coupling, for future pages. Editable end-to-end in the AQ visual builder. Template file written to plugin/aq-core/render/sections/accordion.php (lint-clean).",
+      "renders": "A no-JavaScript, FAQ-style accordion built on native <details>/<summary>. Renders a centered header (pill eyebrow, H2 + optional accent subheading, intro paragraph) above a vertical stack of expandable panels. Each item is a bold title with a \"+\" chevron that rotates to \"x\" on open (group-open:rotate-45 — pure CSS, zero JS) and a rich-text body. Optional first_open toggle opens the first panel on load; bg select switches between white and the brand-50 tint; h2_mt controls the heading gap. On-brand throughout (container-edge, pill-eyebrow, h2-sub, brand/accent tokens, prose body). Distinct from the faq accordion (JS toggle + FAQ JSON-LD) and faq_dl (bare <dl>): this is a general-purpose content accordion with no schema coupling, for future pages. Editable end-to-end in the AQ visual builder. Template file written to plugin/aq-core/render/sections/accordion.php (lint-clean).",
       "fields": {
         "eyebrow": "text — pill eyebrow above the heading (optional)",
         "heading": "text — section H2 (line 1)",
-        "subheading": "text — optional gold second H2 line (h2-sub)",
+        "subheading": "text — optional accent second H2 line (h2-sub)",
         "h2_mt": "select — heading top gap: mt-0 (home default) | mt-4 (service/testing/city)",
         "intro": "textarea — optional lead paragraph under the heading",
         "bg": "select — section background: white | brand-50",
@@ -421,7 +421,7 @@
     },
     "button_group": {
       "v": 1,
-      "renders": "A standalone, alignable row of one or more on-brand buttons. Each button has a label, link (href), and style choice — primary (copper), secondary (navy), or ghost (outlined). An optional eyebrow + heading + intro can sit above the row. Buttons stack full-width on mobile and become an inline wrapping row from sm:. Pure static markup, no JavaScript: the row is a flex container and each button is an <a> using the theme's .btn-primary / .btn-secondary / .btn-outline component classes. The whole block can be left/center/right aligned and sits on a white or brand-50 background. Ideal as a flexible call-to-action block on future pages where the prebuilt cta_band / hero CTA layouts don't fit.",
+      "renders": "A standalone, alignable row of one or more on-brand buttons. Each button has a label, link (href), and style choice — primary, secondary, or ghost (outlined). An optional eyebrow + heading + intro can sit above the row. Buttons stack full-width on mobile and become an inline wrapping row from sm:. Pure static markup, no JavaScript: the row is a flex container and each button is an <a> using the theme's .btn-primary / .btn-secondary / .btn-outline component classes. The whole block can be left/center/right aligned and sits on a white or brand-50 background. Ideal as a flexible call-to-action block on future pages where the prebuilt cta_band / hero CTA layouts don't fit.",
       "fields": {
         "eyebrow": "text — optional pill-eyebrow label above the heading",
         "heading": "text — optional H2 heading above the button row",
@@ -433,9 +433,9 @@
     },
     "callout": {
       "v": 1,
-      "renders": "A self-contained alert / notice box. Renders a centered max-w-3xl panel with a colored left border (border-l-4) and a tinted background in one of four on-brand styles — info (navy), success (forest green), warning (copper), danger (red) — holding an optional leading icon (curated inline SVG), an optional bold title, and a rich-text body. The style → color mapping is a static PHP lookup (no JavaScript); the whole block is purely CSS-driven. Background of the wrapping section is a white / brand-50 toggle. Template at plugin/aq-core/render/sections/callout.php; no existing page — a new building block for future pages.",
+      "renders": "A self-contained alert / notice box. Renders a centered max-w-3xl panel with a colored left border (border-l-4) and a tinted background in one of four styles — info, success, warning, danger — holding an optional leading icon (curated inline SVG), an optional bold title, and a rich-text body. The style → color mapping is a static PHP lookup (no JavaScript); the whole block is purely CSS-driven. Background of the wrapping section is a white / brand-50 toggle. Template at plugin/aq-core/render/sections/callout.php; no existing page — a new building block for future pages.",
       "fields": {
-        "style": "select — visual variant: info (navy) | success (forest) | warning (copper) | danger (deep copper). The brand palette is navy/copper/forest only (no red). Default info.",
+        "style": "select — visual variant: info | success | warning | danger. Default info.",
         "title": "text — optional bold heading line at the top of the box.",
         "icon_svg": "icon — optional leading inline-SVG glyph from the icon picker (raw <svg>, code-mode-only sink like dark_card_grid.icon_svg).",
         "body": "richtext — the notice body copy (inline links/lists allowed; rendered with wp_kses_post inside a .prose-content wrapper).",
@@ -444,11 +444,11 @@
     },
     "cta": {
       "v": 1,
-      "renders": "A generic, standalone call-to-action band. Renders a centered (or left-aligned) header block — optional pill eyebrow, H2 heading, gold subheading line, and intro body paragraph — above a row of one or more buttons from a repeater (each button picks a primary/secondary style). The whole band sits on a selectable background: bg-white, bg-brand-50 (soft tint), or bg-brand-900 (full navy). On the navy background, text and button styles automatically flip to their light/on-dark variants. It is distinct from the existing cta_band (fixed two-button schedule/call band) and final_cta (full-bleed image band) — this one is a flexible, content-driven CTA for any future page, with no image and no hard-coded phone logic. No JavaScript; static markup only.",
+      "renders": "A generic, standalone call-to-action band. Renders a centered (or left-aligned) header block — optional pill eyebrow, H2 heading, accent subheading line, and intro body paragraph — above a row of one or more buttons from a repeater (each button picks a primary/secondary style). The whole band sits on a selectable background: bg-white, bg-brand-50 (soft tint), or bg-brand-900 (full dark). On the dark background, text and button styles automatically flip to their light/on-dark variants. It is distinct from the existing cta_band (fixed two-button schedule/call band) and final_cta (full-bleed image band) — this one is a flexible, content-driven CTA for any future page, with no image and no hard-coded phone logic. No JavaScript; static markup only.",
       "fields": {
         "eyebrow": "string — small pill eyebrow above the heading (optional)",
         "heading": "string — main H2 heading",
-        "subheading": "string — second heading line, rendered in the accent/gold sub style (optional)",
+        "subheading": "string — second heading line, rendered in the accent sub style (optional)",
         "body": "string — intro paragraph below the heading (optional; inline links allowed)",
         "bg": "white|brand-50|brand-900 — band background; brand-900 flips text + buttons to light/on-dark variants",
         "align": "center|left — header + button row alignment",
@@ -457,21 +457,21 @@
     },
     "divider": {
       "v": 1,
-      "renders": "A static horizontal rule used to separate sections. Renders an on-brand <hr> with three editable controls: line style (solid or dashed), width (full-bleed within the content edge, or a short centered rule), and vertical spacing (compact / normal / spacious). An optional \"accent\" toggle swaps the subtle border-gray line for the copper accent color (and, on the narrow width, a slightly thicker centered bar) for a more emphatic divider. No images, no repeaters, no JavaScript — pure CSS via Tailwind tokens.",
+      "renders": "A static horizontal rule used to separate sections. Renders an on-brand <hr> with three editable controls: line style (solid or dashed), width (full-bleed within the content edge, or a short centered rule), and vertical spacing (compact / normal / spacious). An optional \"accent\" toggle swaps the subtle border-gray line for the accent color (and, on the narrow width, a slightly thicker centered bar) for a more emphatic divider. No images, no repeaters, no JavaScript — pure CSS via Tailwind tokens.",
       "fields": {
         "style": "select — line style: solid | dashed (maps to border-solid / border-dashed)",
         "width": "select — rule width: full (spans container) | narrow (short centered rule, max-w-xs mx-auto)",
         "spacing": "select — vertical spacing around the rule: compact (my-6) | normal (my-10 md:my-12) | spacious (my-16 md:my-20)",
-        "accent": "true_false — when on, uses the copper accent color (border-accent-500) and a thicker narrow bar instead of subtle border-brand-200"
+        "accent": "true_false — when on, uses the accent color (border-accent-500) and a thicker narrow bar instead of subtle border-brand-200"
       }
     },
     "heading_block": {
       "v": 1,
-      "renders": "A standalone, self-contained heading block: an optional eyebrow pill, a heading (selectable H2 or H3), an optional gold-underlined subheading line, and an optional supporting intro line. Alignment is left or center; background is white or a light brand tint with normal/compact/spacious vertical padding. No cards, no image, no JS — just an on-brand section header you can drop anywhere to introduce the content that follows.",
+      "renders": "A standalone, self-contained heading block: an optional eyebrow pill, a heading (selectable H2 or H3), an optional accent-underlined subheading line, and an optional supporting intro line. Alignment is left or center; background is white or a light brand tint with normal/compact/spacious vertical padding. No cards, no image, no JS — just an on-brand section header you can drop anywhere to introduce the content that follows.",
       "fields": {
         "eyebrow": "text — optional small pill-eyebrow label above the heading (pill-eyebrow). Omitted when empty.",
         "heading": "text — the main heading line; rendered as H2 or H3 per the level field.",
-        "subheading": "text — optional second heading line, rendered as a gold-underlined h2-sub span inside the heading. Omitted when empty.",
+        "subheading": "text — optional second heading line, rendered as a accent-underlined h2-sub span inside the heading. Omitted when empty.",
         "level": "select — heading tag/size: 'h2' (default, section heading) or 'h3' (sub-section heading).",
         "intro": "textarea — optional supporting paragraph/lede below the heading (text-brand-700, inline links allowed). Omitted when empty.",
         "align": "select (design) — text alignment: 'center' (default) or 'left'.",
@@ -511,11 +511,11 @@
     },
     "pricing_table": {
       "v": 1,
-      "renders": "Centered heading block (eyebrow / H2 / subheading / intro) above a responsive 2/3/4-column grid of pricing-plan cards. Each plan card shows a name, a large price with a period suffix (e.g. \"/inspection\"), a rich-text feature list (authored as a <ul>), and a CTA button (btn-primary on featured plans, btn-outline otherwise). An optional per-plan \"featured\" toggle lifts the card with an accent ring and a copper badge (badge text set by the section-level featured_label). Columns, background tint, and header spacing are editable design controls. Static markup only — no JavaScript.",
+      "renders": "Centered heading block (eyebrow / H2 / subheading / intro) above a responsive 2/3/4-column grid of pricing-plan cards. Each plan card shows a name, a large price with a period suffix (e.g. \"/inspection\"), a rich-text feature list (authored as a <ul>), and a CTA button (btn-primary on featured plans, btn-outline otherwise). An optional per-plan \"featured\" toggle lifts the card with an accent ring and an accent badge (badge text set by the section-level featured_label). Columns, background tint, and header spacing are editable design controls. Static markup only — no JavaScript.",
       "fields": {
         "eyebrow": "string — pill-eyebrow label above the heading",
         "heading": "string — section H2 (plain text)",
-        "subheading": "string — optional gold second line under the H2 (h2-sub)",
+        "subheading": "string — optional accent second line under the H2 (h2-sub)",
         "intro": "string — optional intro paragraph under the heading",
         "bg": "white|brand-50 — section background tint",
         "cols": "2|3|4 — number of plan columns on desktop",
@@ -526,12 +526,12 @@
     },
     "quote": {
       "v": 1,
-      "renders": "A single emphasized pull-quote / blockquote section. Renders an optional eyebrow + small heading above a large serif quote with a decorative accent quote mark, then an optional attribution line (name in accent gold, role in muted brand text). Configurable alignment (left adds an accent-500 left bar; center is symmetric with a centered glyph) and background (white or brand-50). No repeater — exactly one quote per section. Static, no JavaScript.",
+      "renders": "A single emphasized pull-quote / blockquote section. Renders an optional eyebrow + small heading above a large serif quote with a decorative accent quote mark, then an optional attribution line (name in the accent color, role in muted brand text). Configurable alignment (left adds an accent-500 left bar; center is symmetric with a centered glyph) and background (white or brand-50). No repeater — exactly one quote per section. Static, no JavaScript.",
       "fields": {
         "eyebrow": "string — optional pill-eyebrow label above the quote",
         "heading": "string — optional small heading line above the quote",
         "quote": "string (textarea) — the pull-quote text (rendered large + serif italic, no manual quotation marks needed)",
-        "name": "string — optional attribution name (rendered in accent gold)",
+        "name": "string — optional attribution name (rendered in the accent color)",
         "role": "string — optional attribution role/title under the name",
         "align": "left|center — text + glyph alignment; left adds an accent-500 left bar",
         "bg": "white|brand-50 — section background"
@@ -575,11 +575,11 @@
     },
     "timeline": {
       "v": 1,
-      "renders": "A static vertical timeline. Renders a centered header block (pill eyebrow, H2 with optional gold subheading, optional intro paragraph) above a single-column vertical timeline. Each item shows a small date/label pill, a bold title, and a rich-text body, connected by a left-side accent rail with a gold dot per item. Background toggles white / bg-brand-50. Pure CSS — no JavaScript.",
+      "renders": "A static vertical timeline. Renders a centered header block (pill eyebrow, H2 with optional accent subheading, optional intro paragraph) above a single-column vertical timeline. Each item shows a small date/label pill, a bold title, and a rich-text body, connected by a left-side accent rail with a accent dot per item. Background toggles white / bg-brand-50. Pure CSS — no JavaScript.",
       "fields": {
         "eyebrow": "string",
         "heading": "string",
-        "subheading": "string (gold sub-line under H2)",
+        "subheading": "string (accent sub-line under H2)",
         "intro": "string",
         "bg": "select white|brand-50 — section background",
         "items": "[{date, title, body(html)}] — vertical timeline entries top-to-bottom"

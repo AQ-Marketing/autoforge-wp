@@ -1,11 +1,11 @@
 <?php
 /** Callout — a self-contained alert / notice box: a colored left border + tinted
  *  panel holding an optional leading icon, optional bold title, and a rich-text
- *  body. Four on-brand styles selected via a static PHP class map — NO
- *  JavaScript. The brand palette is navy / copper / forest only (no red), so the
- *  styles map: info = navy, success = forest, warning = copper, danger = deep
- *  copper (the strongest "attention" tone the brand allows). Leans on the
- *  theme's Tailwind tokens + component classes (container-edge, prose-content). */
+ *  body. Four styles selected via a static PHP class map — NO JavaScript. They
+ *  map onto the engine's neutral tokens: info & success = brand (slate), warning
+ *  & danger = accent (the strongest "attention" tone). A client repaints these
+ *  via design tokens. Leans on the theme's Tailwind tokens + component classes
+ *  (container-edge, prose-content). */
 $s     = $args['s'] ?? [];
 $style = (string) ($s['style'] ?? 'info');
 
@@ -18,9 +18,9 @@ $styles = [
 		'title' => 'text-brand-900',
 	],
 	'success' => [
-		'panel' => 'bg-forest-500/10 border-forest-500',
-		'icon'  => 'text-forest-600',
-		'title' => 'text-forest-700',
+		'panel' => 'bg-brand-500/10 border-brand-500',
+		'icon'  => 'text-brand-600',
+		'title' => 'text-brand-700',
 	],
 	'warning' => [
 		'panel' => 'bg-accent-50 border-accent-400',

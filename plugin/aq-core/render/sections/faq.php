@@ -1,9 +1,9 @@
 <?php
-/** FAQ accordion — bg-forest-600. FAQPage JSON-LD is emitted by aq-core. */
+/** FAQ accordion — bg-brand-600. FAQPage JSON-LD is emitted by aq-core. */
 $s = $args['s'] ?? [];
 $h2mt = ($s['h2_mt'] ?? 'mt-0') === 'mt-4' ? '!mt-4' : '!mt-0';
 ?>
-<section class="bg-forest-600 text-white py-12 md:py-16 lg:py-20">
+<section class="bg-brand-600 text-white py-12 md:py-16 lg:py-20">
 	<div class="container-edge container-edge--wide">
 		<div class="max-w-3xl mx-auto text-center mb-12">
 			<span<?php echo ka_field_attr('eyebrow'); ?> class="pill-eyebrow mb-6"><?php echo wp_kses_post($s['eyebrow'] ?? ''); ?></span>
@@ -16,8 +16,8 @@ $h2mt = ($s['h2_mt'] ?? 'mt-0') === 'mt-4' ? '!mt-4' : '!mt-0';
 		</div>
 		<div class="max-w-4xl mx-auto space-y-3">
 			<?php foreach ((array) ($s['items'] ?? []) as $itemIdx => $item) : ?>
-			<div<?php echo ka_field_attr('items', $itemIdx); ?> class="faq-item bg-forest-700/60 border border-white/10 rounded-md overflow-hidden" data-open="false">
-				<button type="button" class="faq-toggle w-full flex items-center justify-between text-left px-5 py-4 text-white hover:bg-forest-700" aria-expanded="false">
+			<div<?php echo ka_field_attr('items', $itemIdx); ?> class="faq-item bg-brand-700/60 border border-white/10 rounded-md overflow-hidden" data-open="false">
+				<button type="button" class="faq-toggle w-full flex items-center justify-between text-left px-5 py-4 text-white hover:bg-brand-700" aria-expanded="false">
 					<span<?php echo ka_field_attr('q'); ?> class="faq-question"><?php echo esc_html($item['q'] ?? ''); ?></span>
 					<span class="faq-icon text-accent-300 text-xl">+</span>
 				</button>

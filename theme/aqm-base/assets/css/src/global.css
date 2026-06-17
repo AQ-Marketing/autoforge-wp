@@ -13,7 +13,7 @@
     text-rendering: optimizeLegibility;
   }
 
-  /* Serif headings to match the brand logo wordmark. Color inherits. */
+  /* Serif headings (system serif by default). Color inherits. */
   h1, h2, h3, h4 {
     @apply font-serif;
     text-wrap: balance;
@@ -25,7 +25,7 @@
   h2 { @apply text-3xl md:text-4xl font-bold leading-tight mt-12 mb-4; }
   h3 { @apply text-xl md:text-2xl font-semibold leading-snug mt-8 mb-3; }
 
-  /* On light surfaces, headings default to midnight navy. */
+  /* On light surfaces, headings default to the dark brand color. */
   main h1, main h2, main h3, main h4,
   article h1, article h2, article h3, article h4,
   section h1, section h2, section h3, section h4 {
@@ -46,11 +46,11 @@
 
   a {
     @apply underline-offset-4;
-    color: #8b5408;
+    color: #2563eb;
   }
 
-  /* Inline text links (in paragraphs, lists, FAQ answers) — green text on hover.
-     Excludes buttons so they keep their own hover styling. */
+  /* Inline text links (in paragraphs, lists, FAQ answers) — darker accent on
+     hover. Excludes buttons so they keep their own hover styling. */
   main p a:not(.btn):not(.btn-primary):not(.hero-btn),
   main li a:not(.btn):not(.btn-primary):not(.hero-btn),
   main blockquote a, main details a, main summary a {
@@ -59,7 +59,7 @@
   main p a:not(.btn):not(.btn-primary):not(.hero-btn):hover,
   main li a:not(.btn):not(.btn-primary):not(.hero-btn):hover,
   main blockquote a:hover, main details a:hover, main summary a:hover {
-    color: #455c36 !important;
+    color: #1d4ed8 !important;
   }
 
   /* Tabular eyebrow / kicker style — used over headings */
@@ -67,7 +67,7 @@
     @apply text-xs md:text-sm font-semibold uppercase tracking-[0.2em] text-accent-500;
   }
 
-  /* Decorative divider — small copper line, often paired with eyebrow */
+  /* Decorative divider — small accent line, often paired with eyebrow */
   .divider-accent {
     @apply inline-block w-12 h-0.5 bg-accent-500 mb-4;
   }
@@ -88,11 +88,11 @@
   .btn:hover, .btn:focus { text-decoration: none !important; }
   .btn-primary {
     @apply btn text-white;
-    background: #f9ab3d;
-    color: #4A4A4A;
+    background: #3b82f6;
+    color: #ffffff;
   }
   .btn-primary:hover {
-    background: #455c36;
+    background: #1d4ed8;
     color: #fff;
   }
   .btn-secondary {
@@ -131,13 +131,13 @@
     @apply rounded-lg border border-brand-100 bg-white p-6 shadow-sm hover:shadow-md hover:border-brand-200 transition;
   }
 
-  /* Pill eyebrow — copper outlined chip used above section headings */
+  /* Pill eyebrow — accent outlined chip used above section headings */
   .pill-eyebrow {
     display: inline-block;
-    font-family: Poppins, sans-serif;
-    background: #f9ab3d30;
-    border: 1px solid #faab3c;
-    color: #f9ab3d;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #3b82f630;
+    border: 1px solid #3b82f6;
+    color: #3b82f6;
     font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
@@ -145,13 +145,13 @@
     border-radius: 50px;
   }
 
-  /* Hero CTA buttons — copper primary, translucent white secondary */
+  /* Hero CTA buttons — accent primary, translucent white secondary */
   .hero-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 100%;
-    font-family: Poppins, sans-serif;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     font-size: 16px;
     font-weight: 600;
     text-transform: uppercase;
@@ -165,17 +165,17 @@
     .hero-btn { width: auto; }
   }
   .hero-btn:hover { text-decoration: none !important; }
-  .hero-btn--primary { background: #f9ab3d; color: #4A4A4A; }
-  .hero-btn--primary:hover { background: #455c36; color: #fff; }
+  .hero-btn--primary { background: #3b82f6; color: #ffffff; }
+  .hero-btn--primary:hover { background: #1d4ed8; color: #fff; }
   .hero-btn--secondary {
     background: rgba(255,255,255,0.25);
     color: #fff;
     border-color: rgba(255,255,255,0.4);
   }
   .hero-btn--secondary:hover {
-    background: #455c36;
+    background: #1d4ed8;
     color: #fff;
-    border-color: #455c36;
+    border-color: #1d4ed8;
   }
 
   /* Outlined call button used in dark CTA bands */
@@ -194,20 +194,20 @@
     box-sizing: border-box;
   }
   .cta-call-btn:hover {
-    background: #455c36;
-    border-color: #455c36;
+    background: #1d4ed8;
+    border-color: #1d4ed8;
     color: #fff;
   }
 }
 
 /* FAQ accordion — used on home and interior pages */
 .faq-question {
-  font-family: Merriweather, Georgia, serif;
+  font-family: Georgia, Cambria, "Times New Roman", serif;
   font-weight: 700;
   font-size: 1rem;
 }
 .faq-answer, .faq-answer p, .faq-answer li {
-  font-family: "Open Sans", system-ui, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 .faq-content {
   display: grid;
@@ -219,14 +219,14 @@
 .faq-icon { transition: transform 320ms ease; display: inline-block; }
 .faq-item[data-open="true"] .faq-icon { transform: rotate(45deg); }
 
-/* H2 subtitle gold — #c47f0a gives 3.26:1 on white, passes WCAG AA Large (≥3:1).
-   Use only on heading-scale text (≥24px) where the large-text threshold applies. */
-.h2-sub { color: #f9ab3d; }
+/* H2 subtitle accent — uses the accent color. Intended for heading-scale text
+   (≥24px) where the WCAG AA Large threshold (≥3:1) applies. */
+.h2-sub { color: #3b82f6; }
 
-/* H1 hero subtitle — smaller, lighter gold line stacked under the white H1 line.
+/* H1 hero subtitle — smaller, lighter accent line stacked under the white H1.
    letter-spacing reset to 0 to cancel the heading default (-0.01em). */
 .h1-sub {
-  color: #f9ab3d;
+  color: #3b82f6;
   font-size: 0.72em;
   font-weight: 500;
   letter-spacing: 0;
@@ -234,15 +234,15 @@
 
 /* Dark-band overlays sit over a background image inside bg-brand-900 sections.
    Two near-identical shades preserve the original hero vs final-CTA distinction. */
-.overlay-hero { background-color: rgba(38, 43, 71, 0.9); }
-.overlay-cta  { background-color: rgba(37, 42, 70, 0.9); }
+.overlay-hero { background-color: rgba(15, 23, 42, 0.9); }
+.overlay-cta  { background-color: rgba(15, 23, 42, 0.9); }
 
-/* Round icon badge — translucent copper fill behind a copper SVG icon */
-.icon-badge { background-color: rgba(249, 171, 61, 0.15); }
+/* Round icon badge — translucent accent fill behind an accent SVG icon */
+.icon-badge { background-color: rgba(59, 130, 246, 0.15); }
 .icon-badge--bordered {
-  background-color: rgba(249, 171, 61, 0.15);
-  color: #f9ab3d;
-  border: 1px solid rgba(249, 171, 61, 0.3);
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  border: 1px solid rgba(59, 130, 246, 0.3);
 }
 
 /* Body copy on dark sections (bg-brand-900 etc.) — three tints */
@@ -251,22 +251,19 @@
 .text-on-dark-muted  { color: rgba(255, 255, 255, 0.75); }
 .text-on-dark-faint  { color: rgba(255, 255, 255, 0.7); }
 
-/* Gold "Learn More →" link used in dark service-card grids */
+/* Accent "Learn More →" link used in dark service-card grids */
 .link-learn-more {
-  color: #f9ab3d;
-  font-family: Inter, sans-serif;
+  color: #3b82f6;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
   font-weight: 600;
 }
 .link-learn-more--lg {
-  color: #f9ab3d;
-  font-family: Inter, sans-serif;
+  color: #3b82f6;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   font-weight: 600;
 }
-
-/* Eyebrow / kicker rendered in Poppins (matches the rest of the dashboard chrome) */
-.font-poppins { font-family: Poppins, sans-serif; }
 
 /* Calendly / scheduling iframe embed */
 .embed-iframe {
@@ -315,8 +312,8 @@
   left: 0;
   right: 0;
   z-index: 100000001;
-  background: #1a1f3a;
-  border-top: 1px solid rgba(249, 171, 61, 0.25);
+  background: #0f172a;
+  border-top: 1px solid rgba(59, 130, 246, 0.25);
   box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.35);
   transform: translateY(100%);
   transition: transform 340ms cubic-bezier(0.32, 0, 0.14, 1);
@@ -346,14 +343,14 @@
   flex-shrink: 1;
 }
 .sticky-bar__label {
-  font-family: Poppins, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.7);
   white-space: nowrap;
 }
 .sticky-bar__phone {
-  font-family: Poppins, sans-serif;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 15px;
   font-weight: 700;
   color: #fff;
@@ -362,7 +359,7 @@
   transition: color 160ms;
 }
 .sticky-bar__phone:hover {
-  color: #f9ab3d;
+  color: #3b82f6;
   text-decoration: none;
 }
 .sticky-bar__right {
@@ -376,9 +373,9 @@
   align-items: center;
   gap: 6px;
   padding: 9px 18px;
-  background: #f9ab3d;
-  color: #1a1f3a;
-  font-family: Poppins, sans-serif;
+  background: #3b82f6;
+  color: #fff;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
@@ -389,7 +386,7 @@
   white-space: nowrap;
 }
 .sticky-bar__cta:hover {
-  background: #455c36;
+  background: #1d4ed8;
   color: #fff;
   text-decoration: none;
 }
@@ -443,7 +440,7 @@
   .article-body blockquote {
     @apply my-7 border-l-4 border-accent-500 pl-5 italic text-brand-700;
   }
-  /* Tables (e.g. the radon levels table) */
+  /* Tables (e.g. data tables in articles) */
   .article-body table {
     @apply my-8 w-full border-collapse overflow-hidden rounded-lg text-sm;
     box-shadow: 0 0 0 1px theme('colors.brand.100');

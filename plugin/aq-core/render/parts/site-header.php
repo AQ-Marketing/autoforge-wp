@@ -110,7 +110,7 @@ $logo_id   = (int) aq_site('logo.id');
 					><?php echo esc_html($item['label']); ?></a>
 				<?php endif;
 			endforeach; ?>
-			<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="inline-flex items-center gap-2 bg-brand-800 text-white no-underline font-semibold normal-case tracking-normal py-2.5 px-4 rounded hover:bg-forest-500 transition-colors">
+			<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="inline-flex items-center gap-2 bg-brand-800 text-white no-underline font-semibold normal-case tracking-normal py-2.5 px-4 rounded hover:bg-accent-600 transition-colors">
 				<svg width="14" height="16" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true"><path d="M16 64C16 28.7 44.7 0 80 0H304c35.3 0 64 28.7 64 64V448c0 35.3-28.7 64-64 64H80c-35.3 0-64-28.7-64-64V64zM144 448c0 8.8 7.2 16 16 16h64c8.8 0 16-7.2 16-16s-7.2-16-16-16H160c-8.8 0-16 7.2-16 16zM304 64H80V384H304V64z"/></svg>
 				<?php echo esc_html($phone); ?>
 			</a>

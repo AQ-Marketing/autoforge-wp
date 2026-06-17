@@ -166,7 +166,7 @@ $layouts['testimonials'] = [
 	]),
 ];
 
-/* faq — bg-forest-600 accordion */
+/* faq — bg-brand-600 accordion */
 $layouts['faq'] = [
 	'key' => 'layout_aq_faq',
 	'name' => 'faq',
@@ -244,7 +244,7 @@ $layouts['prose'] = [
 	],
 ];
 
-/* faq_dl — plain <dl>/<details> FAQ (distinct from the forest-green faq accordion) */
+/* faq_dl — plain <dl>/<details> FAQ (distinct from the JS faq accordion) */
 $layouts['faq_dl'] = [
 	'key' => 'layout_aq_faq_dl',
 	'name' => 'faq_dl',

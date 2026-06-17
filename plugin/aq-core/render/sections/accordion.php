@@ -3,8 +3,8 @@
  *  (NO JavaScript; the chevron animates via the group-open: variant). Centered
  *  header (eyebrow / H2 / subheading / intro) above a vertical stack of items,
  *  each a title + rich-text body. Optional first_open opens the first item on
- *  load. Distinct from the forest-green faq accordion (JS toggle, schema) and
- *  faq_dl (bare <dl>): this is a general-purpose, on-brand white/tint panel set
+ *  load. Distinct from the faq accordion (JS toggle, schema) and
+ *  faq_dl (bare <dl>): this is a general-purpose white/tint panel set
  *  with no JSON-LD coupling, for future content pages. */
 $s          = $args['s'] ?? [];
 $items      = (array) ($s['items'] ?? []);

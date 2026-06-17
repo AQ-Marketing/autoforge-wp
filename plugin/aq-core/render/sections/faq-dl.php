@@ -1,6 +1,6 @@
 <?php
 /** Plain <dl>/<details> FAQ. FAQPage JSON-LD is emitted by aq-core when schema=true.
- *  Native <details> toggle — no JS required (distinct from the forest-green faq accordion). */
+ *  Native <details> toggle — no JS required (distinct from the JS faq accordion). */
 $s = $args['s'] ?? [];
 ?>
 <section class="prose-content max-w-3xl mt-10 mx-auto">

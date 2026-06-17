@@ -22,7 +22,7 @@ $bg   = ($s['bg'] ?? 'brand-50') === 'white' ? 'white' : 'brand-50';
 				</div>
 				<blockquote<?php echo ka_field_attr('quote'); ?> class="text-brand-700 italic"><?php echo esc_html($item['quote'] ?? ''); ?></blockquote>
 				<div class="mt-5">
-					<p<?php echo ka_field_attr('name'); ?> class="font-semibold text-accent-700 font-poppins"><?php echo esc_html($item['name'] ?? ''); ?></p>
+					<p<?php echo ka_field_attr('name'); ?> class="font-semibold text-accent-700 font-sans"><?php echo esc_html($item['name'] ?? ''); ?></p>
 					<p<?php echo ka_field_attr('role'); ?> class="text-sm text-brand-600"><?php echo esc_html($item['role'] ?? ''); ?></p>
 				</div>
 			</div>

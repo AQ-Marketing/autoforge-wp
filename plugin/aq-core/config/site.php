@@ -11,7 +11,7 @@
  * key here (with an empty value) for every path templates read, so lookups
  * resolve to a safe blank instead of null surprises.
  *
- * See examples/ken-arnold/brand.json for a fully-populated example.
+ * See a client content repo's content/brand.json for a fully-populated example.
  */
 
 if (!defined('ABSPATH')) {
