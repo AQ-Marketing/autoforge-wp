@@ -79,6 +79,6 @@ via the **Claude-in-Chrome extension** (incl. the builder canvas).
 - Auto-update repo config: `define('AQ_UPDATE_REPO','owner/name')` or the `aq_update_repo` option.
 
 ## Open follow-ups (after the test passes)
-- Decide the real product GitHub repo + cut the first release (`v0.2.0`) for the updater.
+- ✅ DONE (2026-06-17): product repo **AQ-Marketing/autoforge-wp** (public) created; release **v0.2.0** published with `autoforge-wp-0.2.0.zip` attached. The updater now defaults to this repo (`AQ_Updater::DEFAULT_REPO`), so a fresh install auto-updates with no wp-config edit. `npm run build:release` also emits the `aqm-base-<v>.zip` theme.
 - Optional: a small admin field to set `AQ_UPDATE_REPO` from the Integrations screen.
 - Ken Arnold's own migration (its own `brand.json`/`design.json`, switch to AQM Base) — later.
