@@ -134,6 +134,61 @@ if (!function_exists('ka_reading_time')) {
 	}
 }
 
+if (!function_exists('ka_article_toc')) {
+	/**
+	 * Build a jump-link table of contents from a rendered post's H2 headings and
+	 * return it alongside the (id-augmented) body HTML. Returned only when the
+	 * article has 4+ H2 sections — short posts get nothing. Any H2 missing an id
+	 * gets a slugified, de-duplicated one injected so the anchors resolve. The
+	 * markup uses .article-toc (styled in the theme CSS); single.php renders it in
+	 * a sticky sidebar.
+	 *
+	 * @return array{0:string,1:string} [toc_html, body_html]
+	 */
+	function ka_article_toc(string $html): array {
+		if (!preg_match_all('/<h2\b([^>]*)>(.*?)<\/h2>/is', $html, $matches, PREG_SET_ORDER)) {
+			return ['', $html];
+		}
+		$items = [];
+		$used  = [];
+		foreach ($matches as $h) {
+			$label = trim(wp_strip_all_tags($h[2]));
+			if ($label === '') {
+				continue;
+			}
+			if (preg_match('/\bid=["\']([^"\']+)["\']/i', $h[1], $idm)) {
+				$id = $idm[1];
+			} else {
+				$id = sanitize_title($label);
+				if ($id === '') {
+					continue;
+				}
+				$base = $id;
+				$n    = 2;
+				while (isset($used[$id])) {
+					$id = $base . '-' . $n;
+					$n++;
+				}
+				// Inject the generated id back into the body so the anchor works.
+				$html = str_replace($h[0], '<h2' . $h[1] . ' id="' . esc_attr($id) . '">' . $h[2] . '</h2>', $html);
+			}
+			$used[$id] = true;
+			$items[]   = ['id' => $id, 'label' => $label];
+		}
+		if (count($items) < 4) {
+			return ['', $html];
+		}
+		$li = '';
+		foreach ($items as $it) {
+			$li .= '<li><a href="#' . esc_attr($it['id']) . '">' . esc_html($it['label']) . '</a></li>';
+		}
+		$toc = '<nav class="article-toc" aria-label="Table of contents">'
+			. '<p class="article-toc__label">In this article</p>'
+			. '<ul>' . $li . '</ul></nav>';
+		return [$toc, $html];
+	}
+}
+
 if (!function_exists('ka_external_links_new_tab')) {
 	/**
 	 * SEO/UX: any link in post content pointing to a DIFFERENT host opens in a new

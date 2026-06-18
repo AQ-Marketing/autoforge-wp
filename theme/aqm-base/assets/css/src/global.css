@@ -451,4 +451,35 @@
   .article-body thead th { @apply border-brand-800 font-semibold; }
   .article-body tbody tr:nth-child(even) { @apply bg-brand-50; }
   .article-body tbody tr:last-child td { @apply border-b-0; }
+  /* Anchored headings clear the sticky header when jumped to from the TOC. */
+  .article-body h2, .article-body h3 { scroll-margin-top: 140px; }
+
+  /* Jump-link table of contents (single.php → ka_article_toc). */
+  .article-toc { @apply mb-9 rounded-xl border border-brand-100 bg-brand-50 p-5 md:p-6; }
+  .article-toc__label { @apply m-0 mb-3 text-xs font-semibold uppercase tracking-wider text-brand-500; }
+  .article-toc ul { @apply m-0 list-none space-y-2 p-0; }
+  .article-toc li { @apply m-0 leading-snug; }
+  .article-toc a { @apply text-sm font-medium text-brand-700 no-underline transition-colors hover:text-accent-700; }
+}
+
+/* Single-post layout: sticky TOC sidebar on desktop; on mobile the TOC stays an
+   inline box above the article (source order = aside, then main). */
+@media (min-width: 1024px) {
+  .ka-article-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 820px) 16rem;
+    gap: 3.5rem;
+    justify-content: center;
+    align-items: start;
+  }
+  .ka-article-main { grid-column: 1; grid-row: 1; min-width: 0; }
+  .ka-toc-aside {
+    grid-column: 2;
+    grid-row: 1;
+    position: sticky;
+    top: 152px;
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
+  }
+  .ka-toc-aside .article-toc { margin-bottom: 0; }
 }
