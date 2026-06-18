@@ -86,17 +86,26 @@ $logo_id   = (int) aq_site('logo.id');
 		</button>
 
 		<nav class="hidden md:flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-semibold uppercase tracking-wider" aria-label="Primary" data-megamenu>
-			<?php foreach ($nav_items as $item) :
-				$active = $is_active($item['href']);
-				if (isset($item['panel'])) : ?>
+			<?php $manual_panels = []; foreach ($nav_items as $i => $item) :
+				$href      = $item['href'] ?? '#';
+				$active    = $is_active($href);
+				$is_auto   = isset($item['panel']);
+				$is_manual = !$is_auto && !empty($item['children']) && is_array($item['children']);
+				if ($is_auto || $is_manual) :
+					// Trigger/panel key: auto panels keep their fixed name
+					// (services|specialty|areas); a manual dropdown gets a per-item
+					// key so the generic mega-menu JS pairs trigger ↔ panel itself.
+					$mkey = $is_auto ? (string) $item['panel'] : ('mm' . $i);
+					$mpid = $is_auto ? ((string) ($item['id'] ?? ('nav-' . $item['panel'])) . '-panel') : ('nav-' . $mkey . '-panel');
+					if ($is_manual) { $manual_panels[$mkey] = $item; } ?>
 					<div class="relative" data-mega-item>
 						<button
 							type="button"
 							class="inline-flex items-center gap-1 no-underline transition-colors uppercase tracking-wider font-semibold <?php echo $active ? 'text-accent-700' : 'text-brand-800 hover:text-accent-700'; ?>"
 							aria-haspopup="true"
 							aria-expanded="false"
-							aria-controls="<?php echo esc_attr($item['id']); ?>-panel"
-							data-mega-trigger="<?php echo esc_attr($item['panel']); ?>"
+							aria-controls="<?php echo esc_attr($mpid); ?>"
+							data-mega-trigger="<?php echo esc_attr($mkey); ?>"
 						>
 							<?php echo esc_html($item['label']); ?>
 							<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M6 9l6 6 6-6"/></svg>
@@ -104,7 +113,7 @@ $logo_id   = (int) aq_site('logo.id');
 					</div>
 				<?php else : ?>
 					<a
-						href="<?php echo esc_url($item['href']); ?>"
+						href="<?php echo esc_url($href); ?>"
 						class="no-underline transition-colors <?php echo $active ? 'text-accent-700' : 'text-brand-800 hover:text-accent-700'; ?>"
 						<?php echo $active ? 'aria-current="page"' : ''; ?>
 					><?php echo esc_html($item['label']); ?></a>
@@ -234,20 +243,80 @@ $logo_id   = (int) aq_site('logo.id');
 				</div>
 			</div>
 		</div>
+
+		<?php /* Manual dropdowns: any nav item the editor gave its own sub-links.
+		         Same rich panel styling as the auto panels; keyed mm{index} to
+		         match the trigger emitted in the primary nav above. */
+		foreach ($manual_panels as $mkey => $mp) :
+			$kids   = array_values((array) ($mp['children'] ?? []));
+			$mpromo = is_array($mp['promo'] ?? null) ? $mp['promo'] : [];
+			$haspro = ($mpromo && ((($mpromo['eyebrow'] ?? '') !== '') || (($mpromo['text'] ?? '') !== '')));
+			$vlabel = (($mp['linkLabel'] ?? '') !== '') ? $mp['linkLabel'] : 'View all';
+		?>
+		<div
+			id="nav-<?php echo esc_attr($mkey); ?>-panel"
+			class="mega-panel absolute left-0 right-0 bg-white shadow-lg z-50 border-t-4 border-accent-500"
+			data-mega-panel="<?php echo esc_attr($mkey); ?>"
+			role="region"
+			aria-label="<?php echo esc_attr($mp['label'] . ' menu'); ?>"
+		>
+			<div class="container-edge container-edge--wide py-5 grid grid-cols-12 gap-6">
+				<div class="<?php echo $haspro ? 'col-span-8' : 'col-span-12'; ?>">
+					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
+						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mp['label']); ?></span>
+						<a href="<?php echo esc_url($mp['href'] ?? '#'); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case"><?php echo esc_html($vlabel); ?> &rarr;</a>
+					</div>
+					<div class="grid grid-cols-2 gap-x-6 gap-y-2">
+						<?php foreach ($kids as $c) :
+							$chref   = $c['href'] ?? '#';
+							$cactive = $path === $chref; ?>
+							<a href="<?php echo esc_url($chref); ?>" class="group flex items-start gap-3 no-underline normal-case tracking-normal py-1" <?php echo $cactive ? 'aria-current="page"' : ''; ?>>
+								<?php if (!empty($c['icon'])) : ?>
+								<span class="flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center transition-colors <?php echo $cactive ? 'bg-accent-500 text-white' : 'bg-accent-50 text-accent-700 group-hover:bg-accent-500 group-hover:text-white'; ?>">
+									<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><?php echo $c['icon']; ?></svg>
+								</span>
+								<?php endif; ?>
+								<span class="block">
+									<span class="block font-semibold text-sm transition-colors leading-tight <?php echo $cactive ? 'text-accent-700' : 'text-brand-800 group-hover:text-accent-700'; ?>"><?php echo esc_html($c['label'] ?? ''); ?></span>
+									<?php if (($c['tagline'] ?? '') !== '') : ?>
+									<span class="block text-xs text-brand-500 font-normal mt-0.5"><?php echo esc_html($c['tagline']); ?></span>
+									<?php endif; ?>
+								</span>
+							</a>
+						<?php endforeach; ?>
+					</div>
+				</div>
+				<?php if ($haspro) : ?>
+				<div class="col-span-4 bg-brand-50 rounded-lg p-5 normal-case tracking-normal">
+					<?php if (($mpromo['eyebrow'] ?? '') !== '') : ?><p class="text-xs uppercase tracking-wider text-accent-700 font-semibold"><?php echo esc_html($mpromo['eyebrow']); ?></p><?php endif; ?>
+					<?php if (($mpromo['text'] ?? '') !== '') : ?><p class="mt-2 text-sm text-brand-700"><?php echo esc_html($mpromo['text']); ?></p><?php endif; ?>
+					<?php if (($mpromo['ctaLabel'] ?? '') !== '') : ?><a href="<?php echo esc_url($mpromo['ctaHref'] ?? '#'); ?>" class="btn-primary text-xs uppercase tracking-wider mt-4 py-2.5 px-5 inline-block"><?php echo esc_html($mpromo['ctaLabel']); ?></a><?php endif; ?>
+					<?php if (($mpromo['cta2Label'] ?? '') !== '') : ?><a href="<?php echo esc_url($mpromo['cta2Href'] ?? '#'); ?>" class="block mt-3 text-brand-800 font-semibold no-underline hover:text-accent-700 text-sm"><?php echo esc_html($mpromo['cta2Label']); ?></a><?php endif; ?>
+				</div>
+				<?php endif; ?>
+			</div>
+		</div>
+		<?php endforeach; ?>
 	</div>
 
 	<nav id="mobile-nav" class="md:hidden hidden border-t border-brand-100" aria-label="Mobile" data-nav-mobile>
 		<div class="container-edge py-2 flex flex-col">
 			<?php foreach ($nav_items as $item) :
-				if (isset($item['panel'])) : ?>
+				$is_auto   = isset($item['panel']);
+				$is_manual = !$is_auto && !empty($item['children']) && is_array($item['children']);
+				if ($is_auto || $is_manual) : ?>
 					<details class="border-b border-brand-100">
 						<summary class="cursor-pointer flex items-center justify-between text-brand-800 py-4 list-none">
 							<span class="font-semibold text-base"><?php echo esc_html($item['label']); ?></span>
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
 						</summary>
 						<div class="pl-4 pb-3 flex flex-col gap-0">
-							<a href="<?php echo esc_url($item['href']); ?>" class="text-brand-700 no-underline font-semibold py-3 border-b border-brand-50">All <?php echo esc_html($item['label']); ?> &rarr;</a>
-							<?php if ($item['panel'] === 'services') :
+							<a href="<?php echo esc_url($item['href'] ?? '#'); ?>" class="text-brand-700 no-underline font-semibold py-3 border-b border-brand-50">All <?php echo esc_html($item['label']); ?> &rarr;</a>
+							<?php if ($is_manual) :
+								foreach (array_values((array) $item['children']) as $c) : ?>
+									<a href="<?php echo esc_url($c['href'] ?? '#'); ?>" class="text-brand-700 no-underline py-3 border-b border-brand-50"><?php echo esc_html($c['label'] ?? ''); ?></a>
+								<?php endforeach;
+							elseif ($item['panel'] === 'services') :
 								foreach ($services as $s) : ?>
 									<a href="<?php echo esc_url($svc_base . $s['slug'] . '/'); ?>" class="text-brand-700 no-underline py-3 border-b border-brand-50"><?php echo esc_html($s['label'] ?? ''); ?></a>
 								<?php endforeach;

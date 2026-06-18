@@ -106,8 +106,16 @@ return [
 		'base'      => '/blog/',
 	],
 
-	// Header primary nav. Items with a 'panel' (services|specialty|areas) open
-	// the mega-menu defined under 'megamenu' below.
+	// Header primary nav (AutoForge → Navigation). Each item is one of:
+	//   plain  → ['label'=>'Pricing', 'href'=>'/pricing/']
+	//   auto   → ['label'=>'Services','href'=>'/services/','panel'=>'services','id'=>'nav-services']
+	//            ('panel' = services|specialty|areas, auto-filled from 'megamenu'/'towns')
+	//   manual → ['label'=>'About','href'=>'/about/','children'=>[
+	//                ['label'=>'…','href'=>'/…/','tagline'=>'…'], … ],
+	//             'promo'=>['eyebrow'=>'…','text'=>'…','ctaLabel'=>'…','ctaHref'=>'/…/',
+	//                       'cta2Label'=>'…','cta2Href'=>'/…/'], 'linkLabel'=>'View all']
+	// A manual item renders as the same rich dropdown panel as the auto ones,
+	// built from its own 'children' (+ optional 'promo').
 	'nav' => [],
 
 	// Header mega-menu panels. Each panel: base path, heading, "view all" label,
