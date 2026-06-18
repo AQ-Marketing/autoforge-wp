@@ -561,6 +561,23 @@ class AQ_Navigation {
 		if (!$children) {
 			return $item; // nothing seeded yet — keep it auto so it isn't dropped
 		}
+		// Carry the promo CTA buttons the auto-panel template hardcodes, so
+		// converting an auto panel into an editable manual dropdown is lossless
+		// (manual panels render the buttons from data, not hardcoded). Existing
+		// brand.json promo keys win (+= keeps left-hand keys).
+		$promo    = is_array($mm['promo'] ?? null) ? $mm['promo'] : [];
+		$phone    = (string) ($cfg['phone'] ?? '');
+		$phoneTel = (string) ($cfg['phoneTel'] ?? '');
+		if ($panel === 'services') {
+			$promo += ['ctaLabel' => 'Schedule Inspection', 'ctaHref' => '/schedule/'];
+			if ($phone !== '') {
+				$promo += ['cta2Label' => 'Call ' . $phone, 'cta2Href' => 'tel:' . $phoneTel];
+			}
+		} elseif ($panel === 'specialty') {
+			$promo += ['ctaLabel' => 'See Pricing', 'ctaHref' => '/pricing/', 'cta2Label' => 'Schedule online', 'cta2Href' => '/schedule/'];
+		} elseif ($panel === 'areas' && $phone !== '') {
+			$promo += ['ctaLabel' => 'Call ' . $phone, 'ctaHref' => 'tel:' . $phoneTel];
+		}
 		$out = [
 			'label'     => (string) ($item['label'] ?? ''),
 			'href'      => (string) ($item['href'] ?? $base),
@@ -569,7 +586,7 @@ class AQ_Navigation {
 			'iconStyle' => 'outline',
 			'heading'   => (string) ($mm['heading'] ?? ''),
 			'linkLabel' => 'View all',
-			'promo'     => is_array($mm['promo'] ?? null) ? $mm['promo'] : [],
+			'promo'     => $promo,
 		];
 		if (!empty($item['hideViewAll'])) {
 			$out['hideViewAll'] = true;
