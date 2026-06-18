@@ -268,6 +268,15 @@ $logo_id   = (int) aq_site('logo.id');
 			$mpromo = is_array($mp['promo'] ?? null) ? $mp['promo'] : [];
 			$haspro = ($mpromo && ((($mpromo['eyebrow'] ?? '') !== '') || (($mpromo['text'] ?? '') !== '')));
 			$vlabel = (($mp['linkLabel'] ?? '') !== '') ? $mp['linkLabel'] : 'View all';
+			$mcols  = max(1, min(4, (int) ($mp['cols'] ?? 2)));
+			$mcolcls = [
+				1 => 'grid-cols-1',
+				2 => 'grid-cols-1 lg:grid-cols-2',
+				3 => 'grid-cols-2 lg:grid-cols-3',
+				4 => 'grid-cols-2 lg:grid-cols-4',
+			][$mcols];
+			$mfilled  = (($mp['iconStyle'] ?? 'outline') === 'filled');
+			$mheading = (($mp['heading'] ?? '') !== '') ? (string) $mp['heading'] : (string) $mp['label'];
 		?>
 		<div
 			id="nav-<?php echo esc_attr($mkey); ?>-panel"
@@ -279,18 +288,18 @@ $logo_id   = (int) aq_site('logo.id');
 			<div class="container-edge container-edge--wide py-5 grid grid-cols-12 gap-6">
 				<div class="<?php echo $haspro ? 'col-span-8' : 'col-span-12'; ?>">
 					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
-						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mp['label']); ?></span>
+						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mheading); ?></span>
 						<?php if (empty($mp['hideViewAll'])) : ?>
 						<a href="<?php echo esc_url($mp['href'] ?? '#'); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case"><?php echo esc_html($vlabel); ?> &rarr;</a>
 						<?php endif; ?>
 					</div>
-					<div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
+					<div class="grid <?php echo $mcolcls; ?> gap-x-6 gap-y-2">
 						<?php foreach ($kids as $c) :
 							$chref   = $c['href'] ?? '#';
 							$cactive = $path === $chref; ?>
 							<a href="<?php echo esc_url($chref); ?>" class="group flex items-start gap-3 no-underline normal-case tracking-normal py-1" <?php echo $cactive ? 'aria-current="page"' : ''; ?>>
 								<?php if (!empty($c['icon'])) : ?>
-								<span class="flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center transition-colors <?php echo $cactive ? 'bg-accent-500 text-white' : 'bg-accent-50 text-accent-700 group-hover:bg-accent-500 group-hover:text-white'; ?>">
+								<span class="flex-shrink-0 w-9 h-9 rounded-md flex items-center justify-center transition-colors <?php echo $cactive || $mfilled ? 'bg-accent-500 text-white' : 'bg-accent-50 text-accent-700 group-hover:bg-accent-500 group-hover:text-white'; ?>">
 									<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><?php echo $c['icon']; ?></svg>
 								</span>
 								<?php endif; ?>
