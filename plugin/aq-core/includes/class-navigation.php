@@ -736,7 +736,8 @@ class AQ_Navigation {
 			.aq-hub .aq-c-iconbtn:hover { border-color:#c8102e; color:#0d1014; }
 			.aq-hub .aq-c-iconbtn svg { width:20px; height:20px; }
 			.aq-iconpop { position:absolute; z-index:100000; width:300px; max-width:92vw; background:#fff; border:1px solid #c9cfd6; border-radius:10px; box-shadow:0 14px 40px rgba(13,16,20,.18); padding:12px; }
-			.aq-iconpop-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:10px; }
+			.aq-iconpop-search { width:100%; box-sizing:border-box; border:1px solid #c9cfd6; border-radius:8px; padding:6px 10px; font-size:12px; margin-bottom:8px; }
+			.aq-iconpop-grid { display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-bottom:10px; max-height:208px; overflow-y:auto; }
 			.aq-iconpop-sw { aspect-ratio:1; border:1px solid #e2e8f0; border-radius:8px; background:#fff; color:#334155; cursor:pointer; display:flex; align-items:center; justify-content:center; padding:0; }
 			.aq-iconpop-sw:hover { border-color:#c8102e; color:#c8102e; background:#fff5f6; }
 			.aq-iconpop-sw svg { width:20px; height:20px; }
@@ -864,20 +865,32 @@ class AQ_Navigation {
 				iconPop = document.createElement('div');
 				iconPop.className = 'aq-iconpop';
 				iconPop.hidden = true;
+				var search = document.createElement('input');
+				search.type = 'search'; search.className = 'aq-iconpop-search'; search.placeholder = 'Search icons…';
+				iconPop.appendChild(search);
 				var grid = document.createElement('div');
 				grid.className = 'aq-iconpop-grid';
 				var none = document.createElement('button');
 				none.type = 'button'; none.className = 'aq-iconpop-sw aq-iconpop-none'; none.title = 'No icon'; none.textContent = '—';
+				none.setAttribute('data-name', 'none no icon');
 				none.addEventListener('click', function () { setIcon(''); });
 				grid.appendChild(none);
 				Object.keys(ICONS).forEach(function (name) {
 					var b = document.createElement('button');
 					b.type = 'button'; b.className = 'aq-iconpop-sw'; b.title = name;
+					b.setAttribute('data-name', name.toLowerCase());
 					b.innerHTML = svgWrap(ICONS[name]);
 					b.addEventListener('click', function () { setIcon(ICONS[name]); });
 					grid.appendChild(b);
 				});
 				iconPop.appendChild(grid);
+				search.addEventListener('input', function () {
+					var q = search.value.trim().toLowerCase();
+					$all('.aq-iconpop-sw', grid).forEach(function (sw) {
+						var n = sw.getAttribute('data-name') || '';
+						sw.style.display = (!q || n.indexOf(q) !== -1) ? '' : 'none';
+					});
+				});
 				var ta = document.createElement('textarea');
 				ta.className = 'aq-iconpop-svg'; ta.rows = 2; ta.placeholder = 'Paste custom SVG (advanced)';
 				var apply = document.createElement('button');
@@ -898,10 +911,13 @@ class AQ_Navigation {
 				if (!iconPop) buildIconPop();
 				iconTarget = row;
 				var ta = $('.aq-iconpop-svg', iconPop); if (ta) ta.value = '';
+				var search = $('.aq-iconpop-search', iconPop);
+				if (search) { search.value = ''; $all('.aq-iconpop-sw', iconPop).forEach(function (sw) { sw.style.display = ''; }); }
 				var r = btn.getBoundingClientRect();
 				iconPop.style.top = (window.pageYOffset + r.bottom + 6) + 'px';
 				iconPop.style.left = Math.max(8, window.pageXOffset + r.left) + 'px';
 				iconPop.hidden = false;
+				if (search) search.focus();
 			}
 			document.addEventListener('click', function (e) {
 				if (iconPop && !iconPop.hidden && !iconPop.contains(e.target) && !e.target.closest('.aq-c-iconbtn')) { iconPop.hidden = true; iconTarget = null; }
