@@ -28,6 +28,16 @@ $towns = aq_site('towns') ?? [];
 // 'panel' ('services' | 'specialty' | 'areas') open the mega-menu built below.
 $nav_items = array_values((array) aq_site('nav'));
 
+// Per-panel "hide View all" flags, read from the matching nav item so the auto
+// Services / Specialty / Areas panels can each suppress their top-right link
+// (editor: AutoForge → Navigation → "Show the 'View all' link" toggle).
+$panel_hide_va = [];
+foreach ($nav_items as $ni) {
+	if (isset($ni['panel'])) {
+		$panel_hide_va[(string) $ni['panel']] = !empty($ni['hideViewAll']);
+	}
+}
+
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 $is_active = static fn(string $href): bool => $path === $href || ($href !== '/' && str_starts_with($path, $href));
 
@@ -139,9 +149,11 @@ $logo_id   = (int) aq_site('logo.id');
 				<div class="col-span-8">
 					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
 						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mm_services['heading'] ?? 'Services'); ?></span>
+						<?php if (empty($panel_hide_va['services'])) : ?>
 						<a href="<?php echo esc_url($mm_services['viewAllHref'] ?? $svc_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case">View all &rarr;</a>
+						<?php endif; ?>
 					</div>
-					<div class="grid grid-cols-2 gap-x-6 gap-y-2">
+					<div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
 						<?php foreach ($services as $s) :
 							$href   = $svc_base . $s['slug'] . '/';
 							$active = $path === $href; ?>
@@ -180,9 +192,11 @@ $logo_id   = (int) aq_site('logo.id');
 				<div class="col-span-8">
 					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
 						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mm_specialty['heading'] ?? 'Specialty Testing'); ?></span>
+						<?php if (empty($panel_hide_va['specialty'])) : ?>
 						<a href="<?php echo esc_url($mm_specialty['viewAllHref'] ?? $spc_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case">View all &rarr;</a>
+						<?php endif; ?>
 					</div>
-					<div class="grid grid-cols-2 gap-x-6 gap-y-2">
+					<div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
 						<?php foreach ($specialty as $s) :
 							$href   = $spc_base . $s['slug'] . '/';
 							$active = $path === $href; ?>
@@ -218,9 +232,11 @@ $logo_id   = (int) aq_site('logo.id');
 				<div class="col-span-8 normal-case tracking-normal">
 					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
 						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mm_areas['heading'] ?? 'Service Area'); ?></span>
+						<?php if (empty($panel_hide_va['areas'])) : ?>
 						<a href="<?php echo esc_url($mm_areas['viewAllHref'] ?? $area_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700">View all &rarr;</a>
+						<?php endif; ?>
 					</div>
-					<div class="grid grid-cols-3 gap-x-6 gap-y-2">
+					<div class="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
 						<?php foreach ($towns as $t) :
 							$href   = $area_base . $t['slug'] . '/';
 							$active = $path === $href; ?>
@@ -264,9 +280,11 @@ $logo_id   = (int) aq_site('logo.id');
 				<div class="<?php echo $haspro ? 'col-span-8' : 'col-span-12'; ?>">
 					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
 						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mp['label']); ?></span>
+						<?php if (empty($mp['hideViewAll'])) : ?>
 						<a href="<?php echo esc_url($mp['href'] ?? '#'); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case"><?php echo esc_html($vlabel); ?> &rarr;</a>
+						<?php endif; ?>
 					</div>
-					<div class="grid grid-cols-2 gap-x-6 gap-y-2">
+					<div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
 						<?php foreach ($kids as $c) :
 							$chref   = $c['href'] ?? '#';
 							$cactive = $path === $chref; ?>

@@ -20,6 +20,13 @@
  *
  * REST: POST aq/v1/site-nav → validate + save. Gated on manage_options + the WP
  * REST nonce. Vanilla JS, no build step. SQLite-safe (option get/update only).
+ *
+ * Export/Import: the editor can download the current nav + footer as a JSON file
+ * (for editing or hand-off) and import one back. Import POSTs to the same
+ * /site-nav route, so the identical sanitization runs; both are client-side with
+ * no extra endpoint. Because nav/footer link lists are sequential arrays,
+ * AQ_Site_Config::update() replaces them wholesale, so an import cleanly drops
+ * rows the file omits.
  */
 
 if (!defined('ABSPATH')) {
@@ -170,12 +177,16 @@ class AQ_Navigation {
 				if ($label === '') {
 					continue;
 				}
-				$item  = ['href' => self::url((string) ($row['href'] ?? '#')), 'label' => $label];
-				$panel = (string) ($row['panel'] ?? '');
+				$item   = ['href' => self::url((string) ($row['href'] ?? '#')), 'label' => $label];
+				$panel  = (string) ($row['panel'] ?? '');
+				$hideVA = !empty($row['hideViewAll']); // default: show the "View all" link
 				if ($panel !== '' && in_array($panel, $panels, true)) {
 					// Auto-filled dropdown (services/specialty/areas).
 					$item['panel'] = $panel;
 					$item['id']    = 'nav-' . $panel;
+					if ($hideVA) {
+						$item['hideViewAll'] = true;
+					}
 				} else {
 					// Manual dropdown: sub-links the editor added (+ optional promo).
 					$kids = self::children($row['children'] ?? []);
@@ -188,6 +199,9 @@ class AQ_Navigation {
 						$ll = sanitize_text_field((string) ($row['linkLabel'] ?? ''));
 						if ($ll !== '') {
 							$item['linkLabel'] = $ll;
+						}
+						if ($hideVA) {
+							$item['hideViewAll'] = true;
 						}
 					}
 				}
@@ -247,6 +261,17 @@ class AQ_Navigation {
 		echo '<div id="aq-nav-notice" class="aq-nav-notice" style="display:none;"></div>';
 		echo '<form id="aq-nav-form" onsubmit="return false;">';
 
+		/* ---------------- Export / Import ---------------- */
+		echo '<div class="aq-panel aq-nav-io">';
+		echo '<h2>Export / Import</h2>';
+		echo '<p class="aq-nav-help">Download the menu and footer below as a JSON file you can edit or hand off, then import that file here to apply it. <strong>Importing replaces</strong> the header menu and footer links currently shown &mdash; it takes effect as soon as you confirm.</p>';
+		echo '<div class="aq-nav-iobtns">';
+		echo '<button type="button" class="aq-btn aq-btn--ghost" id="aq-nav-export">Export to file</button>';
+		echo '<button type="button" class="aq-btn aq-btn--ghost" id="aq-nav-import-btn">Import from file&hellip;</button>';
+		echo '<input type="file" id="aq-nav-import-file" accept="application/json,.json" hidden />';
+		echo '</div>';
+		echo '</div>';
+
 		/* ---------------- Header menu ---------------- */
 		echo '<div class="aq-panel"><h2>Header menu</h2>';
 		echo '<p class="aq-nav-help">Drag the <span class="aq-grip-hint">&#x2807;</span> handle to reorder. To turn an item into a dropdown, set its <strong>Dropdown</strong> to &ldquo;Sub-links I add&rdquo; and add links beneath it &mdash; or point it at your Services, Specialty, or Service-area lists to fill the dropdown automatically.</p>';
@@ -281,8 +306,8 @@ class AQ_Navigation {
 		echo '<div class="aq-panel"><h2>Footer — Social</h2>';
 		echo '<p class="aq-nav-help">Profile URLs for the footer icons. Use <code>#</code> to leave a link inactive.</p>';
 		echo '<div class="aq-nav-grid">';
-		self::text('social_facebook', 'Facebook URL', (string) ($social['facebook'] ?? '#'));
-		self::text('social_instagram', 'Instagram URL', (string) ($social['instagram'] ?? '#'));
+		self::text('footer.social.facebook', 'Facebook URL', (string) ($social['facebook'] ?? '#'));
+		self::text('footer.social.instagram', 'Instagram URL', (string) ($social['instagram'] ?? '#'));
 		echo '</div></div>';
 
 		echo '</div>'; // twocol
@@ -352,8 +377,9 @@ class AQ_Navigation {
 
 	/** One top-level menu item card (header row + collapsible children/promo). */
 	private static function item_card_html(array $item): string {
-		$label = (string) ($item['label'] ?? '');
-		$href  = (string) ($item['href'] ?? '');
+		$label  = (string) ($item['label'] ?? '');
+		$href   = (string) ($item['href'] ?? '');
+		$showVA = empty($item['hideViewAll']); // toggle defaults ON (show "View all")
 
 		// Decide the friendly "Dropdown" mode this item is currently in.
 		$panel = (string) ($item['panel'] ?? '');
@@ -402,6 +428,9 @@ class AQ_Navigation {
 					<button type="button" class="aq-iconbtn aq-iconbtn--del aq-item-del" title="Remove item">&times;</button>
 				</div>
 			</div>
+			<div class="aq-nav-itemopts"<?php echo $mode === '' ? ' hidden' : ''; ?>>
+				<label class="aq-toggle"><input type="checkbox" class="aq-i-viewall"<?php echo $showVA ? ' checked' : ''; ?> /> <span>Show the &ldquo;View all&rdquo; link at the top of this dropdown</span></label>
+			</div>
 			<div class="aq-nav-children"<?php echo $mode === 'manual' ? '' : ' hidden'; ?>>
 				<p class="aq-children-help">Sub-links shown in this dropdown. Drag to reorder.</p>
 				<div class="aq-nav-childlist"><?php echo $children_html; ?></div>
@@ -449,6 +478,8 @@ class AQ_Navigation {
 			.aq-hub .aq-nav-notice { padding:12px 16px; border-radius:10px; font-size:13px; font-weight:600; margin-bottom:16px; }
 			.aq-hub .aq-nav-notice--ok { background:#eaf0ea; color:#1a8f4f; border:1px solid #bfe0c8; }
 			.aq-hub .aq-nav-notice--err { background:#fbe7e7; color:#a30d25; border:1px solid #e6c4c4; }
+			.aq-hub .aq-nav-io .aq-nav-help { margin-bottom:12px; }
+			.aq-hub .aq-nav-iobtns { display:flex; gap:10px; flex-wrap:wrap; }
 
 			/* ---- Header menu items (drag-to-reorder parent/child) ---- */
 			.aq-hub .aq-nav-items { display:flex; flex-direction:column; gap:10px; }
@@ -469,11 +500,16 @@ class AQ_Navigation {
 			.aq-hub .aq-children-help { font-size:11px; color:#8a94a1; margin:0 0 8px; }
 			.aq-hub .aq-nav-childlist { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
 			.aq-hub .aq-linklabel-field { max-width:440px; margin:10px 0 4px; }
-			.aq-hub .aq-nav-child { display:flex; align-items:center; gap:8px; padding-left:14px; }
+			.aq-hub .aq-nav-child { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding-left:14px; }
 			.aq-hub .aq-nav-child.aq-dragging { opacity:.55; }
-			.aq-hub .aq-nav-child .aq-c-label { flex:1.1 1 0; }
-			.aq-hub .aq-nav-child .aq-c-href { flex:1.2 1 0; }
-			.aq-hub .aq-nav-child .aq-c-tag { flex:1.4 1 0; }
+			/* flex-basis (not 0) so each box keeps a usable width and a long
+			   tagline pushes the row to wrap instead of squeezing the inputs. */
+			.aq-hub .aq-nav-child .aq-c-label { flex:1 1 140px; min-width:120px; }
+			.aq-hub .aq-nav-child .aq-c-href { flex:1 1 160px; min-width:120px; }
+			.aq-hub .aq-nav-child .aq-c-tag { flex:2 1 240px; min-width:160px; }
+			.aq-hub .aq-nav-itemopts { padding:0 12px 12px 46px; }
+			.aq-hub .aq-toggle { display:inline-flex; align-items:center; gap:8px; font-size:12px; color:#5b6471; cursor:pointer; }
+			.aq-hub .aq-toggle input { width:16px; height:16px; margin:0; accent-color:#c8102e; flex:0 0 auto; }
 			.aq-hub .aq-promo { margin-top:10px; }
 			.aq-hub .aq-promo > summary { cursor:pointer; font-size:12px; font-weight:600; color:#5b6471; padding:4px 0; }
 			.aq-hub .aq-promo-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
@@ -579,6 +615,7 @@ class AQ_Navigation {
 				var head = $('.aq-nav-itemhead', card);
 				var del = $('.aq-item-del', card), up = $('.aq-item-up', card), down = $('.aq-item-down', card);
 				var mode = $('.aq-i-mode', card);
+				var opts = $('.aq-nav-itemopts', card);
 				var children = $('.aq-nav-children', card);
 				var childlist = $('.aq-nav-childlist', card);
 				var addchild = $('.aq-addchild', card);
@@ -590,6 +627,7 @@ class AQ_Navigation {
 				function applyMode() {
 					var m = mode ? mode.value : '';
 					card.setAttribute('data-mode', m);
+					if (opts) opts.hidden = (m === ''); // "View all" toggle shows for any dropdown
 					if (m === 'manual') {
 						children.hidden = false;
 						if (childlist && !$('.aq-nav-child', childlist)) addChild(childlist, true);
@@ -651,8 +689,11 @@ class AQ_Navigation {
 				p.nav = $all('.aq-nav-item', itemsRoot).map(function (card) {
 					var item = { label: val('.aq-i-label', card), href: val('.aq-i-href', card) };
 					var mode = val('.aq-i-mode', card);
+					var vaEl = $('.aq-i-viewall', card);
+					var hideVA = vaEl ? !vaEl.checked : false; // unchecked = hide "View all"
 					if (mode === 'services' || mode === 'specialty' || mode === 'areas') {
 						item.panel = mode; item.id = 'nav-' + mode;
+						if (hideVA) item.hideViewAll = true;
 					} else if (mode === 'manual') {
 						var kids = $all('.aq-nav-child', card).map(function (cr) {
 							return { label: val('.aq-c-label', cr), href: val('.aq-c-href', cr), tagline: val('.aq-c-tag', cr) };
@@ -661,6 +702,7 @@ class AQ_Navigation {
 							item.children = kids;
 							var ll = val('.aq-i-linklabel', card);
 							if (ll) item.linkLabel = ll;
+							if (hideVA) item.hideViewAll = true;
 							item.promo = {
 								eyebrow: val('.aq-p-eyebrow', card), text: val('.aq-p-text', card),
 								ctaLabel: val('.aq-p-ctaLabel', card), ctaHref: val('.aq-p-ctaHref', card),
@@ -699,6 +741,69 @@ class AQ_Navigation {
 					.catch(function (e) { notice('Save failed: ' + e.message, false); })
 					.then(function () { saveBtn.disabled = false; if (saving) saving.style.display = 'none'; });
 			});
+
+			/* ---------- Export / Import to a JSON file ---------- */
+			function download(filename, text) {
+				var blob = new Blob([text], { type: 'application/json' });
+				var url = URL.createObjectURL(blob);
+				var a = document.createElement('a');
+				a.href = url; a.download = filename;
+				document.body.appendChild(a); a.click(); document.body.removeChild(a);
+				setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+			}
+
+			var exportBtn = $('#aq-nav-export');
+			if (exportBtn) exportBtn.addEventListener('click', function () {
+				var data = collect();
+				var payload = {
+					_format: 'autoforge-navigation',
+					_version: 1,
+					_exported: new Date().toISOString(),
+					_site: location.hostname || '',
+					nav: data.nav || [],
+					footer: data.footer || {}
+				};
+				var host = (location.hostname || 'site').replace(/[^a-z0-9.\-]/gi, '');
+				var stamp = new Date().toISOString().slice(0, 10);
+				download('navigation-' + host + '-' + stamp + '.json', JSON.stringify(payload, null, 2));
+				notice('Exported the current menu and footer to a JSON file.', true);
+			});
+
+			var importBtn = $('#aq-nav-import-btn'), importFile = $('#aq-nav-import-file');
+			if (importBtn && importFile) {
+				importBtn.addEventListener('click', function () { importFile.value = ''; importFile.click(); });
+				importFile.addEventListener('change', function () {
+					var file = importFile.files && importFile.files[0];
+					if (!file) return;
+					var reader = new FileReader();
+					reader.onload = function () {
+						var data;
+						try { data = JSON.parse(String(reader.result)); }
+						catch (e) { notice('Import failed: that file is not valid JSON.', false); return; }
+						if (!data || typeof data !== 'object') { notice('Import failed: unexpected file contents.', false); return; }
+						var payload = {};
+						if (Array.isArray(data.nav)) payload.nav = data.nav;
+						if (data.footer && typeof data.footer === 'object') payload.footer = data.footer;
+						if (!payload.nav && !payload.footer) { notice('Import failed: no menu or footer found in that file.', false); return; }
+						var n = payload.nav ? payload.nav.length : 0;
+						if (!window.confirm('Import will replace your current header menu and footer links' + (n ? ' with ' + n + ' menu item' + (n === 1 ? '' : 's') : '') + '. Continue?')) return;
+						if (saving) saving.style.display = 'inline';
+						fetch(REST, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE }, body: JSON.stringify(payload) })
+							.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+							.then(function (res) {
+								if (res.ok && res.body && res.body.ok) {
+									notice('Imported. Reloading to show the new menu…', true);
+									setTimeout(function () { location.reload(); }, 700);
+								} else {
+									notice('Import failed: ' + ((res.body && (res.body.message || res.body.code)) || 'unknown error'), false);
+									if (saving) saving.style.display = 'none';
+								}
+							})
+							.catch(function (e) { notice('Import failed: ' + e.message, false); if (saving) saving.style.display = 'none'; });
+					};
+					reader.readAsText(file);
+				});
+			}
 		})();
 		</script>
 		<?php
