@@ -14,6 +14,26 @@ class AQ_Sitemap {
 	public static function register(): void {
 		add_filter('wp_sitemaps_add_provider', [__CLASS__, 'drop_providers'], 10, 2);
 		add_filter('wp_sitemaps_posts_query_args', [__CLASS__, 'exclude_pages'], 10, 2);
+		add_action('template_redirect', [__CLASS__, 'redirect_legacy'], 0);
+	}
+
+	/**
+	 * 301 legacy sitemap-index URLs to WordPress core's sitemap.
+	 *
+	 * The previous (Astro) site published /sitemap-index.xml; WP core serves
+	 * /wp-sitemap.xml instead (core already redirects /sitemap.xml there too),
+	 * so the old index URLs 404 to an HTML page — a search engine that still has
+	 * the old URL submitted then sees a broken sitemap. Redirect them to the
+	 * real XML so the submission keeps resolving. Priority 0 so it runs before
+	 * AQ_Renderer's template_include router and the 404 page never renders.
+	 */
+	public static function redirect_legacy(): void {
+		$path = strtolower((string) parse_url((string) ($_SERVER['REQUEST_URI'] ?? ''), PHP_URL_PATH));
+		$path = '/' . trim($path, '/');
+		if ($path === '/sitemap-index.xml' || $path === '/sitemap_index.xml') {
+			wp_safe_redirect(home_url('/wp-sitemap.xml'), 301);
+			exit;
+		}
 	}
 
 	public static function drop_providers($provider, $name) {
