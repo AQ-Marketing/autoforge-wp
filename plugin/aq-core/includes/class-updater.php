@@ -80,11 +80,27 @@ class AQ_Updater {
 	}
 
 	/**
+	 * True when WordPress is running a user-forced update check — i.e. the
+	 * "Check again" button on Dashboard → Updates, which loads
+	 * update-core.php?force-check=1. On a forced check we MUST bypass our own
+	 * release cache and re-query GitHub; otherwise a release published inside the
+	 * CACHE_TTL window stays invisible until the cache expires, and the only
+	 * thing that clears the cache is completing an update you can't yet see.
+	 */
+	public static function is_forced_check(): bool {
+		return !empty($_GET['force-check']); // phpcs:ignore WordPress.Security.NonceVerification
+	}
+
+	/**
 	 * Latest GitHub release for the product repo. Memoized per request, and
 	 * cached across requests — but ONLY on success. A failed lookup is never
 	 * persisted (the transient is cleared), so a transient GitHub error, a repo
 	 * that was just made public, or a token that was just fixed recovers on the
 	 * very next check instead of silently hiding updates for CACHE_TTL.
+	 *
+	 * A forced check (is_forced_check) skips the cached value and re-queries, then
+	 * refreshes the cache — so "Check again" dependably surfaces a new release the
+	 * moment it is published, instead of up to CACHE_TTL later.
 	 *
 	 * Returns ['version','zip','asset_api','theme_*','html','body'] or null.
 	 */
@@ -98,9 +114,11 @@ class AQ_Updater {
 			return $memo[$repo];
 		}
 
-		$cached = get_transient(self::CACHE_KEY);
-		if (is_array($cached) && ($cached['repo'] ?? '') === $repo && !empty($cached['release'])) {
-			return $memo[$repo] = $cached['release'];
+		if (!self::is_forced_check()) {
+			$cached = get_transient(self::CACHE_KEY);
+			if (is_array($cached) && ($cached['repo'] ?? '') === $repo && !empty($cached['release'])) {
+				return $memo[$repo] = $cached['release'];
+			}
 		}
 
 		$release = self::fetch_release($repo);
