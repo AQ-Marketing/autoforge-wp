@@ -39,6 +39,17 @@ return [
 	// Optional region phrase used in mega-menu labels (e.g. " in Massachusetts").
 	'regionSuffix' => '',
 
+	// Chrome presentation (header/footer). Client-overridable so a marketing
+	// agency can run a dark header with a "Book a call" CTA while an inspection
+	// client keeps the white header + "Schedule Inspection" defaults below.
+	'headerStyle' => 'light',  // 'light' | 'dark' — toggles header[data-header] CSS.
+	'showTopbar'  => true,     // false hides the address/experience top strip.
+	'stickyBar'   => true,     // false removes the floating sticky call bar.
+	// Header primary CTA button (label + href). Defaults to the inspection flow.
+	'headerCta'   => ['label' => 'Schedule Inspection', 'href' => '/schedule/'],
+	// Footer + sticky-bar CTA (label + href). Defaults to the inspection flow.
+	'footerCta'   => ['label' => 'Request a Call Back', 'href' => '/schedule/'],
+
 	// NAP — must match the Google Business Profile exactly.
 	'phone'    => '',
 	'phoneTel' => '',

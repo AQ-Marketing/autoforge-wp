@@ -535,6 +535,66 @@ $layouts['post_feed'] = [
 	],
 ];
 
+/* ---------------------------------------------------------------------------
+ * Dynamic layouts — register an ACF flexible-content layout for EVERY section
+ * type in the visual-editor schema (AQ_Editor::field_schema()) that isn't
+ * already declared above. Without a registered layout, ACF's update_field()
+ * and get_field() SILENTLY DROP a row's sub-field values — so JSON-imported
+ * and editor-saved pages of those types render structure-only (empty fields).
+ * This makes the full catalog (incl. the animated .hm-* types: stat_split,
+ * problem_panel, sticky_steps, service_showcase, proof_story, spotlight_grid,
+ * chip_marquee, compare_table, logo_marquee, network_hero, scrub_quote,
+ * local_hero, faq_split, cta_banner, …) persist + render through the standard
+ * ACF path. Manually-declared layouts above win and are skipped here.
+ * ------------------------------------------------------------------------- */
+if (is_callable(['AQ_Editor', 'field_schema'])) {
+	$aq_acf_type = [
+		'text' => 'text', 'textarea' => 'textarea', 'richtext' => 'wysiwyg',
+		'url' => 'url', 'select' => 'select', 'toggle' => 'true_false',
+		'image' => 'image', 'icon' => 'textarea', 'code' => 'textarea', 'number' => 'number',
+	];
+	$aq_build_field = function (array $f, string $ctx) use (&$aq_build_field, $aq_acf_type) {
+		$name = (string) ($f['name'] ?? '');
+		$type = (string) ($f['type'] ?? 'text');
+		$acf  = [
+			'key'   => 'field_aq_' . $ctx . '_' . $name,
+			'name'  => $name,
+			'label' => (string) ($f['label'] ?? $name),
+			'type'  => $aq_acf_type[$type] ?? 'text',
+		];
+		if ($type === 'select') {
+			$acf['choices'] = (array) ($f['options'] ?? []);
+		} elseif ($type === 'image') {
+			$acf['return_format'] = 'id';
+		} elseif ($type === 'toggle') {
+			$acf['ui'] = 1;
+		} elseif ($type === 'repeater') {
+			$acf['sub_fields'] = [];
+			foreach ((array) ($f['subfields'] ?? []) as $sf) {
+				$acf['sub_fields'][] = $aq_build_field($sf, $ctx . '_' . $name);
+			}
+		}
+		return $acf;
+	};
+	foreach (AQ_Editor::field_schema() as $aq_type => $aq_def) {
+		if (isset($layouts[$aq_type]) || !is_array($aq_def)) {
+			continue;
+		}
+		$aq_subs = [];
+		foreach ((array) ($aq_def['fields'] ?? []) as $aq_f) {
+			if (is_array($aq_f) && !empty($aq_f['name'])) {
+				$aq_subs[] = $aq_build_field($aq_f, $aq_type);
+			}
+		}
+		$layouts[$aq_type] = [
+			'key'        => 'layout_aq_' . $aq_type,
+			'name'       => $aq_type,
+			'label'      => $aq_type,
+			'sub_fields' => $aq_subs,
+		];
+	}
+}
+
 acf_add_local_field_group([
 	'key' => 'group_aq_sections',
 	'title' => 'Page Sections',

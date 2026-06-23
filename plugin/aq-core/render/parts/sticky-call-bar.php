@@ -7,6 +7,13 @@
 
 $phone     = aq_site('phone');
 $phone_tel = aq_site('phoneTel');
+
+// Client-overridable: a marketing client can suppress the floating bar entirely.
+if (aq_site('stickyBar') === false) {
+	return;
+}
+$cta_label = aq_str('footerCta.label', 'Request a Call Back');
+$cta_href  = aq_str('footerCta.href', '/schedule/');
 ?>
 <div
 	id="sticky-call-bar"
@@ -23,7 +30,7 @@ $phone_tel = aq_site('phoneTel');
 			<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="sticky-bar__phone"><?php echo esc_html($phone); ?></a>
 		</div>
 		<div class="sticky-bar__right">
-			<a href="/schedule/" class="sticky-bar__cta">Request a Call Back</a>
+			<a href="<?php echo esc_url($cta_href); ?>" class="sticky-bar__cta"><?php echo esc_html($cta_label); ?></a>
 			<button
 				id="sticky-call-bar-dismiss"
 				class="sticky-bar__dismiss"

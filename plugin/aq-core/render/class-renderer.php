@@ -83,15 +83,69 @@ class AQ_Renderer {
 	}
 
 	/**
-	 * Include a plugin render part by basename, optionally passing $args (the
-	 * same contract get_template_part()'s third parameter provided — the part
-	 * reads $args['…']). Used for site chrome and for sub-parts like post-card.
+	 * Include a render part by basename, optionally passing $args (the same
+	 * contract get_template_part()'s third parameter provided — the part reads
+	 * $args['…']). Used for site chrome (site-header, site-footer, head-open,
+	 * body-close, sticky-call-bar) and for sub-parts like post-card.
+	 *
+	 * RESOLUTION CHAIN (first readable wins):
+	 *   1. {child theme}/render-parts/{name}.php
+	 *   2. {parent theme}/render-parts/{name}.php
+	 *   3. {plugin}/render/parts/{name}.php           ← engine default
+	 *
+	 * This is what makes the engine design-agnostic: chrome is a single fixed
+	 * shell per design, so each client theme ships its OWN header/footer markup
+	 * (styled by its own compiled main.css) by dropping a file in render-parts/,
+	 * WITHOUT editing the plugin. A theme that overrides nothing transparently
+	 * gets the plugin's default chrome. (Section bodies are the other axis: they
+	 * are a registered typed catalog and live in the plugin — see render/sections.)
+	 *
+	 * Override the lookup roots via the `aq_part_roots` filter if a client wants
+	 * parts somewhere other than the active theme.
 	 */
 	public static function part(string $name, array $args = []): void {
-		$file = AQ_CORE_DIR . 'render/parts/' . $name . '.php';
-		if (is_readable($file)) {
-			self::include_section($file, $args);
+		$roots = apply_filters('aq_part_roots', [
+			get_stylesheet_directory() . '/render-parts/',
+			get_template_directory() . '/render-parts/',
+			AQ_CORE_DIR . 'render/parts/',
+		], $name);
+		foreach ($roots as $root) {
+			$file = rtrim((string) $root, '/\\') . '/' . $name . '.php';
+			if (is_readable($file)) {
+				self::include_section($file, $args);
+				return;
+			}
 		}
+	}
+
+	/**
+	 * Resolve a section body template by layout name (the section axis of the
+	 * design-agnostic model — mirrors part() for chrome).
+	 *
+	 * RESOLUTION CHAIN (first readable wins):
+	 *   1. {child theme}/render-sections/{layout}.php
+	 *   2. {parent theme}/render-sections/{layout}.php
+	 *   3. {plugin}/render/sections/{layout}.php          ← engine default
+	 *
+	 * This makes section bodies per-design: a client theme ships its OWN block
+	 * markup (styled by its own compiled main.css) by dropping a file in
+	 * render-sections/, WITHOUT editing the plugin. A theme that overrides
+	 * nothing transparently gets the plugin's default section catalog, so
+	 * existing sites are unaffected. Override the roots via `aq_section_roots`.
+	 */
+	public static function locate_section(string $layout): string {
+		$roots = apply_filters('aq_section_roots', [
+			get_stylesheet_directory() . '/render-sections/',
+			get_template_directory() . '/render-sections/',
+			AQ_CORE_DIR . 'render/sections/',
+		], $layout);
+		foreach ($roots as $root) {
+			$file = rtrim((string) $root, '/\\') . '/' . $layout . '.php';
+			if (is_readable($file)) {
+				return $file;
+			}
+		}
+		return '';
 	}
 
 	/**
@@ -117,8 +171,8 @@ class AQ_Renderer {
 			if ($layout === '') {
 				continue;
 			}
-			$file = AQ_CORE_DIR . 'render/sections/' . $layout . '.php';
-			if (!is_readable($file)) {
+			$file = self::locate_section($layout);
+			if ($file === '') {
 				continue;
 			}
 			if (!$mark) {

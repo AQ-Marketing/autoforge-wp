@@ -134,8 +134,18 @@ function normalizeSection(section, warnings) {
     if (!(f in section)) continue;
     let val;
     if (repeaters[f]) {
+      const boolSubs = spec.repeaterBool?.[f] || [];
       val = (Array.isArray(section[f]) ? section[f] : [])
-        .map((row) => orderObject(row, repeaters[f], warnings.repeaterExtras))
+        .map((row) => {
+          const r = orderObject(row, repeaters[f], warnings.repeaterExtras);
+          for (const b of boolSubs) {
+            if (b in r) {
+              if (castBool(r[b])) r[b] = true; // drop when false
+              else delete r[b];
+            }
+          }
+          return r;
+        })
         .filter((r) => !isEmpty(r));
     } else if (spec.bool?.includes(f)) {
       val = castBool(section[f]) ? true : false;

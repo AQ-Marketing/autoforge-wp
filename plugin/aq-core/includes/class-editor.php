@@ -224,7 +224,7 @@ class AQ_Editor {
 
 	/** Human labels for the section types (structure panel + add menu). */
 	public static function layout_labels(): array {
-		return [
+		$labels = [
 			// Heroes
 			'hero'             => 'Hero',
 			'city_hero'        => 'City Hero',
@@ -280,7 +280,68 @@ class AQ_Editor {
 			// Advanced
 			'rich_section'     => 'Rich Section (HTML)',
 			'raw_html'         => 'Raw HTML',
+			// Animated (AQM home/about) — bespoke .hm-* sections, GSAP/three.js driven
+			'logo_marquee'     => 'Logo Marquee (trust band)',
+			'stat_split'       => 'Stat Split (stats + map)',
+			'problem_panel'    => 'Problem Panel',
+			'sticky_steps'     => 'Sticky Steps',
+			'service_showcase' => 'Service Showcase (SERP + chat)',
+			'proof_story'      => 'Proof Story (review)',
+			'spotlight_grid'   => 'Spotlight Grid (platform)',
+			'chip_marquee'     => 'Chip Marquee (industries)',
+			'compare_table'    => 'Compare Table',
+			'scrub_quote'      => 'Scrub Quote (mission)',
+			'network_hero'     => 'Network Hero (3D, about)',
+			'local_hero'       => 'Local Hero (home hero)',
+			'faq_split'        => 'FAQ Split (sticky side)',
+			'cta_banner'       => 'CTA Banner (.cta-band)',
 		];
+
+		// Per-design block packs add their labels here (see aq_field_schema).
+		return apply_filters('aq_layout_labels', $labels);
+	}
+
+	/**
+	 * Derive a field-order spec entry ({ v, fields, bool, int, repeaters }) from a
+	 * field_schema() definition. Lets a per-design block pack declare a block once
+	 * (in the aq_field_schema filter) and feed the import/normalizer field-order
+	 * (the aq_field_order filter) without hand-duplicating the field list. Maps:
+	 * number→int, toggle/true_false→bool, repeater→{name: [subfield names]}.
+	 */
+	public static function field_order_from_schema(array $def, int $v = 1): array {
+		$fields = $bool = $int = $repeaters = [];
+		foreach (($def['fields'] ?? []) as $f) {
+			$name = $f['name'] ?? '';
+			if ($name === '') {
+				continue;
+			}
+			$fields[] = $name;
+			$type = $f['type'] ?? 'text';
+			if ($type === 'toggle' || $type === 'true_false') {
+				$bool[] = $name;
+			} elseif ($type === 'number') {
+				$int[] = $name;
+			} elseif ($type === 'repeater') {
+				$sub = [];
+				foreach (($f['subfields'] ?? $f['sub_fields'] ?? []) as $sf) {
+					if (!empty($sf['name'])) {
+						$sub[] = $sf['name'];
+					}
+				}
+				$repeaters[$name] = $sub;
+			}
+		}
+		$out = ['v' => $v, 'fields' => $fields];
+		if ($bool) {
+			$out['bool'] = $bool;
+		}
+		if ($int) {
+			$out['int'] = $int;
+		}
+		if ($repeaters) {
+			$out['repeaters'] = $repeaters;
+		}
+		return $out;
 	}
 
 	/**
@@ -427,7 +488,7 @@ class AQ_Editor {
 				['name' => 'subheading', 'label' => 'Subheading', 'type' => 'text'],
 				['name' => 'intro', 'label' => 'Intro', 'type' => 'textarea'],
 				['name' => 'cards', 'label' => 'Cards', 'type' => 'repeater', 'subfields' => [
-					['name' => 'icon_svg', 'label' => 'Icon', 'type' => 'icon'],
+					['name' => 'fa', 'label' => 'Font Awesome class (e.g. fa-star)', 'type' => 'text'],
 					['name' => 'title', 'label' => 'Title', 'type' => 'text'],
 					['name' => 'body', 'label' => 'Body', 'type' => 'textarea'],
 					['name' => 'link_label', 'label' => 'Link label', 'type' => 'text'],
@@ -441,7 +502,7 @@ class AQ_Editor {
 				['name' => 'subheading', 'label' => 'Subheading', 'type' => 'text'],
 				['name' => 'intro', 'label' => 'Intro', 'type' => 'textarea'],
 				['name' => 'cards', 'label' => 'Cards', 'type' => 'repeater', 'subfields' => [
-					['name' => 'icon_svg', 'label' => 'Icon', 'type' => 'icon'],
+					['name' => 'fa', 'label' => 'Font Awesome class (e.g. fa-star)', 'type' => 'text'],
 					['name' => 'title', 'label' => 'Title', 'type' => 'text'],
 					['name' => 'body', 'label' => 'Body', 'type' => 'textarea'],
 					['name' => 'price_primary', 'label' => 'Price line 1', 'type' => 'text'],
@@ -602,6 +663,271 @@ class AQ_Editor {
 			]],
 		];
 
+		/* ---------------- animated (AQM home/about) ----------------
+		 * Bespoke .hm-* sections ported from the GSAP/three.js home + about
+		 * pages. SVG/canvas/mock chrome is structural; every readable token is
+		 * a typed field. Assigned after the literal to keep the diff localized. */
+		$schema['scrub_quote'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 05)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'quote', 'label' => 'Quote (scrub-animates word by word)', 'type' => 'textarea'],
+			['name' => 'author_initials', 'label' => 'Avatar initials', 'type' => 'text'],
+			['name' => 'author_name', 'label' => 'Author name', 'type' => 'text'],
+			['name' => 'author_role', 'label' => 'Author role / location', 'type' => 'text'],
+		]];
+		$schema['logo_marquee'] = ['fields' => [
+			['name' => 'label_lead', 'label' => 'Label lead text', 'type' => 'text'],
+			['name' => 'label_strong', 'label' => 'Label bold text', 'type' => 'text'],
+			['name' => 'logos', 'label' => 'Client names', 'type' => 'repeater', 'subfields' => [
+				['name' => 'name', 'label' => 'Client name', 'type' => 'text'],
+			]],
+		]];
+		$schema['stat_split'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 01)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'aside_text', 'label' => 'Aside paragraph', 'type' => 'textarea'],
+			['name' => 'aside_link_text', 'label' => 'Aside link text', 'type' => 'text'],
+			['name' => 'aside_link_href', 'label' => 'Aside link URL', 'type' => 'url'],
+			['name' => 'show_map', 'label' => 'Show map figure', 'type' => 'toggle'],
+			['name' => 'stats', 'label' => 'Stats (2x2)', 'type' => 'repeater', 'subfields' => [
+				['name' => 'value', 'label' => 'Value (number, or text e.g. 24/7)', 'type' => 'text'],
+				['name' => 'value_from', 'label' => 'Count-up from (blank = 0)', 'type' => 'text'],
+				['name' => 'suffix', 'label' => 'Suffix (e.g. %, yrs, days)', 'type' => 'text'],
+				['name' => 'label', 'label' => 'Label', 'type' => 'text'],
+			]],
+		]];
+		$schema['problem_panel'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 02)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'note', 'label' => 'Aside note', 'type' => 'text'],
+			['name' => 'search_term', 'label' => 'Buried mock — search term', 'type' => 'text'],
+			['name' => 'comp_rows', 'label' => 'Buried competitor rows', 'type' => 'repeater', 'subfields' => [
+				['name' => 'av', 'label' => 'Avatar letter', 'type' => 'text'],
+				['name' => 'name', 'label' => 'Business name', 'type' => 'text'],
+			]],
+			['name' => 'badge_title', 'label' => 'Buried badge title', 'type' => 'text'],
+			['name' => 'badge_sub', 'label' => 'Buried badge subtext', 'type' => 'text'],
+			['name' => 'you_av', 'label' => 'Your-row avatar text', 'type' => 'text'],
+			['name' => 'you_name', 'label' => 'Your-row business label', 'type' => 'text'],
+			['name' => 'pains', 'label' => 'Pain points', 'type' => 'repeater', 'subfields' => [
+				['name' => 'fa', 'label' => 'Font Awesome class (e.g. fa-star)', 'type' => 'text'],
+				['name' => 'title', 'label' => 'Title', 'type' => 'text'],
+				['name' => 'body', 'label' => 'Body', 'type' => 'textarea'],
+			]],
+		]];
+		$schema['sticky_steps'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 03)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'steps', 'label' => 'Steps', 'type' => 'repeater', 'subfields' => [
+				['name' => 'tag', 'label' => 'Tag (e.g. Step 01)', 'type' => 'text'],
+				['name' => 'title', 'label' => 'Title', 'type' => 'text'],
+				['name' => 'body', 'label' => 'Body', 'type' => 'textarea'],
+				['name' => 'meta', 'label' => 'Meta chips (one per line)', 'type' => 'textarea'],
+			]],
+		]];
+		$schema['service_showcase'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 04)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'aside_text', 'label' => 'Aside paragraph', 'type' => 'textarea'],
+			['name' => 'aside_link_text', 'label' => 'Aside link text', 'type' => 'text'],
+			['name' => 'aside_link_href', 'label' => 'Aside link URL', 'type' => 'url'],
+			['name' => 'serp_query', 'label' => 'SERP search query', 'type' => 'text'],
+			['name' => 'serp_map_tag', 'label' => 'SERP map tag', 'type' => 'text'],
+			['name' => 'serp_divider', 'label' => 'SERP divider label', 'type' => 'text'],
+			['name' => 'serp_rows', 'label' => 'SERP rows (row 1 = you; keep 4 rows)', 'type' => 'repeater', 'subfields' => [
+				['name' => 'name', 'label' => 'Business name', 'type' => 'text'],
+				['name' => 'rating', 'label' => 'Rating + reviews + town', 'type' => 'text'],
+				['name' => 'is_you', 'label' => 'This is "You" (rank #1)', 'type' => 'toggle'],
+				['name' => 'badge', 'label' => 'Rank badge (e.g. #1)', 'type' => 'text'],
+				['name' => 'dim', 'label' => 'Below the pack (dimmed; show divider above)', 'type' => 'toggle'],
+			]],
+			['name' => 'serp_cap_title', 'label' => 'SERP caption title', 'type' => 'text'],
+			['name' => 'serp_cap_text', 'label' => 'SERP caption text', 'type' => 'text'],
+			['name' => 'serp_cap_link_text', 'label' => 'SERP caption link text', 'type' => 'text'],
+			['name' => 'serp_cap_link_href', 'label' => 'SERP caption link URL', 'type' => 'url'],
+			['name' => 'chat_avatar', 'label' => 'Chat avatar initials', 'type' => 'text'],
+			['name' => 'chat_title', 'label' => 'Chat header title', 'type' => 'text'],
+			['name' => 'chat_status', 'label' => 'Chat status line', 'type' => 'text'],
+			['name' => 'chat_timestamp', 'label' => 'Chat timestamp divider', 'type' => 'text'],
+			['name' => 'chat_lines', 'label' => 'Chat messages (in order)', 'type' => 'repeater', 'subfields' => [
+				['name' => 'who', 'label' => 'Sender', 'type' => 'select', 'options' => ['u' => 'User', 'a' => 'AI']],
+				['name' => 'text', 'label' => 'Message', 'type' => 'textarea'],
+			]],
+			['name' => 'chat_card_title', 'label' => 'Booked-card title', 'type' => 'text'],
+			['name' => 'chat_card_sub', 'label' => 'Booked-card subline', 'type' => 'text'],
+			['name' => 'chat_cap_title', 'label' => 'Chat caption title', 'type' => 'text'],
+			['name' => 'chat_cap_text', 'label' => 'Chat caption text', 'type' => 'text'],
+			['name' => 'chat_cap_link_text', 'label' => 'Chat caption link text', 'type' => 'text'],
+			['name' => 'chat_cap_link_href', 'label' => 'Chat caption link URL', 'type' => 'url'],
+			['name' => 'svc_cards', 'label' => 'Service cards (below the mocks)', 'type' => 'repeater', 'subfields' => [
+				['name' => 'tag', 'label' => 'Tag (e.g. Local SEO)', 'type' => 'text'],
+				['name' => 'title', 'label' => 'Title', 'type' => 'text'],
+				['name' => 'body', 'label' => 'Body', 'type' => 'text'],
+				['name' => 'features', 'label' => 'Feature list (one per line)', 'type' => 'textarea'],
+			]],
+		]];
+		$schema['proof_story'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 05)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'quote', 'label' => 'Pull quote (scrub-brightens)', 'type' => 'textarea'],
+			['name' => 'author_initials', 'label' => 'Author initials (avatar)', 'type' => 'text'],
+			['name' => 'author_name', 'label' => 'Author name', 'type' => 'text'],
+			['name' => 'author_role', 'label' => 'Author role / company', 'type' => 'text'],
+			['name' => 'review_rating', 'label' => 'Review rating (e.g. 4.9)', 'type' => 'text'],
+			['name' => 'review_count', 'label' => 'Review count line', 'type' => 'text'],
+			['name' => 'review_snip_initials', 'label' => 'Snippet avatar initials', 'type' => 'text'],
+			['name' => 'review_snip_text', 'label' => 'Snippet quote', 'type' => 'text'],
+			['name' => 'bars', 'label' => 'Rating bars (5→1)', 'type' => 'repeater', 'subfields' => [
+				['name' => 'star', 'label' => 'Star number (5..1)', 'type' => 'text'],
+				['name' => 'pct', 'label' => 'Bar fill % (0–100)', 'type' => 'text'],
+			]],
+			['name' => 'metrics', 'label' => 'Metric tiles', 'type' => 'repeater', 'subfields' => [
+				['name' => 'fa', 'label' => 'Font Awesome class (e.g. fa-star)', 'type' => 'text'],
+				['name' => 'label', 'label' => 'Metric label', 'type' => 'text'],
+				['name' => 'prefix', 'label' => 'Value prefix (e.g. #)', 'type' => 'text'],
+				['name' => 'from', 'label' => 'Count-from (start value)', 'type' => 'text'],
+				['name' => 'to', 'label' => 'Count-to (end value)', 'type' => 'text'],
+				['name' => 'suffix', 'label' => 'Value suffix (e.g. /mo)', 'type' => 'text'],
+				['name' => 'old_value', 'label' => 'Struck-out old value', 'type' => 'text'],
+				['name' => 'caption', 'label' => 'Caption beneath', 'type' => 'text'],
+			]],
+		]];
+		$schema['spotlight_grid'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 06)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'aside_text', 'label' => 'Aside paragraph', 'type' => 'textarea'],
+			['name' => 'dash_chart_label', 'label' => 'Dashboard chart label', 'type' => 'text'],
+			['name' => 'dash_ring_value', 'label' => 'Donut center value', 'type' => 'text'],
+			['name' => 'dash_ring_label', 'label' => 'Donut center label', 'type' => 'text'],
+			['name' => 'dash_kpis', 'label' => 'Dashboard KPIs', 'type' => 'repeater', 'subfields' => [
+				['name' => 'value', 'label' => 'KPI value', 'type' => 'text'],
+				['name' => 'label', 'label' => 'KPI label', 'type' => 'text'],
+			]],
+			['name' => 'cells', 'label' => 'Capability cells', 'type' => 'repeater', 'subfields' => [
+				['name' => 'number', 'label' => 'Number', 'type' => 'text'],
+				['name' => 'title', 'label' => 'Title', 'type' => 'text'],
+				['name' => 'body', 'label' => 'Body', 'type' => 'textarea'],
+			]],
+		]];
+		$schema['chip_marquee'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 07)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'aside_text', 'label' => 'Aside paragraph', 'type' => 'textarea'],
+			['name' => 'aside_link_text', 'label' => 'Aside link text', 'type' => 'text'],
+			['name' => 'aside_link_href', 'label' => 'Aside link URL', 'type' => 'url'],
+			['name' => 'row1_speed', 'label' => 'Row 1 speed (e.g. 0.55)', 'type' => 'text'],
+			['name' => 'row1_chips', 'label' => 'Row 1 chips', 'type' => 'repeater', 'subfields' => [
+				['name' => 'fa', 'label' => 'Font Awesome class (e.g. fa-star)', 'type' => 'text'],
+				['name' => 'label', 'label' => 'Label', 'type' => 'text'],
+				['name' => 'href', 'label' => 'Link URL', 'type' => 'url'],
+			]],
+			['name' => 'row2_speed', 'label' => 'Row 2 speed (e.g. -0.45)', 'type' => 'text'],
+			['name' => 'row2_chips', 'label' => 'Row 2 chips', 'type' => 'repeater', 'subfields' => [
+				['name' => 'fa', 'label' => 'Font Awesome class (e.g. fa-star)', 'type' => 'text'],
+				['name' => 'label', 'label' => 'Label', 'type' => 'text'],
+				['name' => 'href', 'label' => 'Link URL', 'type' => 'url'],
+			]],
+		]];
+		$schema['compare_table'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 08)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker label', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'col_feature', 'label' => 'Column 1 header (features)', 'type' => 'text'],
+			['name' => 'col_us', 'label' => 'Column 2 header (us)', 'type' => 'text'],
+			['name' => 'col_us_flag', 'label' => 'Column 2 flag (e.g. Recommended)', 'type' => 'text'],
+			['name' => 'col_b', 'label' => 'Column 3 header', 'type' => 'text'],
+			['name' => 'col_c', 'label' => 'Column 4 header', 'type' => 'text'],
+			['name' => 'rows', 'label' => 'Comparison rows', 'type' => 'repeater', 'subfields' => [
+				['name' => 'feature', 'label' => 'Feature', 'type' => 'text'],
+				['name' => 'us_text', 'label' => 'Us — text (blank = just the check)', 'type' => 'text'],
+				['name' => 'us_check', 'label' => 'Us — show green check', 'type' => 'toggle'],
+				['name' => 'col_b_text', 'label' => 'Column 3 cell', 'type' => 'text'],
+				['name' => 'col_c_text', 'label' => 'Column 4 cell', 'type' => 'text'],
+			]],
+		]];
+		$schema['network_hero'] = ['fields' => [
+			['name' => 'badge', 'label' => 'Badge', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading (H1)', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gold)', 'type' => 'text'],
+			['name' => 'intro', 'label' => 'Intro (lede)', 'type' => 'textarea'],
+			['name' => 'ctas', 'label' => 'Buttons', 'type' => 'repeater', 'subfields' => [
+				['name' => 'label', 'label' => 'Label', 'type' => 'text'],
+				['name' => 'href', 'label' => 'Link', 'type' => 'url'],
+				['name' => 'style', 'label' => 'Style', 'type' => 'select', 'options' => ['dark' => 'Dark solid', 'outline' => 'Outline']],
+				['name' => 'note', 'label' => 'Muted suffix (e.g. · no pitch)', 'type' => 'text'],
+			]],
+			['name' => 'notes', 'label' => 'Trust check items', 'type' => 'repeater', 'subfields' => [
+				['name' => 'text', 'label' => 'Item', 'type' => 'text'],
+			]],
+		]];
+
+		$schema['local_hero'] = ['fields' => [
+			['name' => 'badge_fa', 'label' => 'Badge icon (FA class, e.g. fa-bolt)', 'type' => 'text'],
+			['name' => 'badge', 'label' => 'Badge', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading (H1)', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (red)', 'type' => 'text'],
+			['name' => 'lede', 'label' => 'Lede', 'type' => 'textarea'],
+			['name' => 'ctas', 'label' => 'Buttons', 'type' => 'repeater', 'subfields' => [
+				['name' => 'label', 'label' => 'Label', 'type' => 'text'],
+				['name' => 'sublabel', 'label' => 'Faded suffix (e.g. · free audit)', 'type' => 'text'],
+				['name' => 'href', 'label' => 'Link', 'type' => 'url'],
+				['name' => 'style', 'label' => 'Style', 'type' => 'select', 'options' => ['dark' => 'Dark solid', 'outline' => 'Outline']],
+			]],
+			['name' => 'notes', 'label' => 'Trust check items', 'type' => 'repeater', 'subfields' => [
+				['name' => 'fa', 'label' => 'Icon (FA class)', 'type' => 'text'],
+				['name' => 'text', 'label' => 'Item', 'type' => 'text'],
+			]],
+		]];
+
+		$schema['faq_split'] = ['fields' => [
+			['name' => 'num', 'label' => 'Section number (e.g. 09)', 'type' => 'text'],
+			['name' => 'kicker', 'label' => 'Kicker', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (em)', 'type' => 'text'],
+			['name' => 'aside_note', 'label' => 'Aside note', 'type' => 'textarea'],
+			['name' => 'cta_label', 'label' => 'CTA label', 'type' => 'text'],
+			['name' => 'cta_href', 'label' => 'CTA link', 'type' => 'url'],
+			['name' => 'items', 'label' => 'Questions', 'type' => 'repeater', 'subfields' => [
+				['name' => 'q', 'label' => 'Question', 'type' => 'text'],
+				['name' => 'a', 'label' => 'Answer', 'type' => 'textarea'],
+			]],
+			['name' => 'schema', 'label' => 'Emit FAQ rich-results schema', 'type' => 'toggle'],
+		]];
+
+		$schema['cta_banner'] = ['fields' => [
+			['name' => 'eyebrow_fa', 'label' => 'Eyebrow icon (FA class)', 'type' => 'text'],
+			['name' => 'eyebrow', 'label' => 'Eyebrow', 'type' => 'text'],
+			['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+			['name' => 'heading_accent', 'label' => 'Heading accent (gradient em)', 'type' => 'text'],
+			['name' => 'body', 'label' => 'Body', 'type' => 'textarea'],
+			['name' => 'ctas', 'label' => 'Buttons', 'type' => 'repeater', 'subfields' => [
+				['name' => 'fa', 'label' => 'Icon (FA class)', 'type' => 'text'],
+				['name' => 'label', 'label' => 'Label', 'type' => 'text'],
+				['name' => 'href', 'label' => 'Link', 'type' => 'url'],
+				['name' => 'style', 'label' => 'Style', 'type' => 'select', 'options' => ['primary' => 'Primary', 'ghost' => 'Ghost']],
+			]],
+			['name' => 'stats', 'label' => 'Stat tiles', 'type' => 'repeater', 'subfields' => [
+				['name' => 'fa', 'label' => 'Icon (FA class)', 'type' => 'text'],
+				['name' => 'value', 'label' => 'Value', 'type' => 'text'],
+				['name' => 'label', 'label' => 'Label', 'type' => 'text'],
+			]],
+		]];
+
 		/*
 		 * Design controls. These fields ALREADY exist in the ACF registration
 		 * (includes/fields/sections.php) and are honored by the templates; the
@@ -658,7 +984,19 @@ class AQ_Editor {
 				$schema[$type]['fields'] = array_merge($schema[$type]['fields'], $fields);
 			}
 		}
-		return $schema;
+
+		/*
+		 * Per-design block packs. A client theme registers its own section
+		 * types here (theme/{design}/blocks.php, included from functions.php so
+		 * it runs before acf/init + the editor). Each added entry shape:
+		 *   'my_block' => ['fields' => [ ['name'=>…,'label'=>…,'type'=>…], … ]]
+		 * The ACF flexible-content converter (includes/fields/sections.php) and
+		 * the inspector both read this, so a registered block gets DB persistence
+		 * + editor controls automatically; its markup lives in the theme's
+		 * render-sections/{type}.php (resolved by AQ_Renderer::locate_section()).
+		 * No filters added = the plugin's default catalog, unchanged.
+		 */
+		return apply_filters('aq_field_schema', $schema);
 	}
 
 	/**

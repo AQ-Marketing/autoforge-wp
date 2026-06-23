@@ -891,6 +891,16 @@ class AQ_Content_Sync {
 			$path = dirname(__DIR__) . '/config/field-order.json';
 			$raw  = is_readable($path) ? (string) file_get_contents($path) : '';
 			$spec = $raw ? (json_decode($raw, true) ?: []) : [];
+			/*
+			 * Per-design block packs extend the section field-order spec: a theme
+			 * adds its blocks' { v, fields, bool, int, repeaters } under
+			 * $spec['sections'][$type]. Mirrors aq_field_schema / aq_layout_labels
+			 * so the offline JSON import path (validate_item + normalize_page)
+			 * accepts theme-registered blocks. AQ_Editor::field_order_from_schema()
+			 * derives an entry from a field_schema def so themes stay DRY.
+			 * No filter added = the plugin's default field-order.json, unchanged.
+			 */
+			$spec = apply_filters('aq_field_order', $spec);
 		}
 		return $spec;
 	}
@@ -1060,9 +1070,19 @@ class AQ_Content_Sync {
 				continue;
 			}
 			if (isset($repeaters[$f])) {
+				$boolSubs = $defs['repeaterBool'][$f] ?? [];
 				$rows = [];
 				foreach ((array) $section[$f] as $row) {
 					$r = self::order_object($row, $repeaters[$f]);
+					foreach ($boolSubs as $b) {
+						if (array_key_exists($b, $r)) {
+							if (self::cast_bool($r[$b])) {
+								$r[$b] = true; // drop when false
+							} else {
+								unset($r[$b]);
+							}
+						}
+					}
 					if (self::nz($r)) {
 						$rows[] = $r;
 					}

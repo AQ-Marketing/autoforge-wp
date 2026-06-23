@@ -62,6 +62,22 @@ function aq_site(?string $path = null) {
 }
 }
 
+if (!function_exists('aq_str')) {
+/**
+ * Scalar-safe config leaf accessor. Returns aq_site($path) coerced to a string,
+ * or $default when the stored value is missing or a non-scalar (array/object).
+ *
+ * Render parts feed config values straight into esc_html()/esc_url()/esc_attr().
+ * A mis-authored brand.json that writes a leaf (e.g. headerCta.label) as an
+ * array would otherwise reach esc_html() and throw a TypeError mid-render —
+ * blanking the page. Use aq_str() for any config value printed into markup.
+ */
+function aq_str(?string $path, string $default = ''): string {
+	$v = $path === null ? null : aq_site($path);
+	return is_scalar($v) ? (string) $v : $default;
+}
+}
+
 require_once AQ_CORE_DIR . 'includes/class-site-config.php'; // load first: aq_site() overlay
 require_once AQ_CORE_DIR . 'includes/class-cleanup.php';
 require_once AQ_CORE_DIR . 'includes/class-comments.php';
@@ -85,6 +101,7 @@ require_once AQ_CORE_DIR . 'includes/class-navigation.php';
 require_once AQ_CORE_DIR . 'includes/class-tracking.php';
 require_once AQ_CORE_DIR . 'includes/class-page-folders.php';
 require_once AQ_CORE_DIR . 'includes/class-updater.php';
+require_once AQ_CORE_DIR . 'includes/class-body-class.php';
 require_once AQ_CORE_DIR . 'render/class-renderer.php';
 
 /**
@@ -122,6 +139,7 @@ AQ_Navigation::register();
 AQ_Tracking::register();
 AQ_Page_Folders::register();
 AQ_Updater::register();
+AQ_Body_Class::register();
 AQ_Renderer::register();
 
 /**

@@ -40,7 +40,7 @@
         "required": ["type", "v"],
         "properties": {
           "type": {
-            "enum": ["hero", "why_overview", "journey_cards", "dark_card_grid", "trust_image_left", "testimonials", "faq", "final_cta", "raw_html", "post_feed", "breadcrumb", "page_header", "prose", "faq_dl", "link_card_grid", "cta_band", "city_hero", "prose_with_image", "prose_article", "legal_doc", "town_card_grid", "service_card_grid", "feature_cards", "step_cards", "rich_section", "media_hero", "gallery", "video", "columns", "team", "logos", "embed", "accordion", "button_group", "callout", "cta", "divider", "heading_block", "icon_list", "image_block", "pricing_table", "quote", "spacer", "stats", "text_block", "timeline"]
+            "enum": ["hero", "why_overview", "journey_cards", "dark_card_grid", "trust_image_left", "testimonials", "faq", "final_cta", "raw_html", "post_feed", "breadcrumb", "page_header", "prose", "faq_dl", "link_card_grid", "cta_band", "city_hero", "prose_with_image", "prose_article", "legal_doc", "town_card_grid", "service_card_grid", "feature_cards", "step_cards", "rich_section", "media_hero", "gallery", "video", "columns", "team", "logos", "embed", "accordion", "button_group", "callout", "cta", "divider", "heading_block", "icon_list", "image_block", "pricing_table", "quote", "spacer", "stats", "text_block", "timeline", "scrub_quote", "logo_marquee", "stat_split", "problem_panel", "sticky_steps", "service_showcase", "proof_story", "spotlight_grid", "chip_marquee", "compare_table", "network_hero", "local_hero", "faq_split", "cta_banner"]
           },
           "v": { "type": "integer", "minimum": 1 }
         }

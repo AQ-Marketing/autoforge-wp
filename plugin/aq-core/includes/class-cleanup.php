@@ -11,6 +11,8 @@ class AQ_Cleanup {
 		add_action('init', [__CLASS__, 'strip_head']);
 		add_action('wp_enqueue_scripts', [__CLASS__, 'dequeue_styles'], 100);
 		add_filter('the_content', [__CLASS__, 'noop'], 0); // placeholder priority anchor
+		add_filter('upload_mimes', [__CLASS__, 'allow_svg']);
+		add_filter('wp_check_filetype_and_ext', [__CLASS__, 'fix_svg_filetype'], 10, 5);
 		self::disable_texturizing();
 		self::disable_features();
 	}
@@ -81,5 +83,24 @@ class AQ_Cleanup {
 
 		// Comments are disabled site-wide by AQ_Comments (every surface, not
 		// just the front end) — kept out of here so there's one owner.
+	}
+
+	public static function allow_svg(array $mimes): array {
+		$mimes['svg']  = 'image/svg+xml';
+		$mimes['svgz'] = 'image/svg+xml';
+		return $mimes;
+	}
+
+	public static function fix_svg_filetype($data, $file, $filename, $mimes, $real_mime = '') {
+		if (!empty($data['ext']) && !empty($data['type'])) {
+			return $data;
+		}
+		$ext = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+		if ($ext === 'svg' || $ext === 'svgz') {
+			$data['ext']  = $ext;
+			$data['type'] = 'image/svg+xml';
+			$data['proper_filename'] = $filename;
+		}
+		return $data;
 	}
 }

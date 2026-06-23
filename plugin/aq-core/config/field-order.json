@@ -892,6 +892,106 @@
       },
       "bool": [],
       "int": []
+    },
+    "scrub_quote": {
+      "v": 1,
+      "fields": ["num","kicker","quote","author_initials","author_name","author_role"],
+      "bool": [],
+      "int": [],
+      "repeaters": {}
+    },
+    "logo_marquee": {
+      "v": 1,
+      "fields": ["label_lead","label_strong","logos"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "logos": ["name"] }
+    },
+    "stat_split": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","aside_text","aside_link_text","aside_link_href","show_map","stats"],
+      "bool": ["show_map"],
+      "int": [],
+      "repeaters": { "stats": ["value","value_from","suffix","label"] }
+    },
+    "problem_panel": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","note","search_term","comp_rows","badge_title","badge_sub","you_av","you_name","pains"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "comp_rows": ["av","name"], "pains": ["fa","title","body"] }
+    },
+    "sticky_steps": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","steps"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "steps": ["tag","title","body","meta"] }
+    },
+    "service_showcase": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","aside_text","aside_link_text","aside_link_href","serp_query","serp_map_tag","serp_divider","serp_rows","serp_cap_title","serp_cap_text","serp_cap_link_text","serp_cap_link_href","chat_avatar","chat_title","chat_status","chat_timestamp","chat_lines","chat_card_title","chat_card_sub","chat_cap_title","chat_cap_text","chat_cap_link_text","chat_cap_link_href","svc_cards"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "serp_rows": ["name","rating","is_you","badge","dim"], "chat_lines": ["who","text"], "svc_cards": ["tag","title","body","features"] },
+      "repeaterBool": { "serp_rows": ["is_you","dim"] }
+    },
+    "proof_story": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","quote","author_initials","author_name","author_role","review_rating","review_count","review_snip_initials","review_snip_text","bars","metrics"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "bars": ["star","pct"], "metrics": ["fa","label","prefix","from","to","suffix","old_value","caption"] }
+    },
+    "spotlight_grid": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","aside_text","dash_chart_label","dash_ring_value","dash_ring_label","dash_kpis","cells"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "dash_kpis": ["value","label"], "cells": ["number","title","body"] }
+    },
+    "chip_marquee": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","aside_text","aside_link_text","aside_link_href","row1_speed","row1_chips","row2_speed","row2_chips"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "row1_chips": ["fa","label","href"], "row2_chips": ["fa","label","href"] }
+    },
+    "compare_table": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","col_feature","col_us","col_us_flag","col_b","col_c","rows"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "rows": ["feature","us_text","us_check","col_b_text","col_c_text"] },
+      "repeaterBool": { "rows": ["us_check"] }
+    },
+    "network_hero": {
+      "v": 1,
+      "fields": ["badge","heading","heading_accent","intro","ctas","notes"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "ctas": ["label","href","style","note"], "notes": ["text"] }
+    },
+    "local_hero": {
+      "v": 1,
+      "fields": ["badge_fa","badge","heading","heading_accent","lede","ctas","notes"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "ctas": ["label","sublabel","href","style"], "notes": ["fa","text"] }
+    },
+    "faq_split": {
+      "v": 1,
+      "fields": ["num","kicker","heading","heading_accent","aside_note","cta_label","cta_href","items","schema"],
+      "bool": ["schema"],
+      "int": [],
+      "repeaters": { "items": ["q","a"] }
+    },
+    "cta_banner": {
+      "v": 1,
+      "fields": ["eyebrow_fa","eyebrow","heading","heading_accent","body","ctas","stats"],
+      "bool": [],
+      "int": [],
+      "repeaters": { "ctas": ["fa","label","href","style"], "stats": ["fa","value","label"] }
     }
   }
 }

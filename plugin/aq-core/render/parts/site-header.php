@@ -48,8 +48,17 @@ $years     = aq_site('founded') ? ((int) date('Y') - (int) aq_site('founded')) :
 $addr      = aq_site('address') ?: [];
 $region    = $addr['region'] ?? '';
 $logo_id   = (int) aq_site('logo.id');
+
+// Client-overridable chrome (see config/site.php). A marketing client runs the
+// dark header + "Book a call"; inspection clients keep the white defaults.
+$header_style = aq_site('headerStyle') ?: 'light';
+$show_topbar  = aq_site('showTopbar');
+$show_topbar  = ($show_topbar === null) ? true : (bool) $show_topbar;
+$cta_label    = aq_str('headerCta.label', 'Schedule Inspection');
+$cta_href     = aq_str('headerCta.href', '/schedule/');
 ?>
-<header class="sticky top-0 z-40 bg-white border-b-4 border-accent-500">
+<header class="sticky top-0 z-40 bg-white border-b-4 border-accent-500" data-header="<?php echo esc_attr($header_style); ?>">
+	<?php if ($show_topbar) : ?>
 	<div class="hidden md:block bg-brand-900 text-white text-xs">
 		<div class="container-edge flex flex-wrap items-center justify-between gap-2 py-2">
 			<div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-brand-100">
@@ -72,6 +81,7 @@ $logo_id   = (int) aq_site('logo.id');
 			</span>
 		</div>
 	</div>
+	<?php endif; ?>
 
 	<div class="container-edge flex items-center justify-between py-4 gap-4">
 		<a href="/" class="no-underline flex items-center" aria-label="<?php echo esc_attr(aq_site('shortName') . ' home'); ?>">
@@ -133,7 +143,7 @@ $logo_id   = (int) aq_site('logo.id');
 				<svg width="14" height="16" viewBox="0 0 384 512" fill="currentColor" aria-hidden="true"><path d="M16 64C16 28.7 44.7 0 80 0H304c35.3 0 64 28.7 64 64V448c0 35.3-28.7 64-64 64H80c-35.3 0-64-28.7-64-64V64zM144 448c0 8.8 7.2 16 16 16h64c8.8 0 16-7.2 16-16s-7.2-16-16-16H160c-8.8 0-16 7.2-16 16zM304 64H80V384H304V64z"/></svg>
 				<?php echo esc_html($phone); ?>
 			</a>
-			<a href="/schedule/" class="btn-primary text-xs uppercase tracking-wider py-2.5 px-5">Schedule Inspection</a>
+			<a href="<?php echo esc_url($cta_href); ?>" class="btn-primary text-xs uppercase tracking-wider py-2.5 px-5"><?php echo esc_html($cta_label); ?></a>
 		</nav>
 	</div>
 
@@ -172,7 +182,7 @@ $logo_id   = (int) aq_site('logo.id');
 				<div class="col-span-4 bg-brand-50 rounded-lg p-5 normal-case tracking-normal">
 					<p class="text-xs uppercase tracking-wider text-accent-700 font-semibold"><?php echo esc_html($svc_promo['eyebrow'] ?? 'Ready to schedule?'); ?></p>
 					<p class="mt-2 text-sm text-brand-700"><?php echo esc_html($svc_promo['text'] ?? ''); ?></p>
-					<a href="/schedule/" class="btn-primary text-xs uppercase tracking-wider mt-4 py-2.5 px-5 inline-block">Schedule Inspection</a>
+					<a href="<?php echo esc_url($cta_href); ?>" class="btn-primary text-xs uppercase tracking-wider mt-4 py-2.5 px-5 inline-block"><?php echo esc_html($cta_label); ?></a>
 					<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="block mt-3 text-brand-800 font-semibold no-underline hover:text-accent-700 text-sm">Call <?php echo esc_html($phone); ?></a>
 					<?php if ($license !== '' && $license !== null) : ?>
 					<p class="mt-3 text-xs text-brand-500"><?php echo esc_html(trim(($region ? $region . ' ' : '') . 'License #' . $license)); ?></p>
@@ -363,7 +373,7 @@ $logo_id   = (int) aq_site('logo.id');
 				<?php endif;
 			endforeach; ?>
 			<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="text-brand-800 no-underline py-4 border-b border-brand-100 font-semibold text-base">Call <?php echo esc_html($phone); ?></a>
-			<a href="/schedule/" class="btn-primary text-sm mt-4">Schedule Inspection</a>
+			<a href="<?php echo esc_url($cta_href); ?>" class="btn-primary text-sm mt-4"><?php echo esc_html($cta_label); ?></a>
 		</div>
 	</nav>
 </header>

@@ -197,7 +197,7 @@ class AQ_JsonLd {
 		}
 		foreach ($sections as $section) {
 			$layout = $section['acf_fc_layout'] ?? '';
-			if (!in_array($layout, ['faq', 'faq_dl'], true) || empty($section['schema']) || empty($section['items'])) {
+			if (!in_array($layout, ['faq', 'faq_dl', 'faq_split'], true) || empty($section['schema']) || empty($section['items'])) {
 				continue;
 			}
 			$entities = [];
