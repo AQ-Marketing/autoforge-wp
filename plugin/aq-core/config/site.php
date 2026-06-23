@@ -129,8 +129,18 @@ return [
 
 	// Footer link columns + social. 'about' is the descriptive blurb under the
 	// footer logo (full sentence; empty hides it).
+	// Header CTA button (desktop nav, mega-menu promo, mobile nav).
+	'headerCta' => ['label' => 'Schedule Inspection', 'href' => '/schedule/'],
+
+	// Footer + sticky bar CTA button.
+	'footerCta' => ['label' => 'Request a Call Back', 'href' => '/schedule/'],
+
+	// Sticky call bar (bottom of viewport).
+	'stickyBar' => ['label' => 'Questions? Call us:'],
+
 	'footer' => [
 		'about'       => '',
+		'contact'     => ['heading' => 'Contact Us'],
 		'company'     => ['heading' => 'Company', 'links' => []],
 		'inspections' => ['heading' => '', 'links' => []],
 		'legal'       => [],

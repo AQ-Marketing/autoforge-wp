@@ -7,11 +7,15 @@
 
 $phone     = aq_site('phone');
 $phone_tel = aq_site('phoneTel');
+
+$fcta_label   = aq_site('footerCta.label') ?: 'Request a Call Back';
+$fcta_href    = aq_site('footerCta.href') ?: '/schedule/';
+$sticky_label = aq_site('stickyBar.label') ?: 'Questions? Call us:';
 ?>
 <div
 	id="sticky-call-bar"
 	role="complementary"
-	aria-label="Request a callback"
+	aria-label="<?php echo esc_attr($fcta_label); ?>"
 	class="sticky-bar"
 >
 	<div class="sticky-bar__inner">
@@ -19,11 +23,11 @@ $phone_tel = aq_site('phoneTel');
 			<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="text-accent-500">
 				<path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 10.8a19.79 19.79 0 01-3.07-8.68A2 2 0 012 0h3a2 2 0 012 1.72c.127.96.36 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 7.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.34 1.85.573 2.81.7A2 2 0 0122 14.92v2z"/>
 			</svg>
-			<span class="sticky-bar__label">Questions? Call us:</span>
+			<span class="sticky-bar__label"><?php echo esc_html($sticky_label); ?></span>
 			<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="sticky-bar__phone"><?php echo esc_html($phone); ?></a>
 		</div>
 		<div class="sticky-bar__right">
-			<a href="/schedule/" class="sticky-bar__cta">Request a Call Back</a>
+			<a href="<?php echo esc_url($fcta_href); ?>" class="sticky-bar__cta"><?php echo esc_html($fcta_label); ?></a>
 			<button
 				id="sticky-call-bar-dismiss"
 				class="sticky-bar__dismiss"
