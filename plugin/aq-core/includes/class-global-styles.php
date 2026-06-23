@@ -47,7 +47,10 @@ class AQ_Global_Styles {
 		// tokens into one rule (e.g. .bg-brand-800,.bg-brand-900), so one swatch =
 		// one real color; changing it recolors every utility AND component class
 		// (.btn-primary, .pill-eyebrow, .h2-sub, …) that uses that exact value.
-		return [
+		// Defaults below are the aqm-base palette; a client theme supplies its own
+		// via the aq_global_styles_controls filter (the swatch defaults MUST match
+		// the theme's compiled token values or the override won't find them in CSS).
+		$controls = [
 			'colors' => [
 				['key' => 'navy',      'label' => 'Primary dark',          'help' => 'Dark sections, headings, footer, hero overlay.', 'default' => '#0f172a'],
 				['key' => 'body_navy', 'label' => 'Body text',             'help' => 'Main paragraph text.',                            'default' => '#334155'],
@@ -61,6 +64,8 @@ class AQ_Global_Styles {
 				['key' => 'sans',  'label' => 'Body font',    'help' => 'Used for body text and UI.', 'default' => 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'],
 			],
 		];
+
+		return apply_filters('aq_global_styles_controls', $controls);
 	}
 
 	/** Effective value for a control key: stored override, else its default. */
@@ -77,7 +82,12 @@ class AQ_Global_Styles {
 	public static function enqueue(): void {
 		$css = self::css_cached();
 		if ($css !== '') {
-			wp_add_inline_style('aqm-base', $css);
+			// Attach to the ACTIVE theme's main stylesheet handle (filterable), so the
+			// override prints right after main.css on ANY client theme — by convention
+			// each theme enqueues its stylesheet under a handle equal to its slug
+			// (get_stylesheet()), e.g. 'aqm-base' or 'kenarnold'.
+			$handle = (string) apply_filters('aq_theme_style_handle', get_stylesheet());
+			wp_add_inline_style($handle, $css);
 		}
 	}
 

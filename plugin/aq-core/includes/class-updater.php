@@ -34,8 +34,16 @@ class AQ_Updater {
 	const CACHE_KEY = 'aq_updater_release';
 	const CACHE_TTL = 6 * HOUR_IN_SECONDS;
 
-	/** Stub-theme folder slug the companion theme installs/updates into. */
-	const THEME_SLUG = 'aqm-base';
+	/**
+	 * Stub-theme folder slug the companion theme installs/updates into. Per-site via
+	 * the AQ_THEME_SLUG constant (wp-config) or the aq_theme_slug filter; defaults to
+	 * the ACTIVE theme (get_stylesheet()), so a site running its own theme never tries
+	 * to update a theme it doesn't ship (e.g. 'kenarnold' instead of 'aqm-base').
+	 */
+	public static function theme_slug(): string {
+		$slug = defined('AQ_THEME_SLUG') ? (string) AQ_THEME_SLUG : (string) get_stylesheet();
+		return (string) apply_filters('aq_theme_slug', $slug);
+	}
 
 	/**
 	 * Built-in product repo the updater checks for new releases. Override per
@@ -173,10 +181,10 @@ class AQ_Updater {
 			if (substr($name, -4) !== '.zip') {
 				continue;
 			}
-			if (strpos($name, self::THEME_SLUG) === 0) {
+			if (strpos($name, self::theme_slug()) === 0) {
 				$theme_zip       = (string) ($asset['browser_download_url'] ?? '');
 				$theme_asset_api = (string) ($asset['url'] ?? '');
-				if (preg_match('/^' . preg_quote(self::THEME_SLUG, '/') . '-(v?[0-9][0-9A-Za-z.\-]*)\.zip$/', $name, $mm)) {
+				if (preg_match('/^' . preg_quote(self::theme_slug(), '/') . '-(v?[0-9][0-9A-Za-z.\-]*)\.zip$/', $name, $mm)) {
 					$theme_version = ltrim($mm[1], 'vV');
 				}
 			} else {
@@ -234,7 +242,7 @@ class AQ_Updater {
 		if (!is_object($transient) || empty($transient->checked)) {
 			return $transient;
 		}
-		$installed = isset($transient->checked[self::THEME_SLUG]) ? (string) $transient->checked[self::THEME_SLUG] : '';
+		$installed = isset($transient->checked[self::theme_slug()]) ? (string) $transient->checked[self::theme_slug()] : '';
 		if ($installed === '') {
 			return $transient; // companion theme not installed on this site
 		}
@@ -249,8 +257,8 @@ class AQ_Updater {
 		// attach the token + octet-stream Accept; public repos use the direct URL.
 		$package = (self::token() !== '' && !empty($release['theme_asset_api'])) ? $release['theme_asset_api'] : $release['theme_zip'];
 
-		$transient->response[self::THEME_SLUG] = [
-			'theme'       => self::THEME_SLUG,
+		$transient->response[self::theme_slug()] = [
+			'theme'       => self::theme_slug(),
 			'new_version' => $release['theme_version'],
 			'url'         => $release['html'],
 			'package'     => $package,
