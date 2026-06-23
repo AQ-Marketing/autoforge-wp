@@ -114,6 +114,7 @@ class AQ_Admin_Hub {
 			'aq-pages'      => 'Pages',
 			'aq-styles'     => 'Styles',
 			'aq-seo'        => 'SEO',
+			'aq-seo-agent'  => 'SEO Agent',
 			'aq-locations'  => 'Locations',
 			'aq-navigation' => 'Navigation',
 			'aq-performance'=> 'Performance',
