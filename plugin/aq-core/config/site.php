@@ -100,10 +100,23 @@ return [
 
 	// Blog/article chrome labels.
 	'blog' => [
-		'author'    => '',
-		'authorUrl' => '/about/',
-		'label'     => 'Resources',
-		'base'      => '/blog/',
+		'author'         => '',
+		'authorUrl'      => '/about/',
+		'label'          => 'Resources',
+		'base'           => '/blog/',
+		'readMore'       => 'Read article',
+		'moreHeading'    => 'More articles',
+		'relatedHeading' => 'Keep reading',
+		'tocLabel'       => 'In this article',
+		'featuredLabel'  => 'Latest',
+	],
+
+	// Post CTA (navy banner at the bottom of every blog post).
+	'postCta' => [
+		'heading' => '',
+		'body'    => '',
+		'label'   => '',
+		'href'    => '',
 	],
 
 	// Header primary nav (AutoForge → Navigation). Each item is one of:
@@ -137,6 +150,17 @@ return [
 
 	// Sticky call bar (bottom of viewport).
 	'stickyBar' => ['label' => 'Questions? Call us:'],
+
+	// Shared UI labels (used across header, footer, blog templates).
+	'labels' => [
+		'licensePrefix'   => 'License #',
+		'experienceLabel' => 'Years Experience',
+		'callPrefix'      => 'Call',
+		'viewAll'         => 'View all',
+		'copyright'       => 'All rights reserved.',
+		'countySuffix'    => 'County',
+		'homeLabel'       => 'Home',
+	],
 
 	'footer' => [
 		'about'       => '',

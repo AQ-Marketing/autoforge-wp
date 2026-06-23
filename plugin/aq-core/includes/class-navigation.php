@@ -269,6 +269,37 @@ class AQ_Navigation {
 			];
 		}
 
+		// Post CTA (blog article footer banner).
+		if (isset($in['postCta']) && is_array($in['postCta'])) {
+			$patch['postCta'] = [
+				'heading' => sanitize_text_field((string) ($in['postCta']['heading'] ?? '')),
+				'body'    => sanitize_text_field((string) ($in['postCta']['body'] ?? '')),
+				'label'   => sanitize_text_field((string) ($in['postCta']['label'] ?? '')),
+				'href'    => self::url((string) ($in['postCta']['href'] ?? '')),
+			];
+		}
+
+		// Blog chrome labels.
+		if (isset($in['blog']) && is_array($in['blog'])) {
+			$patch['blog'] = [
+				'readMore'       => sanitize_text_field((string) ($in['blog']['readMore'] ?? '')),
+				'moreHeading'    => sanitize_text_field((string) ($in['blog']['moreHeading'] ?? '')),
+				'relatedHeading' => sanitize_text_field((string) ($in['blog']['relatedHeading'] ?? '')),
+				'tocLabel'       => sanitize_text_field((string) ($in['blog']['tocLabel'] ?? '')),
+				'featuredLabel'  => sanitize_text_field((string) ($in['blog']['featuredLabel'] ?? '')),
+			];
+		}
+
+		// Shared UI labels.
+		if (isset($in['labels']) && is_array($in['labels'])) {
+			$patch['labels'] = [];
+			foreach (['licensePrefix', 'experienceLabel', 'callPrefix', 'viewAll', 'copyright', 'countySuffix', 'homeLabel'] as $lk) {
+				if (isset($in['labels'][$lk])) {
+					$patch['labels'][$lk] = sanitize_text_field((string) $in['labels'][$lk]);
+				}
+			}
+		}
+
 		// Mega-menu panel contents (Services/Specialty items + Areas), so a file
 		// import can carry the dropdown panels — icons and all — not just the
 		// top-level menu. These feed the auto panels in parts/site-header.php.
@@ -470,6 +501,43 @@ class AQ_Navigation {
 		self::text('footer.contact.heading', 'Column heading', (string) ($f_contact['heading'] ?? 'Contact Us'));
 		echo '</div></div>';
 		echo '</div>';
+
+		/* ---------------- Post CTA + Blog labels ----------------------- */
+		$pcta  = is_array($cfg['postCta'] ?? null) ? $cfg['postCta'] : [];
+		$blog  = is_array($cfg['blog'] ?? null) ? $cfg['blog'] : [];
+		echo '<div class="aq-nav-twocol">';
+		echo '<div class="aq-panel"><h2>Blog post CTA</h2>';
+		echo '<p class="aq-nav-help">The navy banner at the bottom of every blog article. Leave blank to fall back to the Header CTA text.</p>';
+		echo '<div class="aq-nav-grid">';
+		self::text('postCta.heading', 'Heading', (string) ($pcta['heading'] ?? ''));
+		self::text('postCta.body',    'Body text', (string) ($pcta['body'] ?? ''));
+		self::text('postCta.label',   'Button text', (string) ($pcta['label'] ?? ''));
+		self::text('postCta.href',    'Button link', (string) ($pcta['href'] ?? ''));
+		echo '</div></div>';
+		echo '<div class="aq-panel"><h2>Blog labels</h2>';
+		echo '<p class="aq-nav-help">Text labels shown on the blog index and article pages.</p>';
+		echo '<div class="aq-nav-grid">';
+		self::text('blog.readMore',       '&ldquo;Read article&rdquo; link',     (string) ($blog['readMore'] ?? 'Read article'));
+		self::text('blog.moreHeading',    '&ldquo;More articles&rdquo; heading', (string) ($blog['moreHeading'] ?? 'More articles'));
+		self::text('blog.relatedHeading', '&ldquo;Keep reading&rdquo; heading',  (string) ($blog['relatedHeading'] ?? 'Keep reading'));
+		self::text('blog.tocLabel',       'Table of contents label', (string) ($blog['tocLabel'] ?? 'In this article'));
+		self::text('blog.featuredLabel',  'Featured post pill',      (string) ($blog['featuredLabel'] ?? 'Latest'));
+		echo '</div></div>';
+		echo '</div>';
+
+		/* ---------------- Shared UI labels ----------------------------- */
+		$labels = is_array($cfg['labels'] ?? null) ? $cfg['labels'] : [];
+		echo '<div class="aq-panel"><h2>Shared labels</h2>';
+		echo '<p class="aq-nav-help">Small text strings reused across the header, footer, and blog. Change these to match your brand language.</p>';
+		echo '<div class="aq-nav-grid">';
+		self::text('labels.licensePrefix',   'License prefix',    (string) ($labels['licensePrefix'] ?? 'License #'));
+		self::text('labels.experienceLabel',  'Experience label',  (string) ($labels['experienceLabel'] ?? 'Years Experience'));
+		self::text('labels.callPrefix',       'Call button prefix', (string) ($labels['callPrefix'] ?? 'Call'));
+		self::text('labels.viewAll',          '&ldquo;View all&rdquo; text',   (string) ($labels['viewAll'] ?? 'View all'));
+		self::text('labels.copyright',        'Copyright text',    (string) ($labels['copyright'] ?? 'All rights reserved.'));
+		self::text('labels.countySuffix',     'County suffix',     (string) ($labels['countySuffix'] ?? 'County'));
+		self::text('labels.homeLabel',        'Breadcrumb &ldquo;Home&rdquo;', (string) ($labels['homeLabel'] ?? 'Home'));
+		echo '</div></div>';
 
 		/* ---------------- Footer columns ---------------- */
 		echo '<div class="aq-nav-twocol">';
@@ -1162,6 +1230,9 @@ class AQ_Navigation {
 					headerCta: data.headerCta || {},
 					footerCta: data.footerCta || {},
 					stickyBar: data.stickyBar || {},
+					postCta: data.postCta || {},
+					blog: data.blog || {},
+					labels: data.labels || {},
 					megamenu: PANELS.megamenu || {},
 					towns: PANELS.towns || []
 				};
@@ -1191,6 +1262,9 @@ class AQ_Navigation {
 						if (data.headerCta && typeof data.headerCta === 'object') payload.headerCta = data.headerCta;
 						if (data.footerCta && typeof data.footerCta === 'object') payload.footerCta = data.footerCta;
 						if (data.stickyBar && typeof data.stickyBar === 'object') payload.stickyBar = data.stickyBar;
+						if (data.postCta && typeof data.postCta === 'object') payload.postCta = data.postCta;
+						if (data.blog && typeof data.blog === 'object') payload.blog = data.blog;
+						if (data.labels && typeof data.labels === 'object') payload.labels = data.labels;
 						if (!payload.nav && !payload.footer && !payload.megamenu && !payload.towns && !payload.headerCta && !payload.footerCta) { notice('Import failed: no menu, footer, or dropdown data found in that file.', false); return; }
 						var n = payload.nav ? payload.nav.length : 0;
 						if (!window.confirm('Import will replace your header menu, footer, and dropdown panel contents' + (n ? ' (' + n + ' menu item' + (n === 1 ? '' : 's') + ')' : '') + '. Continue?')) return;

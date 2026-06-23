@@ -20,6 +20,9 @@ $cats    = get_the_category($pid);
 $cat     = $cats ? $cats[0]->name : '';
 $thumb   = get_post_thumbnail_id($pid);
 
+$read_more = aq_site('blog.readMore') ?: 'Read article';
+$feat_label = aq_site('blog.featuredLabel') ?: 'Latest';
+
 $arrow = '<svg class="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 10h12m0 0l-5-5m5 5l-5 5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 // Image (or an on-brand gradient fallback when a post has no featured image yet).
@@ -42,7 +45,7 @@ if ($thumb) {
 
 $cat_pill = $cat !== ''
 	? '<span class="absolute left-4 top-4 inline-flex items-center rounded-full bg-brand-900/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white backdrop-blur-sm">'
-		. ($featured ? 'Latest &middot; ' : '') . esc_html($cat) . '</span>'
+		. ($featured ? esc_html($feat_label) . ' &middot; ' : '') . esc_html($cat) . '</span>'
 	: '';
 ?>
 <?php if ($featured) : ?>
@@ -55,7 +58,7 @@ $cat_pill = $cat !== ''
 		<p class="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500"><?php echo esc_html($date); ?></p>
 		<h2 class="!mt-3 text-2xl text-brand-800 transition-colors duration-200 group-hover:text-accent-700 md:text-3xl"><?php echo esc_html($title); ?></h2>
 		<p class="mt-4 text-base leading-relaxed text-brand-700 line-clamp-3"><?php echo esc_html($excerpt); ?></p>
-		<span class="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-accent-700">Read article <?php echo $arrow; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
+		<span class="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-accent-700"><?php echo esc_html($read_more); ?> <?php echo $arrow; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
 	</div>
 </a>
 <?php else : ?>
@@ -68,7 +71,7 @@ $cat_pill = $cat !== ''
 		<p class="text-xs font-semibold uppercase tracking-[0.18em] text-brand-500"><?php echo esc_html($date); ?></p>
 		<h3 class="!mt-2 text-lg text-brand-800 transition-colors duration-200 group-hover:text-accent-700"><?php echo esc_html($title); ?></h3>
 		<p class="mt-3 text-sm leading-relaxed text-brand-700 line-clamp-3"><?php echo esc_html($excerpt); ?></p>
-		<span class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-accent-700">Read article <?php echo $arrow; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
+		<span class="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-accent-700"><?php echo esc_html($read_more); ?> <?php echo $arrow; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped ?></span>
 	</div>
 </a>
 <?php endif; ?>
