@@ -247,6 +247,16 @@ class AQ_Navigation {
 			}
 		}
 
+		// Header + footer CTA buttons (label + href).
+		foreach (['headerCta', 'footerCta'] as $ctaKey) {
+			if (isset($in[$ctaKey]) && is_array($in[$ctaKey])) {
+				$patch[$ctaKey] = [
+					'label' => sanitize_text_field((string) ($in[$ctaKey]['label'] ?? '')),
+					'href'  => self::url((string) ($in[$ctaKey]['href'] ?? '/schedule/')),
+				];
+			}
+		}
+
 		// Mega-menu panel contents (Services/Specialty items + Areas), so a file
 		// import can carry the dropdown panels — icons and all — not just the
 		// top-level menu. These feed the auto panels in parts/site-header.php.
@@ -413,6 +423,24 @@ class AQ_Navigation {
 		}
 		echo '</div>';
 		echo '<p style="margin-top:14px;"><button type="button" class="aq-btn aq-btn--ghost" id="aq-nav-add">+ Add menu item</button></p>';
+		echo '</div>';
+
+		/* ---------------- Header + Footer CTA buttons ---------------- */
+		$hcta = is_array($cfg['headerCta'] ?? null) ? $cfg['headerCta'] : [];
+		$fcta = is_array($cfg['footerCta'] ?? null) ? $cfg['footerCta'] : [];
+		echo '<div class="aq-nav-twocol">';
+		echo '<div class="aq-panel"><h2>Header CTA button</h2>';
+		echo '<p class="aq-nav-help">The primary button at the right end of the header bar.</p>';
+		echo '<div class="aq-nav-grid">';
+		self::text('headerCta.label', 'Button text', (string) ($hcta['label'] ?? 'Schedule Inspection'));
+		self::text('headerCta.href',  'Button link', (string) ($hcta['href'] ?? '/schedule/'));
+		echo '</div></div>';
+		echo '<div class="aq-panel"><h2>Footer CTA button</h2>';
+		echo '<p class="aq-nav-help">The call-to-action in the footer and sticky call bar.</p>';
+		echo '<div class="aq-nav-grid">';
+		self::text('footerCta.label', 'Button text', (string) ($fcta['label'] ?? 'Request a Call Back'));
+		self::text('footerCta.href',  'Button link', (string) ($fcta['href'] ?? '/schedule/'));
+		echo '</div></div>';
 		echo '</div>';
 
 		/* ---------------- Footer columns ---------------- */
@@ -1103,6 +1131,8 @@ class AQ_Navigation {
 					_site: location.hostname || '',
 					nav: data.nav || [],
 					footer: data.footer || {},
+					headerCta: data.headerCta || {},
+					footerCta: data.footerCta || {},
 					megamenu: PANELS.megamenu || {},
 					towns: PANELS.towns || []
 				};
@@ -1129,7 +1159,9 @@ class AQ_Navigation {
 						if (data.footer && typeof data.footer === 'object') payload.footer = data.footer;
 						if (data.megamenu && typeof data.megamenu === 'object') payload.megamenu = data.megamenu;
 						if (Array.isArray(data.towns)) payload.towns = data.towns;
-						if (!payload.nav && !payload.footer && !payload.megamenu && !payload.towns) { notice('Import failed: no menu, footer, or dropdown data found in that file.', false); return; }
+						if (data.headerCta && typeof data.headerCta === 'object') payload.headerCta = data.headerCta;
+						if (data.footerCta && typeof data.footerCta === 'object') payload.footerCta = data.footerCta;
+						if (!payload.nav && !payload.footer && !payload.megamenu && !payload.towns && !payload.headerCta && !payload.footerCta) { notice('Import failed: no menu, footer, or dropdown data found in that file.', false); return; }
 						var n = payload.nav ? payload.nav.length : 0;
 						if (!window.confirm('Import will replace your header menu, footer, and dropdown panel contents' + (n ? ' (' + n + ' menu item' + (n === 1 ? '' : 's') + ')' : '') + '. Continue?')) return;
 						if (saving) saving.style.display = 'inline';
