@@ -242,6 +242,11 @@ class AQ_Navigation {
 					'instagram' => self::url((string) ($in['footer']['social']['instagram'] ?? '#')),
 				];
 			}
+			if (isset($in['footer']['contact']) && is_array($in['footer']['contact'])) {
+				$f['contact'] = [
+					'heading' => sanitize_text_field((string) ($in['footer']['contact']['heading'] ?? 'Contact Us')),
+				];
+			}
 			if ($f) {
 				$patch['footer'] = $f;
 			}
@@ -255,6 +260,13 @@ class AQ_Navigation {
 					'href'  => self::url((string) ($in[$ctaKey]['href'] ?? '/schedule/')),
 				];
 			}
+		}
+
+		// Sticky call bar settings.
+		if (isset($in['stickyBar']) && is_array($in['stickyBar'])) {
+			$patch['stickyBar'] = [
+				'label' => sanitize_text_field((string) ($in['stickyBar']['label'] ?? '')),
+			];
 		}
 
 		// Mega-menu panel contents (Services/Specialty items + Areas), so a file
@@ -440,6 +452,22 @@ class AQ_Navigation {
 		echo '<div class="aq-nav-grid">';
 		self::text('footerCta.label', 'Button text', (string) ($fcta['label'] ?? 'Request a Call Back'));
 		self::text('footerCta.href',  'Button link', (string) ($fcta['href'] ?? '/schedule/'));
+		echo '</div></div>';
+		echo '</div>';
+
+		/* ---------------- Sticky bar + footer contact heading ------------ */
+		$sbar     = is_array($cfg['stickyBar'] ?? null) ? $cfg['stickyBar'] : [];
+		$f_contact = is_array($cfg['footer']['contact'] ?? null) ? $cfg['footer']['contact'] : [];
+		echo '<div class="aq-nav-twocol">';
+		echo '<div class="aq-panel"><h2>Sticky call bar</h2>';
+		echo '<p class="aq-nav-help">The bar fixed to the bottom of the screen. Button text and link come from the Footer CTA above.</p>';
+		echo '<div class="aq-nav-grid">';
+		self::text('stickyBar.label', 'Prompt text', (string) ($sbar['label'] ?? 'Questions? Call us:'));
+		echo '</div></div>';
+		echo '<div class="aq-panel"><h2>Footer — Contact column</h2>';
+		echo '<p class="aq-nav-help">The heading above the phone/address block in the footer. Contact details come from Locations.</p>';
+		echo '<div class="aq-nav-grid">';
+		self::text('footer.contact.heading', 'Column heading', (string) ($f_contact['heading'] ?? 'Contact Us'));
 		echo '</div></div>';
 		echo '</div>';
 
@@ -1133,6 +1161,7 @@ class AQ_Navigation {
 					footer: data.footer || {},
 					headerCta: data.headerCta || {},
 					footerCta: data.footerCta || {},
+					stickyBar: data.stickyBar || {},
 					megamenu: PANELS.megamenu || {},
 					towns: PANELS.towns || []
 				};
@@ -1161,6 +1190,7 @@ class AQ_Navigation {
 						if (Array.isArray(data.towns)) payload.towns = data.towns;
 						if (data.headerCta && typeof data.headerCta === 'object') payload.headerCta = data.headerCta;
 						if (data.footerCta && typeof data.footerCta === 'object') payload.footerCta = data.footerCta;
+						if (data.stickyBar && typeof data.stickyBar === 'object') payload.stickyBar = data.stickyBar;
 						if (!payload.nav && !payload.footer && !payload.megamenu && !payload.towns && !payload.headerCta && !payload.footerCta) { notice('Import failed: no menu, footer, or dropdown data found in that file.', false); return; }
 						var n = payload.nav ? payload.nav.length : 0;
 						if (!window.confirm('Import will replace your header menu, footer, and dropdown panel contents' + (n ? ' (' + n + ' menu item' + (n === 1 ? '' : 's') + ')' : '') + '. Continue?')) return;

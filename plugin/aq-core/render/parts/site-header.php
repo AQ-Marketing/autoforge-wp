@@ -49,16 +49,10 @@ $addr      = aq_site('address') ?: [];
 $region    = $addr['region'] ?? '';
 $logo_id   = (int) aq_site('logo.id');
 
-// Client-overridable chrome (see config/site.php). A marketing client runs the
-// dark header + "Book a call"; inspection clients keep the white defaults.
-$header_style = aq_site('headerStyle') ?: 'light';
-$show_topbar  = aq_site('showTopbar');
-$show_topbar  = ($show_topbar === null) ? true : (bool) $show_topbar;
-$cta_label    = aq_str('headerCta.label', 'Schedule Inspection');
-$cta_href     = aq_str('headerCta.href', '/schedule/');
+$cta_label = aq_site('headerCta.label') ?: 'Schedule Inspection';
+$cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 ?>
-<header class="sticky top-0 z-40 bg-white border-b-4 border-accent-500" data-header="<?php echo esc_attr($header_style); ?>">
-	<?php if ($show_topbar) : ?>
+<header class="sticky top-0 z-40 bg-white border-b-4 border-accent-500">
 	<div class="hidden md:block bg-brand-900 text-white text-xs">
 		<div class="container-edge flex flex-wrap items-center justify-between gap-2 py-2">
 			<div class="flex flex-wrap items-center gap-x-6 gap-y-1 text-brand-100">
@@ -81,7 +75,6 @@ $cta_href     = aq_str('headerCta.href', '/schedule/');
 			</span>
 		</div>
 	</div>
-	<?php endif; ?>
 
 	<div class="container-edge flex items-center justify-between py-4 gap-4">
 		<a href="/" class="no-underline flex items-center" aria-label="<?php echo esc_attr(aq_site('shortName') . ' home'); ?>">

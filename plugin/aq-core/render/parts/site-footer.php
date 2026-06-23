@@ -18,9 +18,11 @@ $f_inspections = aq_site('footer.inspections') ?: [];
 $f_legal       = (array) aq_site('footer.legal');
 $f_social      = aq_site('footer.social') ?: [];
 $f_about       = (string) (aq_site('footer.about') ?? '');
+$f_contact_h   = aq_site('footer.contact.heading') ?: 'Contact Us';
 $region        = $addr['region'] ?? '';
-$cta_label     = aq_str('footerCta.label', 'Request a Call Back');
-$cta_href      = aq_str('footerCta.href', '/schedule/');
+
+$fcta_label = aq_site('footerCta.label') ?: 'Request a Call Back';
+$fcta_href  = aq_site('footerCta.href') ?: '/schedule/';
 ?>
 <footer class="mt-0 bg-brand-900 text-brand-50 border-t-4 border-accent-500">
 	<div class="container-edge container-edge--wide py-14 grid gap-10 md:grid-cols-12">
@@ -65,7 +67,7 @@ $cta_href      = aq_str('footerCta.href', '/schedule/');
 		</div>
 
 		<div class="md:col-span-3">
-			<p class="font-semibold text-accent-500 mb-4 uppercase text-sm tracking-wider">Contact Us</p>
+			<p class="font-semibold text-accent-500 mb-4 uppercase text-sm tracking-wider"><?php echo esc_html($f_contact_h); ?></p>
 			<ul class="text-sm space-y-3 text-brand-200">
 				<li class="flex items-start gap-2.5">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-400 mt-0.5 flex-shrink-0"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.86 19.86 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.86 19.86 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/></svg>
@@ -75,15 +77,13 @@ $cta_href      = aq_str('footerCta.href', '/schedule/');
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-400 mt-0.5 flex-shrink-0"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
 					<span><?php echo esc_html(($addr['street'] ?? '') . ', ' . ($addr['locality'] ?? '') . ', ' . ($addr['region'] ?? '') . ' ' . ($addr['postalCode'] ?? '')); ?></span>
 				</li>
-				<?php if ($license !== '' && $license !== null) : ?>
 				<li class="flex items-start gap-2.5">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-400 mt-0.5 flex-shrink-0"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
 					<span><?php echo esc_html(trim(($region ? $region . ' ' : '') . 'License #' . $license)); ?></span>
 				</li>
-				<?php endif; ?>
 			</ul>
 			<div class="mt-5 flex flex-col gap-3 max-w-[260px]">
-				<a href="<?php echo esc_url($cta_href); ?>" class="btn-primary text-xs uppercase tracking-wider py-3 px-6 block text-center"><?php echo esc_html($cta_label); ?></a>
+				<a href="<?php echo esc_url($fcta_href); ?>" class="btn-primary text-xs uppercase tracking-wider py-3 px-6 block text-center"><?php echo esc_html($fcta_label); ?></a>
 				<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="block py-3 px-6 text-xs uppercase tracking-wider text-center text-white font-semibold no-underline border border-white/30 rounded hover:bg-accent-500 hover:border-accent-500 transition">Call <?php echo esc_html($phone); ?></a>
 			</div>
 		</div>
