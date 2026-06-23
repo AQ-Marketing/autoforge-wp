@@ -20,6 +20,9 @@ if (!defined('ABSPATH')) {
 $aq_author     = (function_exists('aq_site') ? (aq_site('blog.author') ?: aq_site('name')) : '') ?: get_bloginfo('name');
 $aq_blog_label = (function_exists('aq_site') ? aq_site('blog.label') : '') ?: 'Resources';
 $aq_blog_base  = (function_exists('aq_site') ? aq_site('blog.base') : '') ?: '/blog/';
+$aq_home_label = (function_exists('aq_site') ? aq_site('labels.homeLabel') : '') ?: 'Home';
+$aq_related_h  = (function_exists('aq_site') ? aq_site('blog.relatedHeading') : '') ?: 'Keep reading';
+$aq_back_pfx   = 'Back to all';
 
 AQ_Renderer::head_open();
 
@@ -35,7 +38,7 @@ while (have_posts()) :
 			<div class="container-edge container-edge--wide pt-4 pb-12 md:pb-16">
 				<nav aria-label="Breadcrumb" class="text-sm text-white/60">
 					<ol class="flex flex-wrap items-center gap-1.5">
-						<li class="flex items-center gap-1.5"><a href="/" class="text-white/60 no-underline hover:text-white hover:underline">Home</a></li>
+						<li class="flex items-center gap-1.5"><a href="/" class="text-white/60 no-underline hover:text-white hover:underline"><?php echo esc_html($aq_home_label); ?></a></li>
 						<li class="flex items-center gap-1.5"><span aria-hidden="true" class="text-white/30">/</span><a href="<?php echo esc_url($aq_blog_base); ?>" class="text-white/60 no-underline hover:text-white hover:underline"><?php echo esc_html($aq_blog_label); ?></a></li>
 						<li class="flex items-center gap-1.5"><span aria-hidden="true" class="text-white/30">/</span><span aria-current="page" class="font-medium text-white"><?php the_title(); ?></span></li>
 					</ol>
@@ -88,7 +91,7 @@ while (have_posts()) :
 					<div class="mx-auto mt-10 max-w-[820px] border-t border-brand-100 pt-6">
 						<a href="<?php echo esc_url($aq_blog_base); ?>" class="inline-flex items-center gap-2 text-sm font-semibold text-accent-700 no-underline hover:underline">
 							<svg class="h-4 w-4" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M16 10H4m0 0l5 5m-5-5l5-5" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/></svg>
-							Back to all <?php echo esc_html(strtolower($aq_blog_label)); ?>
+							<?php echo esc_html($aq_back_pfx); ?> <?php echo esc_html(strtolower($aq_blog_label)); ?>
 						</a>
 					</div>
 				</div>
@@ -129,8 +132,8 @@ while (have_posts()) :
 	<section class="bg-brand-50 py-12 md:py-16">
 		<div class="container-edge container-edge--wide">
 			<div class="mb-8 flex items-end justify-between gap-4 md:mb-10">
-				<h2 class="!mt-0 text-2xl text-brand-800 md:text-3xl">Keep reading</h2>
-				<a href="<?php echo esc_url($aq_blog_base); ?>" class="hidden text-sm font-semibold text-accent-700 no-underline hover:underline sm:inline">All <?php echo esc_html(strtolower($aq_blog_label)); ?> &rarr;</a>
+				<h2 class="!mt-0 text-2xl text-brand-800 md:text-3xl"><?php echo esc_html($aq_related_h); ?></h2>
+				<a href="<?php echo esc_url($aq_blog_base); ?>" class="hidden text-sm font-semibold text-accent-700 no-underline hover:underline sm:inline"><?php echo esc_html(aq_site('labels.viewAll') ?: 'View all'); ?> <?php echo esc_html(strtolower($aq_blog_label)); ?> &rarr;</a>
 			</div>
 			<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
 				<?php foreach ($related_ids as $rid) : ?>

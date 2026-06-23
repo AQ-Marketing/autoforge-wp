@@ -51,6 +51,12 @@ $logo_id   = (int) aq_site('logo.id');
 
 $cta_label = aq_site('headerCta.label') ?: 'Schedule Inspection';
 $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
+
+$lic_pfx    = aq_site('labels.licensePrefix') ?: 'License #';
+$exp_label  = aq_site('labels.experienceLabel') ?: 'Years Experience';
+$call_pfx   = aq_site('labels.callPrefix') ?: 'Call';
+$view_all   = aq_site('labels.viewAll') ?: 'View all';
+$county_sfx = aq_site('labels.countySuffix') ?: 'County';
 ?>
 <header class="sticky top-0 z-40 bg-white border-b-4 border-accent-500">
 	<div class="hidden md:block bg-brand-900 text-white text-xs">
@@ -59,13 +65,13 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 				<?php if ($license !== '' && $license !== null) : ?>
 				<span class="inline-flex items-center gap-1.5">
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-accent-400"><path d="M20 6L9 17l-5-5"/></svg>
-					<?php echo esc_html(trim(($region ? $region . ' ' : '') . 'License #' . $license)); ?>
+					<?php echo esc_html(trim(($region ? $region . ' ' : '') . $lic_pfx . $license)); ?>
 				</span>
 				<?php endif; ?>
 				<?php if ($years !== '') : ?>
 				<span class="inline-flex items-center gap-1.5">
 					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-accent-400"><path d="M20 6L9 17l-5-5"/></svg>
-					<?php echo esc_html($years); ?> Years Experience
+					<?php echo esc_html($years); ?> <?php echo esc_html($exp_label); ?>
 				</span>
 				<?php endif; ?>
 			</div>
@@ -153,7 +159,7 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
 						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mm_services['heading'] ?? 'Services'); ?></span>
 						<?php if (empty($panel_hide_va['services'])) : ?>
-						<a href="<?php echo esc_url($mm_services['viewAllHref'] ?? $svc_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case">View all &rarr;</a>
+						<a href="<?php echo esc_url($mm_services['viewAllHref'] ?? $svc_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case"><?php echo esc_html($view_all); ?> &rarr;</a>
 						<?php endif; ?>
 					</div>
 					<div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
@@ -176,9 +182,9 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 					<p class="text-xs uppercase tracking-wider text-accent-700 font-semibold"><?php echo esc_html($svc_promo['eyebrow'] ?? 'Ready to schedule?'); ?></p>
 					<p class="mt-2 text-sm text-brand-700"><?php echo esc_html($svc_promo['text'] ?? ''); ?></p>
 					<a href="<?php echo esc_url($cta_href); ?>" class="btn-primary text-xs uppercase tracking-wider mt-4 py-2.5 px-5 inline-block"><?php echo esc_html($cta_label); ?></a>
-					<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="block mt-3 text-brand-800 font-semibold no-underline hover:text-accent-700 text-sm">Call <?php echo esc_html($phone); ?></a>
+					<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="block mt-3 text-brand-800 font-semibold no-underline hover:text-accent-700 text-sm"><?php echo esc_html($call_pfx); ?> <?php echo esc_html($phone); ?></a>
 					<?php if ($license !== '' && $license !== null) : ?>
-					<p class="mt-3 text-xs text-brand-500"><?php echo esc_html(trim(($region ? $region . ' ' : '') . 'License #' . $license)); ?></p>
+					<p class="mt-3 text-xs text-brand-500"><?php echo esc_html(trim(($region ? $region . ' ' : '') . $lic_pfx . $license)); ?></p>
 					<?php endif; ?>
 				</div>
 			</div>
@@ -196,7 +202,7 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
 						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mm_specialty['heading'] ?? 'Specialty Testing'); ?></span>
 						<?php if (empty($panel_hide_va['specialty'])) : ?>
-						<a href="<?php echo esc_url($mm_specialty['viewAllHref'] ?? $spc_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case">View all &rarr;</a>
+						<a href="<?php echo esc_url($mm_specialty['viewAllHref'] ?? $spc_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700 normal-case"><?php echo esc_html($view_all); ?> &rarr;</a>
 						<?php endif; ?>
 					</div>
 					<div class="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-2">
@@ -218,8 +224,12 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 				<div class="col-span-4 bg-brand-50 rounded-lg p-5 normal-case tracking-normal">
 					<p class="text-xs uppercase tracking-wider text-accent-700 font-semibold"><?php echo esc_html($spc_promo['eyebrow'] ?? 'Bundle &amp; save'); ?></p>
 					<p class="mt-2 text-sm text-brand-700"><?php echo esc_html($spc_promo['text'] ?? ''); ?></p>
-					<a href="/pricing/" class="btn-primary text-xs uppercase tracking-wider mt-4 py-2.5 px-5 inline-block">See Pricing</a>
-					<a href="/schedule/" class="block mt-3 text-brand-800 font-semibold no-underline hover:text-accent-700 text-sm">Schedule online &rarr;</a>
+					<a href="<?php echo esc_url($spc_promo['ctaHref'] ?? '/pricing/'); ?>" class="btn-primary text-xs uppercase tracking-wider mt-4 py-2.5 px-5 inline-block"><?php echo esc_html($spc_promo['ctaLabel'] ?? 'See Pricing'); ?></a>
+					<?php if (($spc_promo['cta2Label'] ?? '') !== '' || ($spc_promo['cta2Href'] ?? '') !== '') : ?>
+					<a href="<?php echo esc_url($spc_promo['cta2Href'] ?? $cta_href); ?>" class="block mt-3 text-brand-800 font-semibold no-underline hover:text-accent-700 text-sm"><?php echo esc_html($spc_promo['cta2Label'] ?? $cta_label); ?> &rarr;</a>
+					<?php else : ?>
+					<a href="<?php echo esc_url($cta_href); ?>" class="block mt-3 text-brand-800 font-semibold no-underline hover:text-accent-700 text-sm"><?php echo esc_html($cta_label); ?> &rarr;</a>
+					<?php endif; ?>
 				</div>
 			</div>
 		</div>
@@ -236,7 +246,7 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 					<div class="flex items-center justify-between border-b border-brand-100 pb-2 mb-3">
 						<span class="text-xs uppercase tracking-wider text-brand-500 font-semibold"><?php echo esc_html($mm_areas['heading'] ?? 'Service Area'); ?></span>
 						<?php if (empty($panel_hide_va['areas'])) : ?>
-						<a href="<?php echo esc_url($mm_areas['viewAllHref'] ?? $area_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700">View all &rarr;</a>
+						<a href="<?php echo esc_url($mm_areas['viewAllHref'] ?? $area_base); ?>" class="text-xs uppercase tracking-wider text-accent-700 font-semibold no-underline hover:text-accent-700"><?php echo esc_html($view_all); ?> &rarr;</a>
 						<?php endif; ?>
 					</div>
 					<div class="grid grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
@@ -249,7 +259,7 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 								</span>
 								<span class="block">
 									<span class="block font-semibold text-sm transition-colors leading-tight <?php echo $active ? 'text-accent-700' : 'text-brand-800 group-hover:text-accent-700'; ?>"><?php echo esc_html($t['name'] . ($region ? ', ' . $region : '')); ?></span>
-									<span class="block text-xs text-brand-500 font-normal mt-0.5"><?php echo esc_html($t['county']); ?> County</span>
+									<span class="block text-xs text-brand-500 font-normal mt-0.5"><?php echo esc_html($t['county']); ?> <?php echo esc_html($county_sfx); ?></span>
 								</span>
 							</a>
 						<?php endforeach; ?>
@@ -258,7 +268,7 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 				<div class="col-span-4 bg-brand-50 rounded-lg p-5 normal-case tracking-normal">
 					<p class="text-xs uppercase tracking-wider text-accent-700 font-semibold"><?php echo esc_html($area_promo['eyebrow'] ?? "Don't see your town?"); ?></p>
 					<p class="mt-2 text-sm text-brand-700"><?php echo esc_html($area_promo['text'] ?? ''); ?></p>
-					<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="btn-primary text-xs uppercase tracking-wider mt-4 py-2.5 px-5 inline-block">Call <?php echo esc_html($phone); ?></a>
+					<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="btn-primary text-xs uppercase tracking-wider mt-4 py-2.5 px-5 inline-block"><?php echo esc_html($call_pfx); ?> <?php echo esc_html($phone); ?></a>
 				</div>
 			</div>
 		</div>
@@ -341,7 +351,7 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
 						</summary>
 						<div class="pl-4 pb-3 flex flex-col gap-0">
-							<a href="<?php echo esc_url($item['href'] ?? '#'); ?>" class="text-brand-700 no-underline font-semibold py-3 border-b border-brand-50">All <?php echo esc_html($item['label']); ?> &rarr;</a>
+							<a href="<?php echo esc_url($item['href'] ?? '#'); ?>" class="text-brand-700 no-underline font-semibold py-3 border-b border-brand-50"><?php echo esc_html($view_all); ?> <?php echo esc_html($item['label']); ?> &rarr;</a>
 							<?php if ($is_manual) :
 								foreach (array_values((array) $item['children']) as $c) : ?>
 									<a href="<?php echo esc_url($c['href'] ?? '#'); ?>" class="text-brand-700 no-underline py-3 border-b border-brand-50"><?php echo esc_html($c['label'] ?? ''); ?></a>
@@ -365,7 +375,7 @@ $cta_href  = aq_site('headerCta.href') ?: '/schedule/';
 					<a href="<?php echo esc_url($item['href']); ?>" class="text-brand-800 no-underline py-4 border-b border-brand-100 font-semibold text-base"><?php echo esc_html($item['label']); ?></a>
 				<?php endif;
 			endforeach; ?>
-			<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="text-brand-800 no-underline py-4 border-b border-brand-100 font-semibold text-base">Call <?php echo esc_html($phone); ?></a>
+			<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="text-brand-800 no-underline py-4 border-b border-brand-100 font-semibold text-base"><?php echo esc_html($call_pfx); ?> <?php echo esc_html($phone); ?></a>
 			<a href="<?php echo esc_url($cta_href); ?>" class="btn-primary text-sm mt-4"><?php echo esc_html($cta_label); ?></a>
 		</div>
 	</nav>

@@ -49,7 +49,7 @@ $variant = $s['variant'] ?? 'bare';
 				<p<?php echo ka_field_attr('note'); ?> class="text-xs text-brand-400 mt-2"><?php echo wp_kses_post($card['note']); ?></p>
 				<?php endif; ?>
 				<span class="inline-flex items-center gap-1.5 mt-4 text-sm font-semibold text-accent-500">
-					Learn More
+					<?php echo esc_html($card['link_label'] ?? 'Learn More'); ?>
 					<svg width="12" height="12" viewBox="0 0 448 512" fill="currentColor" class="text-accent-500"><path d="M438.6 278.6c12.5-12.5 12.5-32.8 0-45.3l-160-160c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L338.8 224 32 224c-17.7 0-32 14.3-32 32s14.3 32 32 32l306.7 0L233.4 393.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0l160-160z"></path></svg>
 				</span>
 			</a>

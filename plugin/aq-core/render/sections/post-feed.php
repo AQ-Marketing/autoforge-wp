@@ -42,8 +42,8 @@ wp_reset_postdata();
 	<div class="relative container-edge container-edge--wide pb-12 pt-6 md:pb-16 md:pt-8 lg:pb-20">
 		<nav aria-label="Breadcrumb" class="text-sm text-white/70">
 			<ol class="flex flex-wrap items-center gap-1.5">
-				<li class="flex items-center gap-1.5"><a href="/" class="text-white/70 no-underline hover:text-white hover:underline">Home</a></li>
-				<li class="flex items-center gap-1.5"><span aria-hidden="true" class="text-white/40">/</span><span aria-current="page" class="font-medium text-white">Resources</span></li>
+				<li class="flex items-center gap-1.5"><a href="/" class="text-white/70 no-underline hover:text-white hover:underline"><?php echo esc_html(aq_site('labels.homeLabel') ?: 'Home'); ?></a></li>
+				<li class="flex items-center gap-1.5"><span aria-hidden="true" class="text-white/40">/</span><span aria-current="page" class="font-medium text-white"><?php echo esc_html(aq_site('blog.label') ?: 'Resources'); ?></span></li>
 			</ol>
 		</nav>
 		<div class="mt-8 max-w-[820px] md:mt-12">
@@ -73,7 +73,7 @@ wp_reset_postdata();
 <section class="bg-brand-50 py-12 md:py-16 lg:py-20">
 	<div class="container-edge container-edge--wide">
 		<div class="mb-8 flex items-end justify-between gap-4 md:mb-10">
-			<h2 class="!mt-0 text-2xl text-brand-800 md:text-3xl">More articles</h2>
+			<h2 class="!mt-0 text-2xl text-brand-800 md:text-3xl"><?php echo esc_html(aq_site('blog.moreHeading') ?: 'More articles'); ?></h2>
 			<span class="hidden h-px flex-1 bg-brand-200 sm:block"></span>
 		</div>
 		<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">

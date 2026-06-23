@@ -23,6 +23,9 @@ $region        = $addr['region'] ?? '';
 
 $fcta_label = aq_site('footerCta.label') ?: 'Request a Call Back';
 $fcta_href  = aq_site('footerCta.href') ?: '/schedule/';
+$lic_pfx    = aq_site('labels.licensePrefix') ?: 'License #';
+$call_pfx   = aq_site('labels.callPrefix') ?: 'Call';
+$copyright  = aq_site('labels.copyright') ?: 'All rights reserved.';
 ?>
 <footer class="mt-0 bg-brand-900 text-brand-50 border-t-4 border-accent-500">
 	<div class="container-edge container-edge--wide py-14 grid gap-10 md:grid-cols-12">
@@ -79,19 +82,19 @@ $fcta_href  = aq_site('footerCta.href') ?: '/schedule/';
 				</li>
 				<li class="flex items-start gap-2.5">
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-accent-400 mt-0.5 flex-shrink-0"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-					<span><?php echo esc_html(trim(($region ? $region . ' ' : '') . 'License #' . $license)); ?></span>
+					<span><?php echo esc_html(trim(($region ? $region . ' ' : '') . $lic_pfx . $license)); ?></span>
 				</li>
 			</ul>
 			<div class="mt-5 flex flex-col gap-3 max-w-[260px]">
 				<a href="<?php echo esc_url($fcta_href); ?>" class="btn-primary text-xs uppercase tracking-wider py-3 px-6 block text-center"><?php echo esc_html($fcta_label); ?></a>
-				<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="block py-3 px-6 text-xs uppercase tracking-wider text-center text-white font-semibold no-underline border border-white/30 rounded hover:bg-accent-500 hover:border-accent-500 transition">Call <?php echo esc_html($phone); ?></a>
+				<a href="tel:<?php echo esc_attr($phone_tel); ?>" class="block py-3 px-6 text-xs uppercase tracking-wider text-center text-white font-semibold no-underline border border-white/30 rounded hover:bg-accent-500 hover:border-accent-500 transition"><?php echo esc_html($call_pfx); ?> <?php echo esc_html($phone); ?></a>
 			</div>
 		</div>
 	</div>
 
 	<div class="border-t border-brand-800">
 		<div class="container-edge py-5 flex flex-wrap items-center justify-between text-xs text-brand-300 gap-2">
-			<span>&copy; <?php echo esc_html($year); ?> <?php echo esc_html(aq_site('name')); ?>. All rights reserved.</span>
+			<span>&copy; <?php echo esc_html($year); ?> <?php echo esc_html(aq_site('name')); ?>. <?php echo esc_html($copyright); ?></span>
 			<span class="flex gap-6">
 				<?php foreach ($f_legal as $f_link) : ?>
 				<a class="text-brand-300 no-underline hover:text-accent-400" href="<?php echo esc_url($f_link['href'] ?? '#'); ?>"><?php echo esc_html($f_link['label'] ?? ''); ?></a>

@@ -182,8 +182,9 @@ if (!function_exists('ka_article_toc')) {
 		foreach ($items as $it) {
 			$li .= '<li><a href="#' . esc_attr($it['id']) . '">' . esc_html($it['label']) . '</a></li>';
 		}
+		$toc_label = (function_exists('aq_site') ? aq_site('blog.tocLabel') : '') ?: 'In this article';
 		$toc = '<nav class="article-toc" aria-label="Table of contents">'
-			. '<p class="article-toc__label">In this article</p>'
+			. '<p class="article-toc__label">' . esc_html($toc_label) . '</p>'
 			. '<ul>' . $li . '</ul></nav>';
 		return [$toc, $html];
 	}
