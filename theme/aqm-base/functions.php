@@ -33,6 +33,7 @@ if (!function_exists('aq_site')) {
  * in place before acf/init and the visual editor read the registries.
  */
 require_once __DIR__ . '/blocks/aqm-blocks.php';
+require_once __DIR__ . '/admin-blog-settings.php';
 
 add_action('wp_enqueue_scripts', function () {
 	$css = get_theme_file_path('assets/css/main.css');
@@ -77,3 +78,29 @@ add_action('wp_enqueue_scripts', function () {
 		['in_footer' => true, 'strategy' => 'defer']
 	);
 });
+
+/**
+ * Blog templates are per-design. The engine (plugin) routes single posts and
+ * archives to its OWN templates (priority 50), which use a different design
+ * system. This theme ships AQM-styled blog templates and overrides that routing
+ * for posts + archives ONLY, by hooking template_include at a later priority.
+ * Pages still flow through the plugin's section renderer untouched, so nothing
+ * else changes. Honors AQ_RENDER_DISABLE and leaves admin/REST/feed alone.
+ */
+add_filter('template_include', function ($template) {
+	if (defined('AQ_RENDER_DISABLE') && AQ_RENDER_DISABLE) {
+		return $template;
+	}
+	if (is_admin() || (defined('REST_REQUEST') && REST_REQUEST) || is_feed()) {
+		return $template;
+	}
+	if (is_singular('post')) {
+		$t = __DIR__ . '/render-templates/single-post.php';
+		return is_readable($t) ? $t : $template;
+	}
+	if (is_home() || is_category() || is_tag() || is_author() || is_date() || is_search()) {
+		$t = __DIR__ . '/render-templates/archive.php';
+		return is_readable($t) ? $t : $template;
+	}
+	return $template;
+}, 60);

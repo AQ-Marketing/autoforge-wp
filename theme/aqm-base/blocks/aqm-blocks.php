@@ -96,7 +96,8 @@ function aqm_block_catalog(): array {
 				aqm_f('prose_html', 'Prose (full HTML: H3s, paragraphs, links)', 'richtext'),
 				aqm_f('aside_items', 'Aside (media + notes)', 'repeater', ['subfields' => [
 					aqm_f('img_src', 'Image path (e.g. /assets/generated/x.png)'),
-					aqm_f('img_alt', 'Image alt'),
+					aqm_f('map_src', 'Map embed URL (Google Maps; alternative to image)', 'url'),
+					aqm_f('img_alt', 'Image alt / map title'),
 					aqm_f('note_title', 'Note title (e.g. Did you know?)'),
 					aqm_f('note_body', 'Note body', 'textarea'),
 				]]),
@@ -140,6 +141,7 @@ function aqm_block_catalog(): array {
 					aqm_f('fa', 'Icon (FA class)'),
 					aqm_f('title', 'Title'),
 					aqm_f('body', 'Body', 'textarea'),
+					aqm_f('href', 'Link (optional)', 'url'),
 				]]),
 			]),
 		],
@@ -152,6 +154,32 @@ function aqm_block_catalog(): array {
 					aqm_f('a', 'Answer (inline links allowed)', 'richtext'),
 				]]),
 			]),
+		],
+		'aqm_contact' => [
+			'label'  => 'AQM · Contact (form + info + map)',
+			'fields' => [
+				aqm_f('heading', 'Form heading'),
+				aqm_f('sub', 'Form sub-text', 'textarea'),
+				aqm_f('services', 'Service dropdown options', 'repeater', ['subfields' => [
+					aqm_f('label', 'Option label'),
+				]]),
+				aqm_f('consent', 'Consent checkbox text', 'textarea'),
+				aqm_f('submit_label', 'Submit button label'),
+				aqm_f('success_msg', 'Success message'),
+				aqm_f('info', 'Contact info cards', 'repeater', ['subfields' => [
+					aqm_f('fa', 'Icon (FA class)'),
+					aqm_f('title', 'Card title'),
+					aqm_f('body', 'Card body (HTML: links, <br>, .muted)', 'richtext'),
+				]]),
+				aqm_f('map_query', 'Google Maps query (address)'),
+				aqm_f('map_label', 'Map accessibility label'),
+			],
+		],
+		'aqm_termly' => [
+			'label'  => 'AQM · Legal Policy (Termly embed)',
+			'fields' => [
+				aqm_f('data_id', 'Termly policy ID (UUID from app.termly.io)'),
+			],
 		],
 		'aqm_cta_band' => [
 			'label'  => 'AQM · CTA Band',
@@ -200,3 +228,65 @@ add_filter('aq_field_order', function (array $spec): array {
 	}
 	return $spec;
 });
+
+/* ---- Contact form endpoint (used by the aqm_contact block) ---- */
+
+add_action('rest_api_init', function (): void {
+	register_rest_route('aqm/v1', '/contact', [
+		'methods'             => 'POST',
+		'permission_callback' => '__return_true',
+		'callback'            => 'aqm_handle_contact',
+	]);
+});
+
+/**
+ * Validate + deliver a contact-form lead. Silently accepts (200) honeypot hits so
+ * bots get no signal; rejects (400) on missing required fields; otherwise emails
+ * the lead to the site admin / hello@ address via wp_mail and returns 200. The
+ * recipient is filterable (aqm_contact_to) so a client can route elsewhere.
+ */
+function aqm_handle_contact(WP_REST_Request $req) {
+	// Honeypot: a filled hidden field means a bot — accept without doing anything.
+	if (trim((string) $req->get_param('company_hp')) !== '') {
+		return new WP_REST_Response(['ok' => true], 200);
+	}
+
+	$first    = sanitize_text_field((string) $req->get_param('firstName'));
+	$last     = sanitize_text_field((string) $req->get_param('lastName'));
+	$email    = sanitize_email((string) $req->get_param('email'));
+	$phone    = sanitize_text_field((string) $req->get_param('phone'));
+	$business = sanitize_text_field((string) $req->get_param('business'));
+	$website  = esc_url_raw((string) $req->get_param('website'));
+	$service  = sanitize_text_field((string) $req->get_param('service'));
+	$message  = sanitize_textarea_field((string) $req->get_param('message'));
+
+	if ($first === '' || $last === '' || $business === '' || $service === '' || !is_email($email)) {
+		return new WP_REST_Response(['ok' => false, 'error' => 'Please complete the required fields.'], 400);
+	}
+
+	$default_to = function_exists('aq_site') ? (string) aq_site('email') : '';
+	if ($default_to === '' || !is_email($default_to)) {
+		$default_to = get_option('admin_email');
+	}
+	$to = apply_filters('aqm_contact_to', $default_to);
+
+	$subject = sprintf('[Website] Free audit request — %s', $business !== '' ? $business : ($first . ' ' . $last));
+	$body    = "New audit request from the website contact form:\n\n"
+		. "Name:        {$first} {$last}\n"
+		. "Email:       {$email}\n"
+		. "Phone:       {$phone}\n"
+		. "Business:    {$business}\n"
+		. "Website:     {$website}\n"
+		. "Looking for: {$service}\n\n"
+		. "Message:\n{$message}\n";
+
+	$headers = ['Content-Type: text/plain; charset=UTF-8'];
+	$headers[] = 'Reply-To: ' . trim($first . ' ' . $last) . ' <' . $email . '>';
+
+	wp_mail($to, $subject, $body, $headers);
+
+	// Always report success to the visitor: a wp_mail false (e.g. SMTP not
+	// configured on a staging host) shouldn't show them an error. Delivery is a
+	// server-config concern, surfaced to the operator, not the lead.
+	return new WP_REST_Response(['ok' => true], 200);
+}
