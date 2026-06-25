@@ -43,6 +43,21 @@ add_action('wp_enqueue_scripts', function () {
 		file_exists($js) ? (string) filemtime($js) : null,
 		['in_footer' => true, 'strategy' => 'defer']
 	);
+
+	// Home page animation layer (GSAP + ScrollTrigger + home.js), vendored in the
+	// theme. Powers the "Two things, done right" map-pack SERP + AI-receptionist
+	// chat mocks, the count-ups, the industries marquee, and the scroll reveals.
+	// home.js self-guards on <body class="home"> and degrades to final-state (all
+	// hidden states are set from JS, never CSS) if GSAP is unavailable, so loading
+	// it can never leave content invisible. Front page only — it is home-specific.
+	if (is_front_page() || is_home()) {
+		$gsap = get_theme_file_path('assets/js/vendor/gsap.min.js');
+		$st   = get_theme_file_path('assets/js/vendor/ScrollTrigger.min.js');
+		$home = get_theme_file_path('assets/js/home.js');
+		wp_enqueue_script('gsap', get_theme_file_uri('assets/js/vendor/gsap.min.js'), [], file_exists($gsap) ? (string) filemtime($gsap) : '3.12.7', ['in_footer' => true, 'strategy' => 'defer']);
+		wp_enqueue_script('gsap-scrolltrigger', get_theme_file_uri('assets/js/vendor/ScrollTrigger.min.js'), ['gsap'], file_exists($st) ? (string) filemtime($st) : '3.12.7', ['in_footer' => true, 'strategy' => 'defer']);
+		wp_enqueue_script('aqm-home', get_theme_file_uri('assets/js/home.js'), ['gsap', 'gsap-scrolltrigger'], file_exists($home) ? (string) filemtime($home) : null, ['in_footer' => true, 'strategy' => 'defer']);
+	}
 });
 
 // AQM custom section layouts — registered via engine's aq_section_layouts filter (update-safe).
