@@ -39,6 +39,10 @@ return [
 	// Optional region phrase used in mega-menu labels (e.g. " in Massachusetts").
 	'regionSuffix' => '',
 
+	// Legacy-URL 301 redirects (from-with-trailing-slash => to). Per-client data
+	// from brand.json; AQ_Redirects reads aq_site('redirects'). Empty by default.
+	'redirects' => [],
+
 	// NAP — must match the Google Business Profile exactly.
 	'phone'    => '',
 	'phoneTel' => '',

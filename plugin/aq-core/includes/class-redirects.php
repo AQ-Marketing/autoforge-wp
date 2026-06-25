@@ -3,10 +3,10 @@
  * Legacy-URL 301 redirects.
  *
  * The engine ships with NO redirects — legacy-URL maps are PER-CLIENT data, not
- * engine code, so map() is empty in the distributed plugin. A client migrating
- * from old URLs supplies its own from→to pairs (today by populating map(); this
- * may become data-driven later). Applied on template_redirect; pure PHP, no
- * Redirection plugin.
+ * engine code. A client migrating from old URLs supplies its own from→to pairs
+ * as DATA via the content repo's brand.json (`redirects` key), which the
+ * importer lands in the aq_site_config option; map() reads aq_site('redirects').
+ * Applied on template_redirect; pure PHP, no Redirection plugin.
  */
 
 class AQ_Redirects {
@@ -31,10 +31,12 @@ class AQ_Redirects {
 		}
 	}
 
-	/** from (with trailing slash) => to. Empty in the engine; populated per client. */
+	/**
+	 * from (with trailing slash) => to. Empty in the engine; per-client data
+	 * delivered via brand.json → aq_site_config → aq_site('redirects').
+	 */
 	private static function map(): array {
-		return [
-			// Intentionally empty — no client-specific redirects ship with the engine.
-		];
+		$map = function_exists('aq_site') ? aq_site('redirects') : null;
+		return is_array($map) ? $map : [];
 	}
 }

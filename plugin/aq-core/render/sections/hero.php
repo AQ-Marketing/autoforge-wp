@@ -1,6 +1,11 @@
 <?php
 /** Hero — bg image + navy overlay. Markup mirrors the home page hero. */
 $s = $args['s'] ?? [];
+// Fall back to the global hero buttons (aq_site('hero_ctas')) when a page
+// defines no ctas of its own, so the buttons are editable site-wide.
+if (empty($s['ctas']) && function_exists('aq_site')) {
+	$s['ctas'] = aq_site('hero_ctas') ?: [];
+}
 $intro_max = (int) ($s['intro_max'] ?? 860);
 $intro_class = $intro_max === 930 ? 'max-w-[930px]' : 'max-w-[860px]';
 ?>

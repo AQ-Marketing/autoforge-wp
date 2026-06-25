@@ -181,7 +181,10 @@ class AQ_Importer {
 			$zip_url = 'https://codeload.github.com/' . rawurlencode($owner) . '/' . rawurlencode($repo) . '/zip/refs/heads/' . rawurlencode($branch);
 			$headers = ['User-Agent' => 'aq-core'];
 		}
-		$resp = wp_remote_get($zip_url, ['timeout' => 180, 'redirection' => 5, 'headers' => $headers]);
+		// Download can be large for image-heavy content repos on slow hosts;
+		// timeout is filterable (aq_import_download_timeout) for those cases.
+		$dl_timeout = (int) apply_filters('aq_import_download_timeout', 300);
+		$resp = wp_remote_get($zip_url, ['timeout' => $dl_timeout, 'redirection' => 5, 'headers' => $headers]);
 		if (is_wp_error($resp)) {
 			return new WP_Error('aq_dl', 'Could not download the repo: ' . $resp->get_error_message(), ['status' => 502]);
 		}

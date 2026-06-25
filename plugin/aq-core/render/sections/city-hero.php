@@ -3,6 +3,11 @@
  *  Distinct from the home `hero`: plain `pill-eyebrow`, no `capitalize`, the
  *  second H1 line uses `h1-sub` (not text-accent-500), and there is no intro. */
 $s = $args['s'] ?? [];
+// Fall back to the global hero buttons (aq_site('hero_ctas')) when a page
+// defines no ctas of its own, so the buttons are editable site-wide.
+if (empty($s['ctas']) && function_exists('aq_site')) {
+	$s['ctas'] = aq_site('hero_ctas') ?: [];
+}
 ?>
 <section class="relative bg-brand-900 text-white overflow-hidden">
 	<?php echo ka_picture_field($s['image'] ?? null, [
