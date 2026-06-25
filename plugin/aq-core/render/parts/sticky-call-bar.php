@@ -5,12 +5,14 @@
  * behavior lives in assets/js/site.js.
  */
 
-$phone     = aq_site('phone');
-$phone_tel = aq_site('phoneTel');
-
-$fcta_label   = aq_site('footerCta.label') ?: 'Request a Call Back';
-$fcta_href    = aq_site('footerCta.href') ?: '/schedule/';
-$sticky_label = aq_site('stickyBar.label') ?: 'Questions? Call us:';
+// Fully per-site editable: every field reads from the stickyBar config object
+// (set stickyBar:false to hide it — see body-close.php), with sensible fallbacks.
+$sb = (array) (aq_site('stickyBar') ?: []);
+$phone        = $sb['phone']    ?? aq_site('phone');
+$phone_tel    = $sb['phoneTel'] ?? aq_site('phoneTel');
+$fcta_label   = $sb['ctaLabel'] ?? (aq_site('footerCta.label') ?: 'Request a Call Back');
+$fcta_href    = $sb['ctaHref']  ?? (aq_site('footerCta.href') ?: '/contact/');
+$sticky_label = $sb['label']    ?? 'Questions? Call us:';
 ?>
 <div
 	id="sticky-call-bar"
