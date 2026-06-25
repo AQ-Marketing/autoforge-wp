@@ -18,18 +18,35 @@ class AQ_SEO_Meta {
 		add_action('wp_head', [__CLASS__, 'print_head'], 1);
 	}
 
+	/**
+	 * The post whose SEO fields/title drive this request: the queried object on
+	 * a singular view, or the static "Posts page" on the blog index (is_home),
+	 * which is otherwise not "singular" and would yield an empty <title>/og:title.
+	 */
+	private static function seo_post_id(): int {
+		if (is_singular()) {
+			return (int) get_queried_object_id();
+		}
+		if (is_home() && !is_front_page()) {
+			return (int) get_option('page_for_posts');
+		}
+		return 0;
+	}
+
 	private static function field(string $name): ?string {
-		if (!function_exists('get_field') || !is_singular()) {
+		$id = self::seo_post_id();
+		if (!function_exists('get_field') || !$id) {
 			return null;
 		}
-		$v = get_field($name, get_queried_object_id());
+		$v = get_field($name, $id);
 		return is_string($v) && $v !== '' ? $v : (is_bool($v) ? ($v ? '1' : '') : null);
 	}
 
 	public static function title($default) {
 		$title = self::field('seo_title');
 		if (!$title) {
-			$title = is_singular() ? get_the_title(get_queried_object_id()) : (string) $default;
+			$id    = self::seo_post_id();
+			$title = $id ? get_the_title($id) : (string) $default;
 		}
 		// Prefer an explicit seoSuffix; fall back to the brand short name.
 		$suffix = (string) (aq_site('seoSuffix') ?: aq_site('shortName'));
@@ -51,8 +68,9 @@ class AQ_SEO_Meta {
 		}
 
 		$page_noindex = false;
-		if (function_exists('get_field') && is_singular()) {
-			$page_noindex = (bool) get_field('seo_noindex', get_queried_object_id());
+		$seo_id = self::seo_post_id();
+		if (function_exists('get_field') && $seo_id) {
+			$page_noindex = (bool) get_field('seo_noindex', $seo_id);
 		}
 		$noindex = $page_noindex || aq_noindex_active();
 
