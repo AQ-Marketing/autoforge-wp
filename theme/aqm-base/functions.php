@@ -422,7 +422,7 @@ add_filter('aq_section_layouts', function (array $layouts) {
 		],
 	];
 
-	/* aqm_icon_card_grid — renders: kicker, heading, intro, container, cards[fa,title,body] */
+	/* aqm_icon_card_grid — renders: kicker, heading, intro, container, cards[fa,title,body,href] */
 	$layouts['aqm_icon_card_grid'] = [
 		'key' => 'layout_aqm_icon_card_grid',
 		'name' => 'aqm_icon_card_grid',
@@ -438,6 +438,7 @@ add_filter('aq_section_layouts', function (array $layouts) {
 					aqm_lf('aqm_icon_card_grid_card', 'fa'),
 					aqm_lf('aqm_icon_card_grid_card', 'title'),
 					aqm_lf('aqm_icon_card_grid_card', 'body', 'textarea'),
+					aqm_lf('aqm_icon_card_grid_card', 'href', 'url'),
 				],
 			]),
 		],
@@ -463,7 +464,7 @@ add_filter('aq_section_layouts', function (array $layouts) {
 		],
 	];
 
-	/* aqm_process_steps — renders: kicker, heading, steps[step_label,title,body] */
+	/* aqm_process_steps — renders: kicker, heading, intro, steps[step_label,title,body] */
 	$layouts['aqm_process_steps'] = [
 		'key' => 'layout_aqm_process_steps',
 		'name' => 'aqm_process_steps',
@@ -472,6 +473,7 @@ add_filter('aq_section_layouts', function (array $layouts) {
 		'sub_fields' => [
 			aqm_lf('aqm_process_steps', 'kicker'),
 			aqm_lf('aqm_process_steps', 'heading'),
+			aqm_lf('aqm_process_steps', 'intro', 'textarea'),
 			aqm_lf('aqm_process_steps', 'steps', 'repeater', [
 				'sub_fields' => [
 					aqm_lf('aqm_process_steps_step', 'step_label'),
