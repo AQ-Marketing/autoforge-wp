@@ -168,11 +168,30 @@
 		targets.forEach(function (t) { io.observe(t); });
 	}
 
+	/* ---------- Back-to-top button (scripts.js on the static site) ---------- */
+	function initToTop() {
+		var toTop = document.getElementById("toTop");
+		if (!toTop) return;
+		var ticking = false;
+		function update() {
+			toTop.classList.toggle("visible", window.scrollY > 400);
+			ticking = false;
+		}
+		window.addEventListener("scroll", function () {
+			if (!ticking) { requestAnimationFrame(update); ticking = true; }
+		}, { passive: true });
+		update();
+		toTop.addEventListener("click", function () {
+			window.scrollTo({ top: 0, behavior: "smooth" });
+		});
+	}
+
 	function init() {
 		initNav();
 		initFaq();
 		initCallBar();
 		initReveal();
+		initToTop();
 	}
 
 	if (document.readyState !== "loading") init();
