@@ -88,7 +88,13 @@ class AQ_Renderer {
 	 * reads $args['…']). Used for site chrome and for sub-parts like post-card.
 	 */
 	public static function part(string $name, array $args = []): void {
-		$file = AQ_CORE_DIR . 'render/parts/' . $name . '.php';
+		// Theme override: a site's theme may supply aq-parts/<name>.php to replace
+		// engine chrome (header/footer) WITHOUT editing the shared plugin, so a
+		// plugin update can never wipe a site's customizations. Falls back to the
+		// engine's built-in part. Filter `aq_part_template` allows programmatic override.
+		$tpl  = function_exists('locate_template') ? locate_template('aq-parts/' . $name . '.php') : '';
+		$file = $tpl !== '' ? $tpl : AQ_CORE_DIR . 'render/parts/' . $name . '.php';
+		$file = (string) apply_filters('aq_part_template', $file, $name);
 		if (is_readable($file)) {
 			self::include_section($file, $args);
 		}
@@ -117,7 +123,13 @@ class AQ_Renderer {
 			if ($layout === '') {
 				continue;
 			}
-			$file = AQ_CORE_DIR . 'render/sections/' . $layout . '.php';
+			// Theme override: a site's theme may supply aq-sections/<layout>.php to
+			// add or replace a section renderer WITHOUT editing the shared plugin —
+			// so per-site custom sections survive plugin updates. Falls back to the
+			// engine's built-in renderer. Filter `aq_section_template` for programmatic override.
+			$tpl  = function_exists('locate_template') ? locate_template('aq-sections/' . $layout . '.php') : '';
+			$file = $tpl !== '' ? $tpl : AQ_CORE_DIR . 'render/sections/' . $layout . '.php';
+			$file = (string) apply_filters('aq_section_template', $file, $layout, $section);
 			if (!is_readable($file)) {
 				continue;
 			}

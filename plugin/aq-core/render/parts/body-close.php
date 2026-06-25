@@ -10,7 +10,7 @@ if (!defined('ABSPATH')) {
 ?>
 </main>
 <?php AQ_Renderer::part('site-footer'); ?>
-<?php AQ_Renderer::part('sticky-call-bar'); ?>
+<?php if (aq_site('stickyBar')) { AQ_Renderer::part('sticky-call-bar'); } // per-site toggle: stickyBar=false (or unset) hides it ?>
 <?php wp_footer(); ?>
 </body>
 </html>

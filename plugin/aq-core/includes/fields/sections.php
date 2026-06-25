@@ -535,6 +535,13 @@ $layouts['post_feed'] = [
 	],
 ];
 
+// Per-site extensibility: a theme registers its own section layouts via this
+// filter (add_filter('aq_section_layouts', ...)) WITHOUT editing the shared
+// plugin. Critical: an unregistered flexible-content layout makes ACF DROP the
+// section's field values on save/import, so this keeps per-site custom sections'
+// content intact across plugin updates.
+$layouts = apply_filters('aq_section_layouts', $layouts);
+
 acf_add_local_field_group([
 	'key' => 'group_aq_sections',
 	'title' => 'Page Sections',
