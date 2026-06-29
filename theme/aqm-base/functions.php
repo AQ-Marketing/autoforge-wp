@@ -700,6 +700,25 @@ add_filter('aq_section_layouts', function (array $layouts) {
 		],
 	];
 
+	/* local_proof — full-bleed photo band: kicker, heading, heading_accent, subtext,
+	 * image (docroot basename), chip, cta_label, cta_href */
+	$layouts['local_proof'] = [
+		'key' => 'layout_aqm_local_proof',
+		'name' => 'local_proof',
+		'label' => 'Local Proof Band (photo)',
+		'display' => 'block',
+		'sub_fields' => [
+			aqm_lf('local_proof', 'kicker'),
+			aqm_lf('local_proof', 'heading'),
+			aqm_lf('local_proof', 'heading_accent'),
+			aqm_lf('local_proof', 'subtext', 'textarea'),
+			aqm_lf('local_proof', 'bg'),
+			aqm_lf('local_proof', 'chip'),
+			aqm_lf('local_proof', 'cta_label'),
+			aqm_lf('local_proof', 'cta_href', 'url'),
+		],
+	];
+
 	/* scrub_quote — renders: num, kicker, quote, author_initials, author_name, author_role */
 	$layouts['scrub_quote'] = [
 		'key' => 'layout_aqm_scrub_quote',
