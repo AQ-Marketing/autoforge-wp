@@ -697,6 +697,13 @@ add_filter('aq_section_layouts', function (array $layouts) {
 					aqm_lf('chip_marquee_row2_chips', 'href', 'url'),
 				],
 			]),
+			aqm_lf('chip_marquee', 'photos', 'repeater', [
+				'sub_fields' => [
+					aqm_lf('chip_marquee_photos', 'bg'),
+					aqm_lf('chip_marquee_photos', 'label'),
+					aqm_lf('chip_marquee_photos', 'href', 'url'),
+				],
+			]),
 		],
 	];
 
