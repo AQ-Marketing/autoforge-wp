@@ -123,8 +123,19 @@ class AQ_SEO_Agent {
 		if (is_array($regions) && isset($regions[0])) {
 			$kw[] = $regions[0] . ' ' . ($industry ?: 'services');
 		}
-		array_push($kw, 'radon testing', 'mold inspection', 'septic inspection');
-		return array_values(array_unique($kw));
+		// Pull any extra seed keywords from site config (client-agnostic); never
+		// hardcode an industry's terms here. A site that sets none simply starts
+		// with the industry/name + location keywords above.
+		$seed = function_exists('aq_site') ? aq_site('seoKeywords') : null;
+		if (is_array($seed)) {
+			foreach ($seed as $s) {
+				$s = trim((string) $s);
+				if ($s !== '') {
+					$kw[] = $s;
+				}
+			}
+		}
+		return array_values(array_unique(array_filter($kw)));
 	}
 
 	private static function default_ai_prompt(): string {
