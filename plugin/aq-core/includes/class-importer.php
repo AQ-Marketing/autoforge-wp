@@ -216,6 +216,15 @@ class AQ_Importer {
 			@unlink($zip_path);
 			return new WP_Error('aq_zip', 'Could not open the downloaded archive.', ['status' => 500]);
 		}
+		// Zip Slip protection: reject entries with path traversal.
+		for ($zi = 0; $zi < $za->numFiles; $zi++) {
+			$entry = $za->getNameIndex($zi);
+			if ($entry === false || strpos($entry, '..') !== false) {
+				$za->close();
+				@unlink($zip_path);
+				return new WP_Error('aq_zip_unsafe', 'Archive contains unsafe path entries.', ['status' => 400]);
+			}
+		}
 		$za->extractTo($dest);
 		$za->close();
 		@unlink($zip_path);

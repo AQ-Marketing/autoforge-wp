@@ -139,8 +139,17 @@ class AQ_Updater {
 	 * scope) we retry anonymously. That way a stale import-only token can never
 	 * break updates for the public product repo.
 	 */
+	/** 'stable' (default) or 'beta'. Beta sites see pre-releases. */
+	public static function channel(): string {
+		$ch = defined('AQ_UPDATE_CHANNEL') ? strtolower((string) AQ_UPDATE_CHANNEL) : 'stable';
+		return in_array($ch, ['stable', 'beta'], true) ? $ch : 'stable';
+	}
+
 	private static function fetch_release(string $repo): ?array {
-		$url  = 'https://api.github.com/repos/' . $repo . '/releases/latest';
+		// Beta channel: list releases and pick the first (newest). Includes pre-releases.
+		// Stable channel: /releases/latest (skips pre-releases automatically).
+		$beta = self::channel() === 'beta';
+		$url  = 'https://api.github.com/repos/' . $repo . '/releases' . ($beta ? '?per_page=5' : '/latest');
 		$resp = wp_remote_get($url, ['timeout' => 15, 'headers' => self::api_headers()]);
 		$code = is_wp_error($resp) ? 0 : (int) wp_remote_retrieve_response_code($resp);
 
@@ -152,7 +161,19 @@ class AQ_Updater {
 		if ($code !== 200) {
 			return null;
 		}
-		$data = json_decode(wp_remote_retrieve_body($resp), true);
+		$body = json_decode(wp_remote_retrieve_body($resp), true);
+		// Beta channel returns an array of releases; pick the first with assets.
+		if ($beta && is_array($body) && isset($body[0])) {
+			$data = null;
+			foreach ($body as $rel) {
+				if (!empty($rel['tag_name']) && !empty($rel['assets'])) {
+					$data = $rel;
+					break;
+				}
+			}
+		} else {
+			$data = $body;
+		}
 		if (!is_array($data) || empty($data['tag_name'])) {
 			return null;
 		}

@@ -242,6 +242,31 @@ add_action('acf/init', function () {
 	require_once AQ_CORE_DIR . 'includes/fields/sections.php';
 });
 
+
+
+/* ---------------- health check endpoint ---------------- */
+add_action('rest_api_init', function () {
+	register_rest_route('aq/v1', '/health', [
+		'methods'             => 'GET',
+		'permission_callback' => '__return_true', // public — for uptime monitors
+		'callback'            => function () {
+			$renderer_on = class_exists('AQ_Renderer') && AQ_Renderer::enabled();
+			$boost_on    = !(defined('AQ_BOOST_DISABLE') && AQ_BOOST_DISABLE)
+			               && is_plugin_active('aq-core/aq-core.php');
+			$acf_on      = function_exists('get_field');
+			return rest_ensure_response([
+				'ok'       => true,
+				'version'  => AQ_CORE_VERSION,
+				'renderer' => $renderer_on ? 'active' : 'disabled',
+				'boost'    => $boost_on ? 'active' : 'disabled',
+				'acf'      => $acf_on ? 'active' : 'missing',
+				'php'      => PHP_VERSION,
+				'wp'       => get_bloginfo('version'),
+			]);
+		},
+	]);
+});
+
 // Warn loudly if ACF is missing — sections cannot render without it.
 add_action('admin_notices', function () {
 	if (!function_exists('acf_add_local_field_group')) {
