@@ -20,12 +20,20 @@ if (!$logo_url) {
 	$lf = (string) aq_site('logo.file');
 	if ($lf) { $logo_url = content_url('uploads/' . ltrim($lf, '/')); }
 }
+// Optional: a different logo once the header is in its sticky/scrolled state
+// (AutoForge -> Logo). Empty falls back to $logo_url, so unset sites render
+// byte-identical to before this existed.
+$sticky_logo_id  = (int) aq_site('logo.idSticky');
+$sticky_logo_url = $sticky_logo_id ? wp_get_attachment_image_url($sticky_logo_id, 'full') : '';
 $site = (string) (aq_site('name') ?: get_bloginfo('name'));
 
-$logo_html = function () use ($logo_url, $site) {
+$logo_html = function ($swappable = false) use ($logo_url, $sticky_logo_url, $site) {
 	echo '<a class="logo" href="/" aria-label="' . esc_attr($site) . ' home">';
 	if ($logo_url) {
-		echo '<img src="' . esc_url($logo_url) . '" alt="' . esc_attr($site) . '" width="84" height="52">';
+		$swap_attrs = ($swappable && $sticky_logo_url)
+			? ' data-logo-default="' . esc_url($logo_url) . '" data-logo-sticky="' . esc_url($sticky_logo_url) . '"'
+			: '';
+		echo '<img src="' . esc_url($logo_url) . '" alt="' . esc_attr($site) . '" width="84" height="52"' . $swap_attrs . '>';
 	} else {
 		echo '<span>' . esc_html($site) . '</span>';
 	}
@@ -37,7 +45,7 @@ $logo_html = function () use ($logo_url, $site) {
 
 <nav class="top">
   <div class="wrap row">
-    <?php $logo_html(); ?>
+    <?php $logo_html(true); ?>
     <ul class="nav-main">
       <?php foreach ($nav as $item) :
         $label = (string) ($item['label'] ?? '');

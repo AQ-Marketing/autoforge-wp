@@ -6,11 +6,16 @@
   html {
     scroll-behavior: smooth;
     -webkit-text-size-adjust: 100%;
+    /* Pair with body below — iOS Safari scrolls <html>, not <body>, so a
+       body-only rule still lets Safari rubber-band sideways into blank space
+       on real devices even though Chrome mobile-emulation shows no overflow. */
+    overflow-x: hidden;
   }
 
   body {
     @apply bg-white text-brand-700 font-sans antialiased;
     text-rendering: optimizeLegibility;
+    overflow-x: hidden;
   }
 
   /* Serif headings (system serif by default). Color inherits. */
@@ -79,6 +84,12 @@
 }
 
 @layer components {
+  /* object-fit guards against distortion if a sticky-header logo (AutoForge ->
+     Logo, optional) has a different aspect ratio than the default logo it swaps
+     with inside this fixed width/height box. */
+  .logo img {
+    object-fit: contain;
+  }
   .btn {
     @apply inline-flex items-center justify-center gap-2 px-6 py-3 font-sans font-semibold text-base no-underline transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 border-2 border-transparent;
     border-radius: 4px;
@@ -302,6 +313,23 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .mega-panel { transition: none; transform: none; }
+}
+
+/* aqm-base header (aq-parts/site-header.php). Functional show/hide only —
+   positioning, animation, and breakpoints for the mobile drawer and mega
+   dropdowns are an intentional follow-up design pass, not an oversight. */
+.mobile-menu {
+  display: none;
+}
+.mobile-menu.is-open {
+  display: block;
+}
+
+.has-mega .mega {
+  display: none;
+}
+.has-mega .mega.mega-open {
+  display: block;
 }
 
 /* Sticky call bar — folded in from the Astro StickyCallBar.astro scoped styles.
