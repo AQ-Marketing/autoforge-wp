@@ -9,8 +9,9 @@
  * an H1 is always present, the body is non-trivial, and it contains links.
  *
  * Client-agnostic: every value comes from aq_site() + the page tree — nothing is
- * hardcoded. With AQ_NOINDEX on (staging/local) a minimal placeholder is emitted
- * instead, so unpublished sites never advertise their structure to agents.
+ * hardcoded. Off production (staging/local — see aq_noindex_active()) a minimal
+ * placeholder is emitted instead, so unpublished sites never advertise their
+ * structure to agents.
  */
 
 if (!defined('ABSPATH')) {

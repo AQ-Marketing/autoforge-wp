@@ -3,14 +3,16 @@
  * AutoForge — Performance screen (tab 'aq-performance').
  *
  * Shows caching + optimization status (Boost performance module), object cache,
- * indexing posture (AQ_NOINDEX), PHP/WP versions, a cache-clear control, and an
- * optional Google PageSpeed Insights (PSI) lab-metrics panel.
+ * indexing posture (read-only — driven entirely by the host's environment type,
+ * see aq_noindex_active() in aq-core.php), PHP/WP versions, a cache-clear
+ * control, and an optional Google PageSpeed Insights (PSI) lab-metrics panel.
  *
  * Design notes:
  *  - Self-contained: no third-party SaaS beyond the user's own optional PSI key.
  *  - SQLite-safe: only get_option/update_option, no raw SQL.
- *  - The PSI API key is WRITE-ONLY from the browser's perspective. It is stored
- *    in the wp_option 'aq_psi_key' and NEVER echoed back or localized to JS.
+ *  - The PSI API key is WRITE-ONLY from the browser's perspective. It is read
+ *    from the AQ_PSI_KEY wp-config constant first (shared/locked across sites),
+ *    else the wp_option 'aq_psi_key'; NEVER echoed back or localized to JS.
  *    All Google requests are made server-side via wp_remote_get.
  *  - All REST routes require manage_options + the WP REST nonce (X-WP-Nonce).
  *  - Vanilla JS only (inline <script>); shared chrome from AQ_Admin_Hub.
@@ -25,6 +27,16 @@ class AQ_Performance {
 	const CAP        = 'manage_options';
 	const OPT_KEY    = 'aq_psi_key';        // stores the Google PSI API key (server-side only)
 	const PSI_TTL    = 12 * HOUR_IN_SECONDS; // transient cache lifetime for PSI results
+
+	/** PSI API key — the AQ_PSI_KEY wp-config constant first (shared/locked across sites), else the per-site option. */
+	public static function psi_key(): string {
+		return (defined('AQ_PSI_KEY') && AQ_PSI_KEY) ? (string) AQ_PSI_KEY : (string) get_option(self::OPT_KEY, '');
+	}
+
+	/** True when the PSI key is locked by the AQ_PSI_KEY wp-config constant. */
+	public static function psi_locked(): bool {
+		return defined('AQ_PSI_KEY') && (bool) AQ_PSI_KEY;
+	}
 
 	/* ---------------- registration ---------------- */
 
@@ -63,14 +75,6 @@ class AQ_Performance {
 			],
 		]);
 
-		register_rest_route('aq/v1', '/perf/indexing', [
-			'methods'             => 'POST',
-			'callback'            => [__CLASS__, 'rest_set_indexing'],
-			'permission_callback' => $can,
-			'args'                => [
-				'noindex' => ['type' => 'boolean', 'required' => true],
-			],
-		]);
 	}
 
 	/* ---------------- REST handlers ---------------- */
@@ -106,46 +110,13 @@ class AQ_Performance {
 	}
 
 	/**
-	 * POST /perf/indexing — flips the site-wide search-engine indexing posture.
-	 * Writes the `aq_noindex` option (true = block, false = allow) and clears the
-	 * caches so robots.txt + the page <meta robots> refresh immediately. If the
-	 * AQ_NOINDEX constant is defined in wp-config.php it WINS, so the option is a
-	 * no-op there — report that as locked rather than silently doing nothing.
-	 */
-	public static function rest_set_indexing(WP_REST_Request $req) {
-		if (defined('AQ_NOINDEX')) {
-			return new WP_REST_Response([
-				'ok'      => false,
-				'locked'  => true,
-				'message' => 'Indexing is locked by AQ_NOINDEX in wp-config.php — remove that line to control it from here.',
-			], 200);
-		}
-
-		$noindex = (bool) $req->get_param('noindex');
-		update_option('aq_noindex', $noindex ? 1 : 0);
-
-		// Refresh robots.txt + cached HTML so the change is live immediately.
-		if (function_exists('rocket_clean_domain')) {
-			rocket_clean_domain();
-		}
-		if (function_exists('wp_cache_flush')) {
-			wp_cache_flush();
-		}
-
-		return new WP_REST_Response([
-			'ok'      => true,
-			'noindex' => $noindex,
-			'message' => $noindex
-				? 'Saved — search engines are now BLOCKED (noindex) across the site.'
-				: 'Saved — search engines are now ALLOWED to index the site.',
-		], 200);
-	}
-
-	/**
 	 * POST /perf/psi-key — saves (or clears) the Google PSI API key.
 	 * The key is stored server-side only. The response never echoes the value.
 	 */
 	public static function rest_save_psi_key(WP_REST_Request $req) {
+		if (self::psi_locked()) {
+			return new WP_REST_Response(['ok' => false, 'locked' => true, 'message' => 'PageSpeed key is locked by the AQ_PSI_KEY constant in wp-config.php — remove that line to edit it here.'], 200);
+		}
 		$raw = $req->get_param('key');
 		$key = is_string($raw) ? trim($raw) : '';
 		// Google API keys are alphanumeric with - and _; strip anything else defensively.
@@ -174,7 +145,7 @@ class AQ_Performance {
 	 * url+strategy unless ?fresh=1 is passed.
 	 */
 	public static function rest_pagespeed(WP_REST_Request $req) {
-		$key = (string) get_option(self::OPT_KEY, '');
+		$key = self::psi_key();
 		if ($key === '') {
 			return new WP_REST_Response([
 				'ok'      => false,
@@ -371,15 +342,15 @@ class AQ_Performance {
 		$boost_ver    = $boost_active ? (string) WP_ROCKET_VERSION : '';
 		$obj_cache     = function_exists('wp_using_ext_object_cache') ? wp_using_ext_object_cache() : false;
 		$noindex       = aq_noindex_active();
-		$noindex_locked = defined('AQ_NOINDEX'); // wp-config override → control disabled
+		$env_type      = wp_get_environment_type();
 		$php_ver       = PHP_VERSION;
 		$wp_ver        = get_bloginfo('version');
-		$has_psi_key   = ((string) get_option(self::OPT_KEY, '')) !== '';
+		$has_psi_key   = self::psi_key() !== '';
+		$psi_locked    = self::psi_locked();
 		$home          = home_url('/');
 
 		$nonce          = wp_create_nonce('wp_rest');
 		$clear_url      = esc_url_raw(rest_url('aq/v1/perf/clear-cache'));
-		$indexing_url   = esc_url_raw(rest_url('aq/v1/perf/indexing'));
 		$psi_key_url    = esc_url_raw(rest_url('aq/v1/perf/psi-key'));
 		$pagespeed_base = esc_url_raw(rest_url('aq/v1/perf/pagespeed'));
 		$boost_settings = admin_url('options-general.php?page=boost');
@@ -434,7 +405,7 @@ class AQ_Performance {
 					? '<span class="aq-badge aq-badge--warn">Noindex</span>'
 					: '<span class="aq-badge aq-badge--ok">Indexable</span>',
 				($noindex ? 'Search engines blocked' : 'Search engines allowed')
-					. ($noindex_locked ? ' · locked by wp-config' : '')
+					. ' · environment: ' . esc_html($env_type)
 			);
 			self::card('PHP version', esc_html($php_ver), 'Server runtime');
 			self::card('WordPress', esc_html((string) $wp_ver), 'Core version');
@@ -443,25 +414,15 @@ class AQ_Performance {
 
 		<div class="aq-panel">
 			<h2>Search engine indexing</h2>
-			<?php if ($noindex_locked) : ?>
-				<p class="aq-perf-muted" style="margin-top:0;">
-					Indexing is <strong><?php echo $noindex ? 'BLOCKED (noindex)' : 'ALLOWED (indexable)'; ?></strong>,
-					locked by the <code>AQ_NOINDEX</code> constant in <code>wp-config.php</code>.
-					Remove that line to control indexing from here.
-				</p>
-			<?php else : ?>
-				<p class="aq-perf-muted" style="margin-top:0;">
-					Choose whether search engines (Google, Bing) may index this site. Keep it blocked while staging;
-					allow it once the site is live. Updates <code>robots.txt</code> and every page instantly.
-				</p>
-				<div class="aq-perf-actions">
-					<span class="aq-strat" id="aq-index-toggle" role="group" aria-label="Search engine indexing">
-						<button type="button" data-noindex="0" class="<?php echo $noindex ? '' : 'is-active'; ?>">Indexable</button>
-						<button type="button" data-noindex="1" class="<?php echo $noindex ? 'is-active' : ''; ?>">Blocked (noindex)</button>
-					</span>
-				</div>
-				<p class="aq-perf-msg" id="aq-index-msg" role="status" aria-live="polite"></p>
-			<?php endif; ?>
+			<p class="aq-perf-muted" style="margin-top:0;">
+				Indexing is <strong><?php echo $noindex ? 'BLOCKED (noindex)' : 'ALLOWED (indexable)'; ?></strong>,
+				determined automatically by this site's hosting environment
+				(currently reported as <code><?php echo esc_html($env_type); ?></code>).
+				Only the literal environment <code>production</code> is indexable — every other environment
+				(staging, development, local) stays blocked. There is no separate switch here:
+				promote the site to production at the host level (e.g. Pressable's staging → production
+				promotion) and this updates automatically.
+			</p>
 		</div>
 
 		<div class="aq-panel">
@@ -490,6 +451,9 @@ class AQ_Performance {
 				<div id="aq-psi-result"></div>
 				<p class="aq-perf-msg" id="aq-psi-msg" role="status" aria-live="polite"></p>
 
+				<?php if ($psi_locked) : ?>
+					<p class="aq-perf-muted" style="margin-top:12px;">Key is <strong>locked by the <code>AQ_PSI_KEY</code> constant</strong> in <code>wp-config.php</code> (shared across all sites) — edit it there.</p>
+				<?php else : ?>
 				<details style="margin-top:14px;">
 					<summary class="aq-perf-muted" style="cursor:pointer;">Replace or remove API key</summary>
 					<form class="aq-perf-form" id="aq-psi-key-form" style="margin-top:10px;">
@@ -497,6 +461,7 @@ class AQ_Performance {
 						<button type="submit" class="aq-btn aq-btn--ghost">Save key</button>
 					</form>
 				</details>
+				<?php endif; ?>
 			<?php else : ?>
 				<p class="aq-perf-muted" style="margin-top:0;">
 					Add a free Google PageSpeed Insights API key to measure performance score, LCP, CLS, INP, FCP and TTFB.
@@ -517,7 +482,6 @@ class AQ_Performance {
 			var NONCE = <?php echo wp_json_encode($nonce); ?>;
 			var URLS = {
 				clear:     <?php echo wp_json_encode($clear_url); ?>,
-				indexing:  <?php echo wp_json_encode($indexing_url); ?>,
 				psiKey:    <?php echo wp_json_encode($psi_key_url); ?>,
 				pagespeed: <?php echo wp_json_encode($pagespeed_base); ?>,
 				home:      <?php echo wp_json_encode($home); ?>
@@ -550,32 +514,6 @@ class AQ_Performance {
 						.then(function (d) { setMsg(clearMsg, (d && d.message) || 'Done.', !!(d && d.ok)); })
 						.catch(function () { setMsg(clearMsg, 'Request failed.', false); })
 						.then(function () { clearBtn.disabled = false; });
-				});
-			}
-
-			// ----- Indexing toggle -----
-			var idxWrap = document.getElementById('aq-index-toggle');
-			var idxMsg  = document.getElementById('aq-index-msg');
-			if (idxWrap) {
-				idxWrap.addEventListener('click', function (e) {
-					var b = e.target.closest('button[data-noindex]');
-					if (!b || b.classList.contains('is-active')) return;
-					var noindex = b.getAttribute('data-noindex') === '1';
-					var all = idxWrap.querySelectorAll('button');
-					for (var i = 0; i < all.length; i++) { all[i].disabled = true; }
-					setMsg(idxMsg, 'Saving…', true);
-					fetch(URLS.indexing, { method: 'POST', headers: headers(), body: JSON.stringify({ noindex: noindex }) })
-						.then(function (r) { return r.json(); })
-						.then(function (d) {
-							setMsg(idxMsg, (d && d.message) || 'Saved.', !!(d && d.ok));
-							if (d && d.ok) {
-								for (var i = 0; i < all.length; i++) { all[i].classList.remove('is-active'); }
-								b.classList.add('is-active');
-								setTimeout(function () { location.reload(); }, 800);
-							}
-						})
-						.catch(function () { setMsg(idxMsg, 'Request failed.', false); })
-						.then(function () { for (var i = 0; i < all.length; i++) { all[i].disabled = false; } });
 				});
 			}
 
