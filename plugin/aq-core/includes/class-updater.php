@@ -44,6 +44,18 @@ class AQ_Updater {
 	 */
 	const DEFAULT_REPO = 'AQ-Marketing/autoforge-wp';
 
+	/**
+	 * Per-client theme assets that a theme UPDATE must never overwrite. These are
+	 * the compiled files a client delivers into the active companion theme (via the
+	 * content importer / SFTP), NOT part of the shared product release. The release
+	 * theme zip ships only the neutral stub, so a naive theme update would clobber a
+	 * live site's real compiled CSS/JS with the stub — see theme_assets_stash().
+	 */
+	const PROTECTED_THEME_ASSETS = ['assets/css/main.css', 'assets/js/site.js'];
+
+	/** Transient holding stashed per-client assets across a theme update. */
+	const ASSET_STASH_KEY = 'aq_updater_theme_asset_stash';
+
 	public static function register(): void {
 		add_filter('pre_set_site_transient_update_plugins', [__CLASS__, 'check_update']);
 		add_filter('pre_set_site_transient_update_themes', [__CLASS__, 'check_theme_update']);
@@ -52,6 +64,79 @@ class AQ_Updater {
 		add_filter('http_request_args', [__CLASS__, 'auth_download'], 10, 2);
 		// Drop the cached release lookup right after any plugin update completes.
 		add_action('upgrader_process_complete', [__CLASS__, 'flush_cache'], 10, 0);
+		// Preserve a client's compiled theme assets across a companion-theme update
+		// (the release ships only the neutral stub, which would otherwise clobber
+		// the live per-client build). Stash before, restore after.
+		add_filter('upgrader_pre_install', [__CLASS__, 'theme_assets_stash'], 10, 2);
+		add_filter('upgrader_post_install', [__CLASS__, 'theme_assets_restore'], 10, 3);
+	}
+
+	/** True when this upgrader run is updating our companion stub theme. */
+	private static function is_theme_update($hook_extra): bool {
+		return is_array($hook_extra)
+			&& (($hook_extra['type'] ?? '') === 'theme')
+			&& (($hook_extra['theme'] ?? '') === self::THEME_SLUG);
+	}
+
+	/**
+	 * upgrader_pre_install: read the CURRENTLY-installed per-client theme assets and
+	 * stash them in a transient, so theme_assets_restore() can put them back after
+	 * WordPress replaces the whole theme folder with the release's neutral stub.
+	 * Intentional asset changes are delivered by the content importer, never by a
+	 * theme update — so preserving whatever the site currently serves is correct.
+	 */
+	public static function theme_assets_stash($response, $hook_extra) {
+		if (is_wp_error($response) || !self::is_theme_update($hook_extra)) {
+			return $response;
+		}
+		$dir    = trailingslashit(get_theme_root(self::THEME_SLUG) . '/' . self::THEME_SLUG);
+		$stash  = [];
+		foreach (self::PROTECTED_THEME_ASSETS as $rel) {
+			$path = $dir . $rel;
+			if (is_readable($path)) {
+				$contents = @file_get_contents($path);
+				if ($contents !== false && $contents !== '') {
+					$stash[$rel] = $contents;
+				}
+			}
+		}
+		if ($stash) {
+			set_transient(self::ASSET_STASH_KEY, $stash, 10 * MINUTE_IN_SECONDS);
+		} else {
+			delete_transient(self::ASSET_STASH_KEY);
+		}
+		return $response;
+	}
+
+	/**
+	 * upgrader_post_install: write the stashed per-client assets back into the freshly
+	 * installed theme, overwriting the stub the release shipped. No-op if nothing was
+	 * stashed (e.g. a site that never had a compiled build).
+	 */
+	public static function theme_assets_restore($response, $hook_extra, $result) {
+		if (is_wp_error($response) || !self::is_theme_update($hook_extra)) {
+			return $response;
+		}
+		$stash = get_transient(self::ASSET_STASH_KEY);
+		delete_transient(self::ASSET_STASH_KEY);
+		if (!is_array($stash) || !$stash) {
+			return $response;
+		}
+		$dest = isset($result['destination']) ? trailingslashit((string) $result['destination']) : '';
+		if ($dest === '' || !is_dir($dest)) {
+			return $response;
+		}
+		foreach ($stash as $rel => $contents) {
+			// Only restore our allowlisted relative paths (defence-in-depth vs. a
+			// tampered transient); never traverse outside the theme dir.
+			if (!in_array($rel, self::PROTECTED_THEME_ASSETS, true)) {
+				continue;
+			}
+			$path = $dest . $rel;
+			wp_mkdir_p(dirname($path));
+			@file_put_contents($path, $contents);
+		}
+		return $response;
 	}
 
 	/** "owner/name" of the product repo; defaults to self::DEFAULT_REPO. */
