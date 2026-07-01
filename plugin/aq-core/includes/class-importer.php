@@ -406,7 +406,7 @@ class AQ_Importer {
 		}
 		// Resolve logo filenames → attachment IDs (images already sideloaded above).
 		if (class_exists('AQ_Content_Sync')) {
-			foreach (['file' => 'id', 'fileDark' => 'idDark'] as $src => $dst) {
+			foreach (['file' => 'id', 'fileDark' => 'idDark', 'fileSticky' => 'idSticky'] as $src => $dst) {
 				$fname = $brand['logo'][$src] ?? '';
 				if ($fname) {
 					$info = AQ_Content_Sync::image_info(basename((string) $fname));
@@ -467,7 +467,7 @@ class AQ_Importer {
 		}
 		$brand = json_decode((string) file_get_contents($file), true);
 		$out = [];
-		foreach (['file', 'fileDark'] as $k) {
+		foreach (['file', 'fileDark', 'fileSticky'] as $k) {
 			$v = $brand['logo'][$k] ?? '';
 			if (is_string($v) && $v !== '') {
 				$out[] = strtolower(basename($v));
