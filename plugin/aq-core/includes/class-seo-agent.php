@@ -105,17 +105,37 @@ class AQ_SEO_Agent {
 	}
 
 	private static function default_keywords(): array {
-		$kw = ['home inspection', 'home inspector near me'];
+		$kw = [];
+		// Build default keywords from site config.
+		$industry = (string) (aq_site('industry') ?: '');
+		$name     = (string) (aq_site('name') ?: '');
+		if ($industry !== '') {
+			$kw[] = $industry;
+			$kw[] = $industry . ' near me';
+		} elseif ($name !== '') {
+			$kw[] = $name;
+		}
 		$towns = function_exists('aq_site') ? aq_site('towns') : null;
 		if (is_array($towns) && isset($towns[0]['name'])) {
-			$kw[] = $towns[0]['name'] . ' home inspector';
+			$kw[] = $towns[0]['name'] . ' ' . ($industry ?: 'services');
 		}
 		$regions = function_exists('aq_site') ? aq_site('regions') : null;
 		if (is_array($regions) && isset($regions[0])) {
-			$kw[] = $regions[0] . ' home inspector';
+			$kw[] = $regions[0] . ' ' . ($industry ?: 'services');
 		}
-		array_push($kw, 'radon testing', 'mold inspection', 'septic inspection');
-		return array_values(array_unique($kw));
+		// Pull any extra seed keywords from site config (client-agnostic); never
+		// hardcode an industry's terms here. A site that sets none simply starts
+		// with the industry/name + location keywords above.
+		$seed = function_exists('aq_site') ? aq_site('seoKeywords') : null;
+		if (is_array($seed)) {
+			foreach ($seed as $s) {
+				$s = trim((string) $s);
+				if ($s !== '') {
+					$kw[] = $s;
+				}
+			}
+		}
+		return array_values(array_unique(array_filter($kw)));
 	}
 
 	private static function default_ai_prompt(): string {
@@ -132,7 +152,8 @@ class AQ_SEO_Agent {
 			}
 		}
 		$where = $region !== '' ? "$town and the $region area" : $town;
-		return "Who are the best home inspectors near $where? List the top companies by name and say why you recommend each.";
+		$ind = (string) (aq_site('industry') ?: 'service providers');
+		return "Who are the best {$ind} near $where? List the top companies by name and say why you recommend each.";
 	}
 
 	/** Take the country portion (after the last comma) of a region-level location. */
@@ -617,7 +638,7 @@ class AQ_SEO_Agent {
 		], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 
 		$system = implode("\n", [
-			'You are a friendly SEO analyst writing a short email to the owner of a local home-inspection business. The owner is NOT technical.',
+			'You are a friendly SEO analyst writing a short email to the owner of a local service business. The owner is NOT technical.',
 			'Explain what the data means in plain English (define any term you must use), be honest about weak spots, and end with a clearly prioritized, do-this-next action plan.',
 			'Focus on the levers that matter for a local service business: Google Business Profile / map pack, local keyword rankings, on-page content & meta, and being named by AI assistants (AI search).',
 			'Rules: no hype, no invented numbers — use only the data provided. Keep it under ~350 words.',

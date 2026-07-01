@@ -43,6 +43,21 @@ add_action('wp_enqueue_scripts', function () {
 		file_exists($js) ? (string) filemtime($js) : null,
 		['in_footer' => true, 'strategy' => 'defer']
 	);
+
+	// Home page animation layer (GSAP + ScrollTrigger + home.js), vendored in the
+	// theme. Powers the "Two things, done right" map-pack SERP + AI-receptionist
+	// chat mocks, the count-ups, the industries marquee, and the scroll reveals.
+	// home.js self-guards on <body class="home"> and degrades to final-state (all
+	// hidden states are set from JS, never CSS) if GSAP is unavailable, so loading
+	// it can never leave content invisible. Front page only — it is home-specific.
+	if (is_front_page() || is_home()) {
+		$gsap = get_theme_file_path('assets/js/vendor/gsap.min.js');
+		$st   = get_theme_file_path('assets/js/vendor/ScrollTrigger.min.js');
+		$home = get_theme_file_path('assets/js/home.js');
+		wp_enqueue_script('gsap', get_theme_file_uri('assets/js/vendor/gsap.min.js'), [], file_exists($gsap) ? (string) filemtime($gsap) : '3.12.7', ['in_footer' => true, 'strategy' => 'defer']);
+		wp_enqueue_script('gsap-scrolltrigger', get_theme_file_uri('assets/js/vendor/ScrollTrigger.min.js'), ['gsap'], file_exists($st) ? (string) filemtime($st) : '3.12.7', ['in_footer' => true, 'strategy' => 'defer']);
+		wp_enqueue_script('aqm-home', get_theme_file_uri('assets/js/home.js'), ['gsap', 'gsap-scrolltrigger'], file_exists($home) ? (string) filemtime($home) : null, ['in_footer' => true, 'strategy' => 'defer']);
+	}
 });
 
 // AQM custom section layouts — registered via engine's aq_section_layouts filter (update-safe).
@@ -407,7 +422,7 @@ add_filter('aq_section_layouts', function (array $layouts) {
 		],
 	];
 
-	/* aqm_icon_card_grid — renders: kicker, heading, intro, container, cards[fa,title,body] */
+	/* aqm_icon_card_grid — renders: kicker, heading, intro, container, cards[fa,title,body,href] */
 	$layouts['aqm_icon_card_grid'] = [
 		'key' => 'layout_aqm_icon_card_grid',
 		'name' => 'aqm_icon_card_grid',
@@ -423,6 +438,7 @@ add_filter('aq_section_layouts', function (array $layouts) {
 					aqm_lf('aqm_icon_card_grid_card', 'fa'),
 					aqm_lf('aqm_icon_card_grid_card', 'title'),
 					aqm_lf('aqm_icon_card_grid_card', 'body', 'textarea'),
+					aqm_lf('aqm_icon_card_grid_card', 'href', 'url'),
 				],
 			]),
 		],
@@ -448,7 +464,7 @@ add_filter('aq_section_layouts', function (array $layouts) {
 		],
 	];
 
-	/* aqm_process_steps — renders: kicker, heading, steps[step_label,title,body] */
+	/* aqm_process_steps — renders: kicker, heading, intro, steps[step_label,title,body] */
 	$layouts['aqm_process_steps'] = [
 		'key' => 'layout_aqm_process_steps',
 		'name' => 'aqm_process_steps',
@@ -457,6 +473,7 @@ add_filter('aq_section_layouts', function (array $layouts) {
 		'sub_fields' => [
 			aqm_lf('aqm_process_steps', 'kicker'),
 			aqm_lf('aqm_process_steps', 'heading'),
+			aqm_lf('aqm_process_steps', 'intro', 'textarea'),
 			aqm_lf('aqm_process_steps', 'steps', 'repeater', [
 				'sub_fields' => [
 					aqm_lf('aqm_process_steps_step', 'step_label'),
@@ -680,6 +697,32 @@ add_filter('aq_section_layouts', function (array $layouts) {
 					aqm_lf('chip_marquee_row2_chips', 'href', 'url'),
 				],
 			]),
+			aqm_lf('chip_marquee', 'photos', 'repeater', [
+				'sub_fields' => [
+					aqm_lf('chip_marquee_photos', 'bg'),
+					aqm_lf('chip_marquee_photos', 'label'),
+					aqm_lf('chip_marquee_photos', 'href', 'url'),
+				],
+			]),
+		],
+	];
+
+	/* local_proof — full-bleed photo band: kicker, heading, heading_accent, subtext,
+	 * image (docroot basename), chip, cta_label, cta_href */
+	$layouts['local_proof'] = [
+		'key' => 'layout_aqm_local_proof',
+		'name' => 'local_proof',
+		'label' => 'Local Proof Band (photo)',
+		'display' => 'block',
+		'sub_fields' => [
+			aqm_lf('local_proof', 'kicker'),
+			aqm_lf('local_proof', 'heading'),
+			aqm_lf('local_proof', 'heading_accent'),
+			aqm_lf('local_proof', 'subtext', 'textarea'),
+			aqm_lf('local_proof', 'bg'),
+			aqm_lf('local_proof', 'chip'),
+			aqm_lf('local_proof', 'cta_label'),
+			aqm_lf('local_proof', 'cta_href', 'url'),
 		],
 	];
 

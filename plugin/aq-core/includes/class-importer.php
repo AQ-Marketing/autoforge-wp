@@ -216,6 +216,15 @@ class AQ_Importer {
 			@unlink($zip_path);
 			return new WP_Error('aq_zip', 'Could not open the downloaded archive.', ['status' => 500]);
 		}
+		// Zip Slip protection: reject entries with path traversal.
+		for ($zi = 0; $zi < $za->numFiles; $zi++) {
+			$entry = $za->getNameIndex($zi);
+			if ($entry === false || strpos($entry, '..') !== false) {
+				$za->close();
+				@unlink($zip_path);
+				return new WP_Error('aq_zip_unsafe', 'Archive contains unsafe path entries.', ['status' => 400]);
+			}
+		}
 		$za->extractTo($dest);
 		$za->close();
 		@unlink($zip_path);
@@ -397,7 +406,7 @@ class AQ_Importer {
 		}
 		// Resolve logo filenames → attachment IDs (images already sideloaded above).
 		if (class_exists('AQ_Content_Sync')) {
-			foreach (['file' => 'id', 'fileDark' => 'idDark'] as $src => $dst) {
+			foreach (['file' => 'id', 'fileDark' => 'idDark', 'fileSticky' => 'idSticky'] as $src => $dst) {
 				$fname = $brand['logo'][$src] ?? '';
 				if ($fname) {
 					$info = AQ_Content_Sync::image_info(basename((string) $fname));
@@ -458,7 +467,7 @@ class AQ_Importer {
 		}
 		$brand = json_decode((string) file_get_contents($file), true);
 		$out = [];
-		foreach (['file', 'fileDark'] as $k) {
+		foreach (['file', 'fileDark', 'fileSticky'] as $k) {
 			$v = $brand['logo'][$k] ?? '';
 			if (is_string($v) && $v !== '') {
 				$out[] = strtolower(basename($v));

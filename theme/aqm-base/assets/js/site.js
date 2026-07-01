@@ -7,74 +7,122 @@
 (function () {
 	"use strict";
 
-	/* ---------- Mobile drawer + mega menu (Header.astro) ---------- */
+	/* ---------- Mobile drawer + mega menu (aqm-base site-header.php) ---------- */
 	function initNav() {
-		var toggle = document.querySelector("[data-nav-toggle]");
-		var mobile = document.querySelector("[data-nav-mobile]");
-		if (toggle && mobile) {
-			toggle.addEventListener("click", function () {
-				var open = mobile.classList.toggle("hidden");
-				toggle.setAttribute("aria-expanded", open ? "false" : "true");
-			});
+		/* Mobile drawer: #menuToggle opens #mobileMenu, #menuClose / Escape /
+		   outside-click close it. */
+		var menuToggle = document.getElementById("menuToggle");
+		var mobileMenu = document.getElementById("mobileMenu");
+		var menuClose = document.getElementById("menuClose");
 
-			mobile.querySelectorAll("details").forEach(function (det) {
-				det.addEventListener("toggle", function () {
-					if (det.open) {
-						mobile.querySelectorAll("details").forEach(function (other) {
-							if (other !== det) other.open = false;
-						});
-					}
-				});
+		function isMenuOpen() {
+			return !!mobileMenu && mobileMenu.classList.contains("is-open");
+		}
+
+		function openMenu() {
+			if (!mobileMenu) return;
+			mobileMenu.classList.add("is-open");
+			if (menuToggle) menuToggle.setAttribute("aria-expanded", "true");
+		}
+
+		function closeMenu() {
+			if (!mobileMenu) return;
+			mobileMenu.classList.remove("is-open");
+			if (menuToggle) menuToggle.setAttribute("aria-expanded", "false");
+		}
+
+		if (menuToggle && mobileMenu) {
+			menuToggle.setAttribute("aria-controls", "mobileMenu");
+			menuToggle.addEventListener("click", function () {
+				if (isMenuOpen()) closeMenu();
+				else openMenu();
 			});
 		}
 
-		var triggers = document.querySelectorAll("[data-mega-trigger]");
-		var panels = document.querySelectorAll("[data-mega-panel]");
-
-		function closeAll() {
-			triggers.forEach(function (t) { t.setAttribute("aria-expanded", "false"); });
-			panels.forEach(function (p) { p.classList.remove("mega-open"); });
-		}
-
-		function open(key) {
-			closeAll();
-			var trigger = document.querySelector('[data-mega-trigger="' + key + '"]');
-			var panel = document.querySelector('[data-mega-panel="' + key + '"]');
-			if (trigger) trigger.setAttribute("aria-expanded", "true");
-			if (panel) panel.classList.add("mega-open");
-		}
-
-		triggers.forEach(function (trigger) {
-			var key = trigger.getAttribute("data-mega-trigger");
-			var item = trigger.closest("[data-mega-item]");
-
-			trigger.addEventListener("click", function (e) {
-				e.preventDefault();
-				var isOpen = trigger.getAttribute("aria-expanded") === "true";
-				if (isOpen) closeAll();
-				else open(key);
+		if (menuClose) {
+			menuClose.addEventListener("click", function () {
+				closeMenu();
+				if (menuToggle) menuToggle.focus();
 			});
+		}
 
-			if (item) {
-				item.addEventListener("mouseenter", function () { open(key); });
-				item.addEventListener("focusin", function () { open(key); });
-			}
+		document.addEventListener("click", function (e) {
+			if (!isMenuOpen() || !(e.target instanceof Element)) return;
+			if (mobileMenu.contains(e.target)) return;
+			if (menuToggle && menuToggle.contains(e.target)) return;
+			closeMenu();
 		});
 
-		var header = document.querySelector("header");
-		if (header) header.addEventListener("mouseleave", closeAll);
+		/* ---------- Desktop mega menu: li.has-mega > a + div.mega ---------- */
+		var megaItems = [];
+		document.querySelectorAll("li.has-mega").forEach(function (item, i) {
+			var trigger = item.querySelector(":scope > a");
+			var panel = item.querySelector(":scope > .mega");
+			if (!trigger || !panel) return;
 
-		document.addEventListener("keydown", function (e) {
-			if (e.key === "Escape") {
-				closeAll();
-				if (document.activeElement && document.activeElement.blur) {
-					document.activeElement.blur();
+			var slug = item.getAttribute("data-nav") || ("item-" + i);
+			var panelId = panel.id || ("mega-panel-" + slug);
+			panel.id = panelId;
+
+			trigger.setAttribute("aria-haspopup", "true");
+			trigger.setAttribute("aria-expanded", "false");
+			trigger.setAttribute("aria-controls", panelId);
+
+			megaItems.push({ item: item, trigger: trigger, panel: panel });
+		});
+
+		function closeMega(entry) {
+			entry.panel.classList.remove("mega-open");
+			entry.trigger.setAttribute("aria-expanded", "false");
+		}
+
+		function openMega(entry) {
+			megaItems.forEach(function (other) {
+				if (other !== entry) closeMega(other);
+			});
+			entry.panel.classList.add("mega-open");
+			entry.trigger.setAttribute("aria-expanded", "true");
+		}
+
+		function closeAllMega() {
+			megaItems.forEach(closeMega);
+		}
+
+		megaItems.forEach(function (entry) {
+			entry.trigger.addEventListener("click", function (e) {
+				e.preventDefault();
+				if (entry.panel.classList.contains("mega-open")) closeMega(entry);
+				else openMega(entry);
+			});
+
+			entry.item.addEventListener("mouseenter", function () { openMega(entry); });
+			entry.item.addEventListener("mouseleave", function () { closeMega(entry); });
+			entry.trigger.addEventListener("focus", function () { openMega(entry); });
+
+			entry.item.addEventListener("focusout", function (e) {
+				if (!entry.item.contains(e.relatedTarget)) closeMega(entry);
+			});
+
+			entry.trigger.addEventListener("keydown", function (e) {
+				if (e.key === "Escape") {
+					closeMega(entry);
+					entry.trigger.focus();
 				}
-			}
+			});
 		});
 
 		document.addEventListener("click", function (e) {
-			if (!(e.target instanceof Element) || !e.target.closest("header")) closeAll();
+			if (!(e.target instanceof Element) || e.target.closest("li.has-mega")) return;
+			closeAllMega();
+		});
+
+		document.addEventListener("keydown", function (e) {
+			if (e.key !== "Escape") return;
+			closeAllMega();
+			if (isMenuOpen()) {
+				closeMenu();
+				if (menuToggle) menuToggle.focus();
+			}
 		});
 	}
 
@@ -168,11 +216,52 @@
 		targets.forEach(function (t) { io.observe(t); });
 	}
 
+	/* ---------- Sticky header state + optional logo swap (AutoForge -> Logo) ---------- */
+	function initStickyHeader() {
+		var header = document.querySelector("nav.top");
+		if (!header) return;
+		var img = header.querySelector("img[data-logo-sticky]");
+		var ticking = false;
+		function update() {
+			var scrolled = window.scrollY > 10;
+			header.classList.toggle("is-scrolled", scrolled);
+			if (img) {
+				var want = scrolled ? img.getAttribute("data-logo-sticky") : img.getAttribute("data-logo-default");
+				if (want && img.getAttribute("src") !== want) img.setAttribute("src", want);
+			}
+			ticking = false;
+		}
+		window.addEventListener("scroll", function () {
+			if (!ticking) { requestAnimationFrame(update); ticking = true; }
+		}, { passive: true });
+		update();
+	}
+
+	/* ---------- Back-to-top button (scripts.js on the static site) ---------- */
+	function initToTop() {
+		var toTop = document.getElementById("toTop");
+		if (!toTop) return;
+		var ticking = false;
+		function update() {
+			toTop.classList.toggle("visible", window.scrollY > 400);
+			ticking = false;
+		}
+		window.addEventListener("scroll", function () {
+			if (!ticking) { requestAnimationFrame(update); ticking = true; }
+		}, { passive: true });
+		update();
+		toTop.addEventListener("click", function () {
+			window.scrollTo({ top: 0, behavior: "smooth" });
+		});
+	}
+
 	function init() {
 		initNav();
 		initFaq();
 		initCallBar();
 		initReveal();
+		initToTop();
+		initStickyHeader();
 	}
 
 	if (document.readyState !== "loading") init();

@@ -1,9 +1,9 @@
 <?php
 /**
  * robots.txt — mirrors the Astro repo's dynamic robots.txt.ts:
- * with AQ_NOINDEX on (staging/local) the whole site is disallowed;
- * in production it allows everything except wp-admin and points at
- * the sitemap.
+ * off production (staging/local — see aq_noindex_active()) the whole site is
+ * disallowed; in production it allows everything except wp-admin and points
+ * at the sitemap.
  */
 
 class AQ_Robots {

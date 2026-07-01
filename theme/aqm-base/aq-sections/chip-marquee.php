@@ -28,6 +28,20 @@ $render_chips = static function (array $chips, string $field) {
 				<?php if (($s['aside_link_href'] ?? '') !== '') : ?><a class="hm-arrow-link" href="<?php echo esc_url($s['aside_link_href']); ?>"<?php echo ka_field_attr('aside_link_text'); ?>><?php echo esc_html($s['aside_link_text'] ?? ''); ?> <i class="fa-solid fa-arrow-right"></i></a><?php endif; ?>
 			</div>
 		</div>
+		<?php
+		$photos = array_values(array_filter((array) ($s['photos'] ?? []), fn($p) => is_array($p) && ($p['bg'] ?? '') !== ''));
+		if ($photos) : ?>
+		<div class="hm-indgrid">
+			<?php foreach ($photos as $i => $p) :
+				$href = ($p['href'] ?? '') !== '' ? $p['href'] : '#';
+				$bgu  = '/assets/generated/' . ltrim((string) $p['bg'], '/');
+			?>
+			<a class="hm-indcard" href="<?php echo esc_url($href); ?>"<?php echo ka_field_attr('photos', $i); ?> style="background-image:linear-gradient(180deg,rgba(8,10,14,.08) 0%,rgba(8,10,14,.5) 56%,rgba(8,10,14,.92) 100%),url('<?php echo esc_url($bgu); ?>')">
+				<span class="hm-indcard-label"><?php echo esc_html($p['label'] ?? ''); ?> <i class="fa-solid fa-arrow-right" aria-hidden="true"></i></span>
+			</a>
+			<?php endforeach; ?>
+		</div>
+		<?php endif; ?>
 	</div>
 	<div class="hm-rows">
 		<div class="hm-row"><div class="hm-row-track" data-speed="<?php echo esc_attr($s['row1_speed'] ?? '0.5'); ?>">

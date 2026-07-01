@@ -78,9 +78,12 @@ return [
 	'founded' => null,
 
 	// Logo attachment IDs in the WP media library (resolved during image import).
+	// idSticky is OPTIONAL — a logo swapped in once the header is in its sticky/
+	// scrolled state. Empty falls back to the main `id` logo (no front-end change).
 	'logo' => [
-		'id'     => 0,
-		'idDark' => 0,
+		'id'       => 0,
+		'idDark'   => 0,
+		'idSticky' => 0,
 	],
 
 	// Optional web-font stylesheet URL (e.g. a Google Fonts CSS2 link). When

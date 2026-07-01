@@ -3,7 +3,7 @@
  * Plugin Name: AutoForge
  * Plugin URI: https://aqmarketing.com
  * Description: Client-agnostic WordPress platform — one plugin owns front-end rendering (structured sections, header/footer, the visual builder), site config (NAP/license), SEO meta + titles, JSON-LD, ACF section schema, robots, JSON content sync, and the embedded Boost performance module. Every site is driven entirely from its own data; the theme is a near-empty stub.
- * Version: 0.2.20
+ * Version: 0.3.0
  * Requires PHP: 8.0
  * Author: AQ Marketing
  * Text Domain: aq-core
@@ -15,25 +15,32 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.2.20');
+define('AQ_CORE_VERSION', '0.3.0');
 
 /**
  * Site-wide noindex posture, mirroring the Astro PUBLIC_NOINDEX behavior.
- * Resolution order (see aq_noindex_active()):
- *   1. `AQ_NOINDEX` constant in wp-config.php — a HARD override that locks the
- *      setting (use on staging/local to guarantee the site stays out of Google
- *      regardless of the database). When present, the dashboard control is
- *      shown but disabled.
- *   2. The `aq_noindex` option — the normal control, toggled from
- *      AutoForge → Performance → Search engine indexing.
- *   3. Default TRUE — an unconfigured install stays out of Google (staging-safe).
+ *
+ * Driven ENTIRELY by the host's own environment designation
+ * (`wp_get_environment_type()`, backed by the `WP_ENVIRONMENT_TYPE` constant
+ * in wp-config.php) — no plugin-level override, option, or admin toggle.
+ * Pressable (or any host that manages this constant) is the single source of
+ * truth for staging vs. production; the plugin just reads it. Anything other
+ * than the literal environment type `production` stays out of Google.
+ *
+ * SAFE DEFAULT: if the environment is not explicitly set (constant undefined AND
+ * env var empty), we stay noindex. WordPress's wp_get_environment_type() silently
+ * falls back to 'production' when unset, which would make an unconfigured or
+ * freshly-cloned install index-on (and tracking-on) by accident. Requiring an
+ * explicit 'production' to be indexable keeps new/cloned sites out of Google
+ * until someone deliberately marks them production.
  */
 if (!function_exists('aq_noindex_active')) {
 function aq_noindex_active(): bool {
-	if (defined('AQ_NOINDEX')) {
-		return (bool) AQ_NOINDEX;
+	$raw = defined('WP_ENVIRONMENT_TYPE') ? constant('WP_ENVIRONMENT_TYPE') : getenv('WP_ENVIRONMENT_TYPE');
+	if (!$raw) {
+		return true; // unknown/unset environment => stay noindex (safe default)
 	}
-	return (bool) get_option('aq_noindex', true);
+	return wp_get_environment_type() !== 'production';
 }
 }
 
@@ -82,6 +89,8 @@ require_once AQ_CORE_DIR . 'includes/class-integrations.php';
 require_once AQ_CORE_DIR . 'includes/class-importer.php';
 require_once AQ_CORE_DIR . 'includes/class-global-styles.php';
 require_once AQ_CORE_DIR . 'includes/class-navigation.php';
+require_once AQ_CORE_DIR . 'includes/class-logo-settings.php';
+require_once AQ_CORE_DIR . 'includes/class-lead-capture.php';
 require_once AQ_CORE_DIR . 'includes/class-tracking.php';
 require_once AQ_CORE_DIR . 'includes/class-page-folders.php';
 require_once AQ_CORE_DIR . 'includes/class-seo-agent.php';
@@ -123,6 +132,8 @@ AQ_Integrations::register();
 AQ_Importer::register();
 AQ_Global_Styles::register();
 AQ_Navigation::register();
+AQ_Logo_Settings::register();
+AQ_Lead_Capture::register();
 AQ_Tracking::register();
 AQ_Page_Folders::register();
 AQ_SEO_Agent::register();
@@ -240,6 +251,31 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 // ACF section schema (field groups registered in PHP — diffable, repo-owned).
 add_action('acf/init', function () {
 	require_once AQ_CORE_DIR . 'includes/fields/sections.php';
+});
+
+
+
+/* ---------------- health check endpoint ---------------- */
+add_action('rest_api_init', function () {
+	register_rest_route('aq/v1', '/health', [
+		'methods'             => 'GET',
+		'permission_callback' => '__return_true', // public — for uptime monitors
+		'callback'            => function () {
+			$renderer_on = class_exists('AQ_Renderer') && AQ_Renderer::enabled();
+			$boost_on    = !(defined('AQ_BOOST_DISABLE') && AQ_BOOST_DISABLE)
+			               && is_plugin_active('aq-core/aq-core.php');
+			$acf_on      = function_exists('get_field');
+			return rest_ensure_response([
+				'ok'       => true,
+				'version'  => AQ_CORE_VERSION,
+				'renderer' => $renderer_on ? 'active' : 'disabled',
+				'boost'    => $boost_on ? 'active' : 'disabled',
+				'acf'      => $acf_on ? 'active' : 'missing',
+				'php'      => PHP_VERSION,
+				'wp'       => get_bloginfo('version'),
+			]);
+		},
+	]);
 });
 
 // Warn loudly if ACF is missing — sections cannot render without it.

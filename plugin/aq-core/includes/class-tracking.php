@@ -12,11 +12,12 @@
  *      verification metas, Meta Pixel.
  *   2. Custom snippets — raw Head / Body-open / Footer boxes for anything else.
  *
- * Staging posture: while the site is in noindex/staging mode
- * (aq_noindex_active()), analytics + custom snippets are SUPPRESSED so staging
- * traffic never reaches production analytics. The GSC + Bing verification metas
- * still render (harmless, and domains are often verified before launch). All
- * tracking activates automatically when the site goes live (noindex off).
+ * Environment posture: tracking renders in EVERY environment (staging and
+ * production alike). Pressable staging URLs are not crawlable, so there is no
+ * indexing risk, and having GA/Pixel/chatbot/verification active on staging is
+ * useful for pre-launch testing. The site-wide indexing posture
+ * (aq_noindex_active() → robots meta / robots.txt) is a separate concern and is
+ * NOT affected by tracking output.
  *
  * Storage: a single non-autoloaded option `aq_tracking`. Guided IDs are
  * pattern-sanitized so a malformed value cannot inject markup. The raw snippet
@@ -56,9 +57,15 @@ class AQ_Tracking {
 		], $opt);
 	}
 
-	/** Analytics fire only on a live site; verification always renders. */
+	/**
+	 * Whether tracking output renders. Always true — tracking fires in every
+	 * environment (staging URLs aren't crawlable, so there's no indexing risk and
+	 * pre-launch testing needs the tags live). Indexing posture is separate
+	 * (aq_noindex_active()) and unaffected. A filter allows a site to opt back
+	 * into suppression if it ever needs to.
+	 */
 	private static function tracking_live(): bool {
-		return !(function_exists('aq_noindex_active') && aq_noindex_active());
+		return (bool) apply_filters('aq_tracking_render', true);
 	}
 
 	/* ---------------- front-end output ---------------- */
@@ -149,7 +156,7 @@ class AQ_Tracking {
 		}
 		$t    = self::get();
 		$live = self::tracking_live();
-		AQ_Admin_Hub::open('Tracking', 'Add analytics & verification codes. AutoForge places each tag correctly and pauses analytics while the site is in staging.', self::SLUG);
+		AQ_Admin_Hub::open('Tracking', 'Add analytics & verification codes. AutoForge places each tag correctly and renders them in every environment.', self::SLUG);
 		?>
 		<style>
 			.aq-trk-field { margin-bottom: 16px; }
@@ -168,9 +175,9 @@ class AQ_Tracking {
 		<?php endif; ?>
 
 		<?php if ($live) : ?>
-			<div class="aq-trk-banner aq-trk-banner--live"><strong>Site is live.</strong> All configured tracking is active on the front end.</div>
+			<div class="aq-trk-banner aq-trk-banner--live"><strong>Tracking is active in every environment.</strong> All configured tags &amp; snippets render on the front end on staging and production alike. (Indexing is controlled separately under <a href="<?php echo esc_url(admin_url('admin.php?page=aq-performance')); ?>">Performance</a>.)</div>
 		<?php else : ?>
-			<div class="aq-trk-banner aq-trk-banner--staging"><strong>Site is in staging (noindex).</strong> Analytics &amp; custom snippets are <strong>paused</strong> so staging traffic stays out of your reports; verification tags still load. Everything activates when you turn off noindex under <a href="<?php echo esc_url(admin_url('admin.php?page=aq-performance')); ?>">Performance → Search engine indexing</a>.</div>
+			<div class="aq-trk-banner aq-trk-banner--staging"><strong>Tracking output is currently disabled</strong> via the <code>aq_tracking_render</code> filter. Remove that filter to render tags again.</div>
 		<?php endif; ?>
 
 		<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" autocomplete="off">

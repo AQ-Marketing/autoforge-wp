@@ -1,7 +1,8 @@
 <?php
 /**
  * SEO head output. Title pattern "{title} | {brand suffix}", description,
- * canonical, robots (per-page noindex OR site-wide AQ_NOINDEX), Open Graph,
+ * canonical, robots (per-page noindex OR the site-wide environment-driven
+ * posture — see aq_noindex_active()), Open Graph,
  * Twitter, viewport/theme-color, favicons.
  *
  * Brand-specific values are client config (aq_site): the title suffix is
