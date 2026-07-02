@@ -42,6 +42,63 @@ class AQ_Performance {
 
 	public static function register(): void {
 		add_action('rest_api_init', [__CLASS__, 'rest_routes']);
+		add_action('admin_bar_menu', [__CLASS__, 'admin_bar'], 100);
+		add_action('admin_post_aq_boost_purge', [__CLASS__, 'handle_admin_bar_purge']);
+	}
+
+	/**
+	 * Clears the Boost caches: page cache + minified assets, plus a WP object-cache
+	 * flush as a floor so the action always does something. Returns the labels of
+	 * what was cleared. (Pressable's own edge cache is separate — cleared from
+	 * Settings → Edge Cache, or by re-saving the post.)
+	 */
+	public static function purge_caches(): array {
+		$did = [];
+		if (function_exists('rocket_clean_domain')) {
+			rocket_clean_domain();
+			$did[] = 'page cache';
+		}
+		if (function_exists('rocket_clean_minify')) {
+			rocket_clean_minify();
+			$did[] = 'minified assets';
+		}
+		if (function_exists('wp_cache_flush')) {
+			wp_cache_flush();
+			$did[] = 'object cache';
+		}
+		return $did;
+	}
+
+	/**
+	 * One-click "Clear cache" control in the admin bar (front end + admin), so the
+	 * cache can be purged from any page — no settings screen needed. This is the
+	 * primary cache control now that Boost has no settings UI.
+	 */
+	public static function admin_bar($bar): void {
+		if (!current_user_can(self::CAP)) {
+			return;
+		}
+		$bar->add_node([
+			'id'    => 'aq-boost-purge',
+			'title' => '<span class="dashicons dashicons-update" style="vertical-align:middle;font-size:18px;height:auto;"></span> Clear cache',
+			'href'  => wp_nonce_url(admin_url('admin-post.php?action=aq_boost_purge'), 'aq_boost_purge'),
+			'meta'  => ['title' => 'Clear the Boost page + asset cache'],
+		]);
+	}
+
+	/** admin-post handler for the admin-bar "Clear cache" node. */
+	public static function handle_admin_bar_purge(): void {
+		if (
+			!current_user_can(self::CAP)
+			|| !isset($_GET['_wpnonce'])
+			|| !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'aq_boost_purge')
+		) {
+			wp_die(esc_html__('You are not allowed to do that.', 'aq-core'));
+		}
+		self::purge_caches();
+		$back = wp_get_referer() ? wp_get_referer() : admin_url();
+		wp_safe_redirect($back);
+		exit;
 	}
 
 	public static function rest_routes(): void {
@@ -81,20 +138,7 @@ class AQ_Performance {
 
 	/** POST /perf/clear-cache — clears the Boost caches if available. */
 	public static function rest_clear_cache(WP_REST_Request $req) {
-		$did = [];
-		if (function_exists('rocket_clean_domain')) {
-			rocket_clean_domain();
-			$did[] = 'page cache';
-		}
-		if (function_exists('rocket_clean_minify')) {
-			rocket_clean_minify();
-			$did[] = 'minified assets';
-		}
-		// Fall back to the WP object cache flush so the button always does something.
-		if (function_exists('wp_cache_flush')) {
-			wp_cache_flush();
-			$did[] = 'object cache';
-		}
+		$did = self::purge_caches();
 
 		if (!$did) {
 			return new WP_REST_Response([
@@ -353,7 +397,6 @@ class AQ_Performance {
 		$clear_url      = esc_url_raw(rest_url('aq/v1/perf/clear-cache'));
 		$psi_key_url    = esc_url_raw(rest_url('aq/v1/perf/psi-key'));
 		$pagespeed_base = esc_url_raw(rest_url('aq/v1/perf/pagespeed'));
-		$boost_settings = admin_url('options-general.php?page=boost');
 		$psi_get_key_url = 'https://developers.google.com/speed/docs/insights/v5/get-started';
 
 		// Screen-specific styling (scoped under .aq-hub), reusing the brand palette.
@@ -427,10 +470,9 @@ class AQ_Performance {
 
 		<div class="aq-panel">
 			<h2>Caching</h2>
-			<p class="aq-perf-muted" style="margin-top:0;">Clear the page cache and minified assets after publishing content or design changes.</p>
+			<p class="aq-perf-muted" style="margin-top:0;">Clear the page cache and minified assets after publishing content or design changes. You can also clear it from anywhere using the <strong>Clear cache</strong> button in the top admin bar.</p>
 			<div class="aq-perf-actions">
 				<button type="button" class="aq-btn" id="aq-clear-cache">Clear all caches</button>
-				<a class="aq-btn aq-btn--ghost" href="<?php echo esc_url($boost_settings); ?>">Open Boost settings</a>
 			</div>
 			<p class="aq-perf-msg" id="aq-clear-msg" role="status" aria-live="polite"></p>
 		</div>

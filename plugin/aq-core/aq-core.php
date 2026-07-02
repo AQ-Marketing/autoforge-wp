@@ -184,7 +184,7 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 	 * only what is functional on Pressable. Runs late so it also removes anything
 	 * the PluginFamily controller re-adds.
 	 *
-	 * Three groups are removed (see the inline notes on each unset):
+	 * Two groups are removed:
 	 *
 	 * 1. Upstream PROMO sections that point at third-party services — Image
 	 *    Optimization/Imagify, Tutorials videos, "Our Plugins" (WP Media), Add-ons.
@@ -215,15 +215,7 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 			$navigation['addons'],
 			// 2. page-cache + CDN: non-functional / discouraged on Pressable
 			$navigation['advanced_cache'],
-			$navigation['page_cdn'],
-			// 3. redundant / unused chrome:
-			//    'dashboard' — WP Rocket's status screen. AQ's own Performance
-			//    admin screen already provides cache-clear, status and PageSpeed
-			//    in AQ branding, so this tab is duplicate chrome.
-			//    'rocket_insights' — upstream GTmetrix-backed telemetry we don't
-			//    use (already gated off); drop the tab entirely.
-			$navigation['dashboard'],
-			$navigation['rocket_insights']
+			$navigation['page_cdn']
 		);
 		return $navigation;
 	}, 100);
@@ -256,39 +248,63 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 	add_filter('gettext_with_context', $aq_boost_brandwash, 20, 4);
 
 	/**
-	 * Preload Cache (sitemap-based cache preloading) is inert on Pressable:
-	 * Boost disables WP Rocket's own page cache here (Pressable serves pages
-	 * from Batcache + Edge Cache), so there is no page cache to warm. Force the
-	 * 'manual_preload' option off so the feature never runs regardless of any
-	 * stored value; the (now dead) control itself is hidden on the screen below.
+	 * Boost has no settings UI (see AQ_Admin_Hub: the page is unlinked and direct
+	 * access is redirected). Its configuration therefore lives HERE, in code, so
+	 * every site runs one identical, Pressable-correct profile that can't drift or
+	 * be misconfigured. These values mirror the known-good production config, with
+	 * two deliberate changes from the historical default:
+	 *   - image_dimensions => 1: emit width/height on images (fixes layout shift
+	 *     AND lets WordPress core lazy-load them — core skips images with no size).
+	 *   - manual_preload  => 0: sitemap cache-preload is inert on Pressable (Boost
+	 *     disables WP Rocket's page cache here), so there is nothing to preload.
+	 * Enforced via 'pre_get_rocket_option_{key}', which short-circuits reads. Only
+	 * functional feature flags are pinned — internal bookkeeping keys (version,
+	 * secret/minify keys) are left to the engine so updates/cache-busting still work.
 	 */
-	add_filter('pre_get_rocket_option_manual_preload', '__return_zero');
-
-	/**
-	 * Visible de-brand + UI trim on the Boost settings screen (CSS/JS only — no
-	 * engine files touched, so it survives Boost updates):
-	 *   - hide residual help / "More info" links that expose the upstream docs
-	 *     (docs.wp-rocket.me) or open the (already-disabled) support beacon;
-	 *   - hide the now-inert "Preload Cache" section box, leaving "Preload Links".
-	 * Gated to the Boost settings page only.
-	 */
-	add_action('admin_enqueue_scripts', function () {
-		$slug = defined('WP_ROCKET_PLUGIN_SLUG') ? WP_ROCKET_PLUGIN_SLUG : 'boost';
-		if (!isset($_GET['page']) || $_GET['page'] !== $slug) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-			return;
-		}
-		$css = '.wpr-infoAction--help,a[data-beacon-article],a[data-beacon-id],a[href*="wp-rocket.me"]{display:none !important;}';
-		wp_register_style('aq-boost-clean', false, [], AQ_CORE_VERSION);
-		wp_enqueue_style('aq-boost-clean');
-		wp_add_inline_style('aq-boost-clean', $css);
-
-		// Remove the inert "Preload Cache" section box by its heading text
-		// (untranslated, so stable), leaving the "Preload Links" section intact.
-		$js = "(function(){function trim(){var h=document.querySelectorAll('#preload .wpr-optionHeader');for(var i=0;i<h.length;i++){var t=h[i].querySelector('h3');if(t&&t.textContent.trim()==='Preload Cache'){var b=h[i].nextElementSibling;h[i].style.display='none';if(b&&b.classList.contains('wpr-fieldsContainer'))b.style.display='none';}}}if(document.readyState!=='loading'){trim();}else{document.addEventListener('DOMContentLoaded',trim);}})();";
-		wp_register_script('aq-boost-clean', false, [], AQ_CORE_VERSION, true);
-		wp_enqueue_script('aq-boost-clean');
-		wp_add_inline_script('aq-boost-clean', $js);
-	});
+	$aq_boost_config = [
+		// asset optimization
+		'minify_css'              => 1,
+		'minify_js'               => 1,
+		'minify_concatenate_js'   => 0, // combining hurts under HTTP/2
+		'minify_google_fonts'     => 1,
+		'defer_all_js'            => 0,
+		'delay_js'                => 0,
+		'cache_webp'              => 0,
+		'emoji'                   => 1, // disable the wp-emoji script
+		// media
+		'lazyload'                => 0, // core handles it once dimensions exist
+		'lazyload_iframes'        => 0,
+		'lazyload_youtube'        => 0,
+		'image_dimensions'        => 1, // CHANGED: fixes CLS + enables core lazyload
+		'host_fonts_locally'      => 0, // theme already self-hosts fonts at build
+		'auto_preload_fonts'      => 0,
+		// preload
+		'manual_preload'          => 0, // CHANGED: inert on Pressable (no page cache)
+		'preload_links'           => 1,
+		// heartbeat
+		'control_heartbeat'         => 1,
+		'heartbeat_site_behavior'   => 'reduce_periodicity',
+		'heartbeat_admin_behavior'  => 'reduce_periodicity',
+		'heartbeat_editor_behavior' => 'reduce_periodicity',
+		// database — no automatic cleanup
+		'database_revisions'        => 0,
+		'database_auto_drafts'      => 0,
+		'database_trashed_posts'    => 0,
+		'database_spam_comments'    => 0,
+		'database_trashed_comments' => 0,
+		'database_all_transients'   => 0,
+		'database_optimize_tables'  => 0,
+		'schedule_automatic_cleanup'=> 0,
+		// third-party services — off (Pressable provides CDN/edge; no telemetry)
+		'cdn'                     => 0,
+		'do_cloudflare'           => 0,
+		'analytics_enabled'       => 0,
+	];
+	foreach ($aq_boost_config as $aq_boost_key => $aq_boost_val) {
+		add_filter('pre_get_rocket_option_' . $aq_boost_key, static function () use ($aq_boost_val) {
+			return $aq_boost_val;
+		});
+	}
 }
 
 // ACF section schema (field groups registered in PHP — diffable, repo-owned).

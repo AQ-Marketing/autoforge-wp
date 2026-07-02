@@ -18,6 +18,7 @@ class AQ_Admin_Hub {
 		add_action('admin_menu', [__CLASS__, 'menu']);
 		add_action('admin_menu', [__CLASS__, 'hide_boost_from_settings'], 999);
 		add_action('wp_loaded', [__CLASS__, 'hide_boost_from_admin_bar']);
+		add_action('admin_init', [__CLASS__, 'block_boost_page']);
 	}
 
 	public static function menu(): void {
@@ -28,11 +29,12 @@ class AQ_Admin_Hub {
 		add_submenu_page(self::SLUG, 'Locations', 'Locations', self::CAP, 'aq-locations', ['AQ_Locations', 'render']);
 		add_submenu_page(self::SLUG, 'Navigation', 'Navigation', self::CAP, 'aq-navigation', ['AQ_Navigation', 'render']);
 		add_submenu_page(self::SLUG, 'Performance', 'Performance', self::CAP, 'aq-performance', ['AQ_Performance', 'render']);
-		// Boost (the performance module) is hidden from the WP Settings menu + the
-		// admin bar (see hide_boost_from_*) so it lives ONLY here in the AQM
-		// Dashboard. The submenu slug carries a .php target, so WordPress renders it
-		// as a direct link to the still-registered options-general.php?page=boost page.
-		add_submenu_page(self::SLUG, 'Boost', 'Boost', self::CAP, 'options-general.php?page=boost');
+		// Boost (the performance module) has NO settings UI. It runs a single
+		// code-locked config (see the $aq_boost_config block in aq-core.php), so
+		// there is nothing to configure per-site. Its WP Rocket settings page is
+		// hidden from the Settings menu + admin bar (hide_boost_from_*) and blocked
+		// on direct access (block_boost_page). Cache clearing lives in the admin bar
+		// and on the Performance screen.
 		// The Editor is rendered inside the Pages screen (aq-pages&page_id=N) so it
 		// is always a properly-authorized admin page — no hidden/removed submenu.
 	}
@@ -47,8 +49,23 @@ class AQ_Admin_Hub {
 
 	public static function hide_boost_from_admin_bar(): void {
 		// The Boost admin-bar menu is added by rocket_admin_bar() at PHP_INT_MAX - 10.
-		// Remove it so Boost is reachable only from the AutoForge.
+		// Remove the upstream (WP Rocket-branded) menu; AQ adds its own clean
+		// "Clear cache" node instead (see AQ_Performance::admin_bar).
 		remove_action('admin_bar_menu', 'rocket_admin_bar', PHP_INT_MAX - 10);
+	}
+
+	/**
+	 * Boost has no settings UI. Its WP Rocket settings page stays registered
+	 * (so the engine's own hooks are intact), but we block human access to it:
+	 * anyone hitting options-general.php?page={boost slug} is bounced to the
+	 * AutoForge Performance screen. Config is code-locked in aq-core.php.
+	 */
+	public static function block_boost_page(): void {
+		$slug = defined('WP_ROCKET_PLUGIN_SLUG') ? WP_ROCKET_PLUGIN_SLUG : 'boost';
+		if (isset($_GET['page']) && $_GET['page'] === $slug) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			wp_safe_redirect(admin_url('admin.php?page=aq-performance'));
+			exit;
+		}
 	}
 
 	/* ---------------- shared chrome ---------------- */
@@ -123,7 +140,6 @@ class AQ_Admin_Hub {
 			'aq-tracking'   => 'Tracking',
 			'aq-integrations'=> 'Integrations',
 			'aq-import'     => 'Import',
-			'options-general.php?page=boost' => 'Boost',
 		];
 		echo '<div class="aq-hub__tabs">';
 		foreach ($tabs as $slug => $label) {
@@ -206,12 +222,12 @@ class AQ_Admin_Hub {
 		self::card('Service Areas', (string) $towns, 'towns in site config');
 		self::card_html('Performance', $boost
 			? '<span class="aq-badge aq-badge--ok">Boost active</span>'
-			: '<span class="aq-badge aq-badge--off">Boost off</span>', 'Performance module — see the Boost tab');
+			: '<span class="aq-badge aq-badge--off">Boost off</span>', 'Performance module — code-locked; clear cache from the admin bar');
 		echo '</div>';
 
 		echo '<div class="aq-panel"><h2>Quick actions</h2>';
 		echo '<p><a class="aq-btn" href="' . esc_url(admin_url('admin.php?page=aq-pages')) . '">Manage pages &amp; editor</a> ';
-		echo '<a class="aq-btn aq-btn--ghost" href="' . esc_url(admin_url('options-general.php?page=boost')) . '">Open Boost settings</a></p>';
+		echo '<a class="aq-btn aq-btn--ghost" href="' . esc_url(admin_url('admin.php?page=aq-performance')) . '">Performance &amp; cache</a></p>';
 		echo '<p style="color:#5b6471;font-size:13px;margin-top:14px;">Next up: the visual page editor (live preview + click-to-edit), SEO manager, and the AI assistant.</p>';
 		echo '</div>';
 		echo '</div>';
