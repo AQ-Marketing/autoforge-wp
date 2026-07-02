@@ -184,7 +184,7 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 	 * only what is functional on Pressable. Runs late so it also removes anything
 	 * the PluginFamily controller re-adds.
 	 *
-	 * Two groups are removed:
+	 * Three groups are removed (see the inline notes on each unset):
 	 *
 	 * 1. Upstream PROMO sections that point at third-party services — Image
 	 *    Optimization/Imagify, Tutorials videos, "Our Plugins" (WP Media), Add-ons.
@@ -215,7 +215,15 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 			$navigation['addons'],
 			// 2. page-cache + CDN: non-functional / discouraged on Pressable
 			$navigation['advanced_cache'],
-			$navigation['page_cdn']
+			$navigation['page_cdn'],
+			// 3. redundant / unused chrome:
+			//    'dashboard' — WP Rocket's status screen. AQ's own Performance
+			//    admin screen already provides cache-clear, status and PageSpeed
+			//    in AQ branding, so this tab is duplicate chrome.
+			//    'rocket_insights' — upstream GTmetrix-backed telemetry we don't
+			//    use (already gated off); drop the tab entirely.
+			$navigation['dashboard'],
+			$navigation['rocket_insights']
 		);
 		return $navigation;
 	}, 100);
@@ -246,6 +254,41 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 	};
 	add_filter('gettext', $aq_boost_brandwash, 20, 3);
 	add_filter('gettext_with_context', $aq_boost_brandwash, 20, 4);
+
+	/**
+	 * Preload Cache (sitemap-based cache preloading) is inert on Pressable:
+	 * Boost disables WP Rocket's own page cache here (Pressable serves pages
+	 * from Batcache + Edge Cache), so there is no page cache to warm. Force the
+	 * 'manual_preload' option off so the feature never runs regardless of any
+	 * stored value; the (now dead) control itself is hidden on the screen below.
+	 */
+	add_filter('pre_get_rocket_option_manual_preload', '__return_zero');
+
+	/**
+	 * Visible de-brand + UI trim on the Boost settings screen (CSS/JS only — no
+	 * engine files touched, so it survives Boost updates):
+	 *   - hide residual help / "More info" links that expose the upstream docs
+	 *     (docs.wp-rocket.me) or open the (already-disabled) support beacon;
+	 *   - hide the now-inert "Preload Cache" section box, leaving "Preload Links".
+	 * Gated to the Boost settings page only.
+	 */
+	add_action('admin_enqueue_scripts', function () {
+		$slug = defined('WP_ROCKET_PLUGIN_SLUG') ? WP_ROCKET_PLUGIN_SLUG : 'boost';
+		if (!isset($_GET['page']) || $_GET['page'] !== $slug) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return;
+		}
+		$css = '.wpr-infoAction--help,a[data-beacon-article],a[data-beacon-id],a[href*="wp-rocket.me"]{display:none !important;}';
+		wp_register_style('aq-boost-clean', false, [], AQ_CORE_VERSION);
+		wp_enqueue_style('aq-boost-clean');
+		wp_add_inline_style('aq-boost-clean', $css);
+
+		// Remove the inert "Preload Cache" section box by its heading text
+		// (untranslated, so stable), leaving the "Preload Links" section intact.
+		$js = "(function(){function trim(){var h=document.querySelectorAll('#preload .wpr-optionHeader');for(var i=0;i<h.length;i++){var t=h[i].querySelector('h3');if(t&&t.textContent.trim()==='Preload Cache'){var b=h[i].nextElementSibling;h[i].style.display='none';if(b&&b.classList.contains('wpr-fieldsContainer'))b.style.display='none';}}}if(document.readyState!=='loading'){trim();}else{document.addEventListener('DOMContentLoaded',trim);}})();";
+		wp_register_script('aq-boost-clean', false, [], AQ_CORE_VERSION, true);
+		wp_enqueue_script('aq-boost-clean');
+		wp_add_inline_script('aq-boost-clean', $js);
+	});
 }
 
 // ACF section schema (field groups registered in PHP — diffable, repo-owned).
