@@ -44,6 +44,11 @@ class AQ_Performance {
 		add_action('rest_api_init', [__CLASS__, 'rest_routes']);
 		add_action('admin_bar_menu', [__CLASS__, 'admin_bar'], 100);
 		add_action('admin_post_aq_boost_purge', [__CLASS__, 'handle_admin_bar_purge']);
+		// The admin-bar dashicon is drawn via CSS on .ab-icon (the same mechanism
+		// WP core uses); attach it to the 'admin-bar' stylesheet so it loads in both
+		// the front-end and wp-admin admin bars.
+		add_action('admin_enqueue_scripts', [__CLASS__, 'admin_bar_style']);
+		add_action('wp_enqueue_scripts', [__CLASS__, 'admin_bar_style']);
 	}
 
 	/**
@@ -80,10 +85,23 @@ class AQ_Performance {
 		}
 		$bar->add_node([
 			'id'    => 'aq-boost-purge',
-			'title' => '<span class="dashicons dashicons-update" style="vertical-align:middle;font-size:18px;height:auto;"></span> Clear cache',
+			'title' => '<span class="ab-icon" aria-hidden="true"></span><span class="ab-label">Clear cache</span>',
 			'href'  => wp_nonce_url(admin_url('admin-post.php?action=aq_boost_purge'), 'aq_boost_purge'),
 			'meta'  => ['title' => 'Clear the Boost page + asset cache'],
 		]);
+	}
+
+	/**
+	 * Icon + alignment for the admin-bar "Clear cache" node. Uses the dashicons
+	 * "update" glyph (\f463) on the .ab-icon pseudo-element — the same approach WP
+	 * core uses for its own admin-bar icons — so the font and vertical rhythm match.
+	 */
+	public static function admin_bar_style(): void {
+		if (!is_admin_bar_showing() || !current_user_can(self::CAP)) {
+			return;
+		}
+		$css = '#wpadminbar #wp-admin-bar-aq-boost-purge .ab-icon:before{content:"\f463";font:400 18px/1 dashicons;position:relative;top:3px;speak:never;-webkit-font-smoothing:antialiased;}';
+		wp_add_inline_style('admin-bar', $css);
 	}
 
 	/** admin-post handler for the admin-bar "Clear cache" node. */
