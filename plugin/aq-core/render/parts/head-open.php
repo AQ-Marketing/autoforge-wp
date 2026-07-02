@@ -37,6 +37,5 @@ $aq_fonts = function_exists('aq_site') ? aq_site('fonts.googleCss') : null;
 </head>
 <body <?php body_class(); ?>>
 <?php wp_body_open(); ?>
-<a href="#main" class="skip-to-content">Skip to content</a>
 <?php AQ_Renderer::part('site-header'); ?>
 <main id="main">
