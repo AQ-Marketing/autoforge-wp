@@ -280,6 +280,7 @@ class AQ_Editor {
 			// Advanced
 			'rich_section'     => 'Rich Section (HTML)',
 			'raw_html'         => 'Raw HTML',
+			'policy_embed'     => 'Policy Embed (Termly)',
 		];
 	}
 
@@ -599,6 +600,9 @@ class AQ_Editor {
 			]],
 			'raw_html' => ['fields' => [
 				['name' => 'html', 'label' => 'HTML (advanced)', 'type' => 'code'],
+			]],
+			'policy_embed' => ['fields' => [
+				['name' => 'policy_id', 'label' => 'Termly policy ID', 'type' => 'text'],
 			]],
 		];
 

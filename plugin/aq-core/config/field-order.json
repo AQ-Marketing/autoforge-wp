@@ -483,6 +483,13 @@
       ],
       "repeaters": {}
     },
+    "policy_embed": {
+      "v": 1,
+      "fields": [
+        "policy_id"
+      ],
+      "repeaters": {}
+    },
     "post_feed": {
       "v": 1,
       "fields": [

@@ -535,6 +535,16 @@ $layouts['post_feed'] = [
 	],
 ];
 
+/* policy_embed — Termly hosted-policy embed (privacy / cookie / terms) from a data-id */
+$layouts['policy_embed'] = [
+	'key' => 'layout_aq_policy_embed',
+	'name' => 'policy_embed',
+	'label' => 'Policy Embed (Termly)',
+	'sub_fields' => [
+		aq_field('policy', 'policy_id', 'text', ['instructions' => 'Paste the Termly policy data-id from your Termly dashboard (e.g. a9d5fa62-e9ae-49d7-b822-797966b1399d). The document renders itself; nothing else is needed.']),
+	],
+];
+
 // Per-site extensibility: a theme registers its own section layouts via this
 // filter (add_filter('aq_section_layouts', ...)) WITHOUT editing the shared
 // plugin. Critical: an unregistered flexible-content layout makes ACF DROP the
