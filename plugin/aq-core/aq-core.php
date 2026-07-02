@@ -3,7 +3,7 @@
  * Plugin Name: AutoForge
  * Plugin URI: https://aqmarketing.com
  * Description: Client-agnostic WordPress platform — one plugin owns front-end rendering (structured sections, header/footer, the visual builder), site config (NAP/license), SEO meta + titles, JSON-LD, ACF section schema, robots, JSON content sync, and the embedded Boost performance module. Every site is driven entirely from its own data; the theme is a near-empty stub.
- * Version: 0.3.0
+ * Version: 0.3.1
  * Requires PHP: 8.0
  * Author: AQ Marketing
  * Text Domain: aq-core
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.3.0');
+define('AQ_CORE_VERSION', '0.3.1');
 
 /**
  * Site-wide noindex posture, mirroring the Astro PUBLIC_NOINDEX behavior.
@@ -246,6 +246,65 @@ if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
 	};
 	add_filter('gettext', $aq_boost_brandwash, 20, 3);
 	add_filter('gettext_with_context', $aq_boost_brandwash, 20, 4);
+
+	/**
+	 * Boost has no settings UI (see AQ_Admin_Hub: the page is unlinked and direct
+	 * access is redirected). Its configuration therefore lives HERE, in code, so
+	 * every site runs one identical, Pressable-correct profile that can't drift or
+	 * be misconfigured. These values mirror the known-good production config, with
+	 * two deliberate changes from the historical default:
+	 *   - image_dimensions => 1: emit width/height on images (fixes layout shift
+	 *     AND lets WordPress core lazy-load them — core skips images with no size).
+	 *   - manual_preload  => 0: sitemap cache-preload is inert on Pressable (Boost
+	 *     disables WP Rocket's page cache here), so there is nothing to preload.
+	 * Enforced via 'pre_get_rocket_option_{key}', which short-circuits reads. Only
+	 * functional feature flags are pinned — internal bookkeeping keys (version,
+	 * secret/minify keys) are left to the engine so updates/cache-busting still work.
+	 */
+	$aq_boost_config = [
+		// asset optimization
+		'minify_css'              => 1,
+		'minify_js'               => 1,
+		'minify_concatenate_js'   => 0, // combining hurts under HTTP/2
+		'minify_google_fonts'     => 1,
+		'defer_all_js'            => 0,
+		'delay_js'                => 0,
+		'cache_webp'              => 0,
+		'emoji'                   => 1, // disable the wp-emoji script
+		// media
+		'lazyload'                => 0, // core handles it once dimensions exist
+		'lazyload_iframes'        => 0,
+		'lazyload_youtube'        => 0,
+		'image_dimensions'        => 1, // CHANGED: fixes CLS + enables core lazyload
+		'host_fonts_locally'      => 0, // theme already self-hosts fonts at build
+		'auto_preload_fonts'      => 0,
+		// preload
+		'manual_preload'          => 0, // CHANGED: inert on Pressable (no page cache)
+		'preload_links'           => 1,
+		// heartbeat
+		'control_heartbeat'         => 1,
+		'heartbeat_site_behavior'   => 'reduce_periodicity',
+		'heartbeat_admin_behavior'  => 'reduce_periodicity',
+		'heartbeat_editor_behavior' => 'reduce_periodicity',
+		// database — no automatic cleanup
+		'database_revisions'        => 0,
+		'database_auto_drafts'      => 0,
+		'database_trashed_posts'    => 0,
+		'database_spam_comments'    => 0,
+		'database_trashed_comments' => 0,
+		'database_all_transients'   => 0,
+		'database_optimize_tables'  => 0,
+		'schedule_automatic_cleanup'=> 0,
+		// third-party services — off (Pressable provides CDN/edge; no telemetry)
+		'cdn'                     => 0,
+		'do_cloudflare'           => 0,
+		'analytics_enabled'       => 0,
+	];
+	foreach ($aq_boost_config as $aq_boost_key => $aq_boost_val) {
+		add_filter('pre_get_rocket_option_' . $aq_boost_key, static function () use ($aq_boost_val) {
+			return $aq_boost_val;
+		});
+	}
 }
 
 // ACF section schema (field groups registered in PHP — diffable, repo-owned).
