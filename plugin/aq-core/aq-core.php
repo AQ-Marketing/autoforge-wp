@@ -154,7 +154,7 @@ AQ_Renderer::register();
  * of taking the site down (parse/Error throwables from required files are
  * catchable in PHP 7+).
  */
-if (!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) {
+if ((!defined('AQ_BOOST_DISABLE') || !AQ_BOOST_DISABLE) && file_exists(AQ_CORE_DIR . 'thrust/wp-rocket.php')) {
 	try {
 		require_once AQ_CORE_DIR . 'thrust/wp-rocket.php';
 	} catch (\Throwable $aq_boost_error) {

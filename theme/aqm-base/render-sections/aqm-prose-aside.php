@@ -5,7 +5,7 @@
  *  pages (e.g. the Local SEO "details" section). */
 $s     = $args['s'] ?? [];
 $prose = (string) ($s['prose_html'] ?? '');
-$aside = array_values(array_filter((array) ($s['aside_items'] ?? []), fn($a) => is_array($a) && (($a['img_src'] ?? '') !== '' || ($a['note_title'] ?? '') !== '' || ($a['note_body'] ?? '') !== '')));
+$aside = array_values(array_filter((array) ($s['aside_items'] ?? []), fn($a) => is_array($a) && (($a['img_src'] ?? '') !== '' || ($a['map_src'] ?? '') !== '' || ($a['note_title'] ?? '') !== '' || ($a['note_body'] ?? '') !== '')));
 ?>
 <section>
 	<div class="wrap">
@@ -16,10 +16,13 @@ $aside = array_values(array_filter((array) ($s['aside_items'] ?? []), fn($a) => 
 			<aside class="prose-side" aria-label="Supporting media">
 				<?php foreach ($aside as $i => $a) :
 					$src = (string) ($a['img_src'] ?? '');
+					$map = (string) ($a['map_src'] ?? '');
 					$nt  = (string) ($a['note_title'] ?? '');
 					$nb  = (string) ($a['note_body'] ?? ''); ?>
 				<?php if ($src !== '') : ?>
 				<div class="side-media"<?php echo ka_field_attr('aside_items', $i); ?>><img src="<?php echo esc_url($src); ?>" alt="<?php echo esc_attr($a['img_alt'] ?? ''); ?>" loading="lazy" decoding="async"></div>
+				<?php elseif ($map !== '') : ?>
+				<div class="side-media"<?php echo ka_field_attr('aside_items', $i); ?>><iframe src="<?php echo esc_url($map); ?>" width="100%" height="320" style="border:0;border-radius:var(--radius);" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="<?php echo esc_attr($a['img_alt'] ?? 'Map'); ?>"></iframe></div>
 				<?php endif; ?>
 				<?php if ($nt !== '' || $nb !== '') : ?>
 				<div class="side-note"><?php if ($nt !== '') : ?><h4><i class="fa-solid fa-circle-info"></i> <?php echo esc_html($nt); ?></h4><?php endif; ?><?php if ($nb !== '') : ?><p><?php echo wp_kses_post($nb); ?></p><?php endif; ?></div>

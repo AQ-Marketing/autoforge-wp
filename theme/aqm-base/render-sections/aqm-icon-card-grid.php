@@ -15,8 +15,8 @@ $cards = array_values(array_filter((array) ($s['cards'] ?? []), fn($c) => is_arr
 		<?php require __DIR__ . '/_sec-head.php'; ?>
 		<?php if ($cards) : ?>
 		<div class="<?php echo esc_attr($container); ?>">
-			<?php foreach ($cards as $i => $c) : $fa = (string) ($c['fa'] ?? ''); ?>
-			<div class="card"<?php echo ka_field_attr('cards', $i); ?>><?php if ($fa !== '') : ?><div class="ico"><i class="fa-solid <?php echo esc_attr($fa); ?>"></i></div><?php endif; ?><h3><?php echo esc_html($c['title'] ?? ''); ?></h3><p><?php echo wp_kses_post($c['body'] ?? ''); ?></p></div>
+			<?php foreach ($cards as $i => $c) : $fa = (string) ($c['fa'] ?? ''); $href = (string) ($c['href'] ?? ''); $tag = $href !== '' ? 'a' : 'div'; ?>
+			<<?php echo $tag; ?> class="card<?php echo $href !== '' ? ' card-link' : ''; ?>"<?php echo $href !== '' ? ' href="' . esc_url($href) . '"' : ''; ?><?php echo ka_field_attr('cards', $i); ?>><?php if ($fa !== '') : ?><div class="ico"><i class="fa-solid <?php echo esc_attr($fa); ?>"></i></div><?php endif; ?><h3><?php echo esc_html($c['title'] ?? ''); ?></h3><p><?php echo wp_kses_post($c['body'] ?? ''); ?></p></<?php echo $tag; ?>>
 			<?php endforeach; ?>
 		</div>
 		<?php endif; ?>
