@@ -234,7 +234,13 @@ class AQ_Locations {
 			}
 		}
 		echo '</tbody></table>';
-		echo '<p style="margin-top:12px;"><button type="button" class="aq-btn aq-btn--ghost" id="aq-loc-add-town">+ Add town</button></p>';
+		echo '<div class="aq-loc-townbar" style="margin-top:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">';
+		echo '<button type="button" class="aq-btn aq-btn--ghost" id="aq-loc-add-town">+ Add town</button>';
+		echo '<button type="button" class="aq-btn aq-btn--ghost" id="aq-loc-export">Export CSV</button>';
+		echo '<button type="button" class="aq-btn aq-btn--ghost" id="aq-loc-import">Import CSV</button>';
+		echo '<input type="file" id="aq-loc-import-file" accept=".csv,text/csv" style="display:none;" />';
+		echo '<span class="aq-loc-help" style="margin:0;">CSV columns <code>name, slug, county</code> (row order = display order). Import replaces the rows above; then click <strong>Save all changes</strong>. Opens in Excel &mdash; save back as CSV to re-import.</span>';
+		echo '</div>';
 		echo '</div>';
 
 		/* ---------------- Counties + Regions ---------------- */
@@ -405,16 +411,109 @@ class AQ_Locations {
 			$all('.aq-loc-town', tbody).forEach(wireRow);
 			renumber();
 
-			var addTown = $('#aq-loc-add-town');
-			if (addTown) addTown.addEventListener('click', function () {
+			function addRow(name, slug, county) {
 				var tmp = document.createElement('tbody');
 				tmp.innerHTML = BLANK_ROW.trim();
 				var tr = tmp.querySelector('tr');
+				var n = $('.aq-town-name', tr), s = $('.aq-town-slug', tr), c = $('.aq-town-county', tr);
+				if (n) n.value = name || '';
+				if (s) s.value = slug || '';
+				if (c) c.value = county || '';
 				tbody.appendChild(tr);
 				wireRow(tr);
+				return tr;
+			}
+
+			var addTown = $('#aq-loc-add-town');
+			if (addTown) addTown.addEventListener('click', function () {
+				var tr = addRow('', '', '');
 				renumber();
 				var n = $('.aq-town-name', tr); if (n) n.focus();
 			});
+
+			/* ---- CSV export / import (towns) — client-side; Save persists ---- */
+			function csvCell(v) {
+				v = String(v == null ? '' : v);
+				return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+			}
+			function exportTowns() {
+				var out = ['name,slug,county'];
+				$all('.aq-loc-town', tbody).forEach(function (tr) {
+					var name = (($('.aq-town-name', tr) || {}).value || '').trim();
+					if (name === '') return;
+					var slug = (($('.aq-town-slug', tr) || {}).value || '').trim();
+					var county = (($('.aq-town-county', tr) || {}).value || '').trim();
+					out.push([csvCell(name), csvCell(slug), csvCell(county)].join(','));
+				});
+				var blob = new Blob(['\uFEFF' + out.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+				var url = URL.createObjectURL(blob);
+				var a = document.createElement('a');
+				a.href = url; a.download = 'service-area-towns.csv';
+				document.body.appendChild(a); a.click(); document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+			}
+			function parseCSV(text) {
+				text = String(text).replace(/^\uFEFF/, '');
+				var rows = [], row = [], field = '', inQ = false, i = 0, c;
+				while (i < text.length) {
+					c = text.charAt(i);
+					if (inQ) {
+						if (c === '"') {
+							if (text.charAt(i + 1) === '"') { field += '"'; i += 2; continue; }
+							inQ = false; i++; continue;
+						}
+						field += c; i++; continue;
+					}
+					if (c === '"') { inQ = true; i++; continue; }
+					if (c === ',') { row.push(field); field = ''; i++; continue; }
+					if (c === '\r') { i++; continue; }
+					if (c === '\n') { row.push(field); rows.push(row); row = []; field = ''; i++; continue; }
+					field += c; i++;
+				}
+				if (field !== '' || row.length) { row.push(field); rows.push(row); }
+				return rows.filter(function (r) { return r.some(function (x) { return String(x).trim() !== ''; }); });
+			}
+			function importCSV(text) {
+				var rows = parseCSV(text);
+				if (!rows.length) { notice('No rows found in that CSV.', false); return; }
+				var idxName = 0, idxSlug = 1, idxCounty = 2;
+				var head = rows[0].map(function (h) { return String(h).trim().toLowerCase(); });
+				var col = function (names) { for (var k = 0; k < head.length; k++) { if (names.indexOf(head[k]) > -1) return k; } return -1; };
+				if (col(['name', 'town', 'town name']) > -1 || col(['slug']) > -1) {
+					var cn = col(['name', 'town', 'town name']); if (cn > -1) idxName = cn;
+					idxSlug = col(['slug']); idxCounty = col(['county']);
+					rows = rows.slice(1);
+				}
+				if (!rows.length) { notice('That CSV had only a header row.', false); return; }
+				var existing = $all('.aq-loc-town', tbody).length;
+				if (existing && !window.confirm('Replace the current ' + existing + ' town row(s) with ' + rows.length + ' row(s) from the file?')) { return; }
+				tbody.innerHTML = '';
+				var added = 0;
+				rows.forEach(function (r) {
+					var name = ((idxName > -1 && r[idxName] != null) ? r[idxName] : '').trim();
+					if (name === '') return;
+					var slug = ((idxSlug > -1 && r[idxSlug] != null) ? r[idxSlug] : '').trim();
+					var county = ((idxCounty > -1 && r[idxCounty] != null) ? r[idxCounty] : '').trim();
+					addRow(name, slug, county); added++;
+				});
+				renumber();
+				notice(added + ' town(s) loaded from CSV. Review, then click "Save all changes" to store.', true);
+			}
+			var exportBtn = $('#aq-loc-export');
+			if (exportBtn) exportBtn.addEventListener('click', exportTowns);
+			var importBtn = $('#aq-loc-import');
+			var importFile = $('#aq-loc-import-file');
+			if (importBtn && importFile) {
+				importBtn.addEventListener('click', function () { importFile.value = ''; importFile.click(); });
+				importFile.addEventListener('change', function () {
+					var f = importFile.files && importFile.files[0];
+					if (!f) return;
+					var reader = new FileReader();
+					reader.onload = function () { importCSV(reader.result); };
+					reader.onerror = function () { notice('Could not read that file.', false); };
+					reader.readAsText(f);
+				});
+			}
 
 			/* ---- simple string lists (counties / regions) ---- */
 			function listContainer(key) { return $(key === 'counties' ? '#aq-loc-counties' : '#aq-loc-regions'); }
