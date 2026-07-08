@@ -511,3 +511,15 @@
   }
   .ka-toc-aside .article-toc { margin-bottom: 0; }
 }
+
+/* ===== Article TOC fix (added 2026-07-08) =====================================
+   The site-wide `nav ul{display:flex;gap:28px}` (header/footer menus) was also
+   matching the article table of contents (<nav class="article-toc">), laying the
+   jump links out in a horizontal row that overflowed the ~256px sidebar and
+   produced a scrollbar. Force the TOC links to stack, and stop the sidebar from
+   scrolling internally. */
+.article-toc ul{display:block;gap:0}
+.article-toc li{margin:0}
+.article-toc li + li{margin-top:.5rem}
+.ka-toc-aside{max-height:none;overflow:visible}
+/* ===== end Article TOC fix ==================================================== */
