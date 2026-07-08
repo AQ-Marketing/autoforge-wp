@@ -495,7 +495,7 @@
 @media (min-width: 1024px) {
   .ka-article-layout {
     display: grid;
-    grid-template-columns: minmax(0, 820px) 16rem;
+    grid-template-columns: minmax(0, 820px) 22rem;
     gap: 3.5rem;
     justify-content: center;
     align-items: start;
