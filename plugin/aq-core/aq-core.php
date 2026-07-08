@@ -3,7 +3,7 @@
  * Plugin Name: AutoForge
  * Plugin URI: https://aqmarketing.com
  * Description: Client-agnostic WordPress platform — one plugin owns front-end rendering (structured sections, header/footer, the visual builder), site config (NAP/license), SEO meta + titles, JSON-LD, ACF section schema, robots, JSON content sync, and the embedded Boost performance module. Every site is driven entirely from its own data; the theme is a near-empty stub.
- * Version: 0.3.2
+ * Version: 0.3.4
  * Requires PHP: 8.0
  * Author: AQ Marketing
  * Text Domain: aq-core
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.3.2');
+define('AQ_CORE_VERSION', '0.3.4');
 
 /**
  * Site-wide noindex posture, mirroring the Astro PUBLIC_NOINDEX behavior.
@@ -84,6 +84,7 @@ require_once AQ_CORE_DIR . 'includes/class-seo-manager.php';
 require_once AQ_CORE_DIR . 'includes/class-locations.php';
 require_once AQ_CORE_DIR . 'includes/class-performance.php';
 require_once AQ_CORE_DIR . 'includes/class-editor.php';
+require_once AQ_CORE_DIR . 'includes/class-claude.php';
 require_once AQ_CORE_DIR . 'includes/class-assistant.php';
 require_once AQ_CORE_DIR . 'includes/class-integrations.php';
 require_once AQ_CORE_DIR . 'includes/class-importer.php';
@@ -95,6 +96,7 @@ require_once AQ_CORE_DIR . 'includes/class-tracking.php';
 require_once AQ_CORE_DIR . 'includes/class-page-folders.php';
 require_once AQ_CORE_DIR . 'includes/class-seo-agent.php';
 require_once AQ_CORE_DIR . 'includes/class-updater.php';
+require_once AQ_CORE_DIR . 'includes/class-blog-feed.php';
 require_once AQ_CORE_DIR . 'render/class-renderer.php';
 
 /**
@@ -138,6 +140,7 @@ AQ_Tracking::register();
 AQ_Page_Folders::register();
 AQ_SEO_Agent::register();
 AQ_Updater::register();
+AQ_Blog_Feed::register();
 AQ_Renderer::register();
 
 /**

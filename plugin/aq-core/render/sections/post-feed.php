@@ -13,13 +13,20 @@ $eyebrow = $s['eyebrow'] ?? 'Resources';
 $heading = $s['heading'] ?? 'Resources & Articles';
 $subhead = $s['subheading'] ?? '';
 $intro   = $s['intro'] ?? '';
-$limit   = (int) ($s['limit'] ?? 24);
 $image   = $s['image'] ?? null;
+
+// Latest post = featured lead; next INITIAL = the first grid page. The rest are
+// loaded on scroll via AQ_Blog_Feed (REST + shared script). A `limit` field, if
+// set, still caps the initial grid page; 0/empty uses the standard INITIAL.
+$initial = (int) ($s['limit'] ?? 0);
+if ($initial < 1) {
+	$initial = AQ_Blog_Feed::INITIAL;
+}
 
 $feed = new WP_Query([
 	'post_type'           => 'post',
 	'post_status'         => 'publish',
-	'posts_per_page'      => $limit > 0 ? $limit : 24,
+	'posts_per_page'      => $initial + 1, // +1 for the featured lead
 	'ignore_sticky_posts' => true,
 	'no_found_rows'       => true,
 ]);
@@ -27,6 +34,10 @@ $feed = new WP_Query([
 $posts = $feed->posts;
 $lead  = $posts ? array_shift($posts) : null;
 wp_reset_postdata();
+
+$total    = (int) wp_count_posts('post')->publish;
+$shown    = ($lead ? 1 : 0) + count($posts);
+$has_more = $total > $shown;
 ?>
 <section class="relative overflow-hidden bg-brand-900 text-white">
 	<?php if ($image) : ?>
@@ -76,11 +87,14 @@ wp_reset_postdata();
 			<h2 class="!mt-0 text-2xl text-brand-800 md:text-3xl"><?php echo esc_html(aq_site('blog.moreHeading') ?: 'More articles'); ?></h2>
 			<span class="hidden h-px flex-1 bg-brand-200 sm:block"></span>
 		</div>
-		<div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
+		<div id="aq-post-grid" class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
 			<?php foreach ($posts as $p) : ?>
 			<?php AQ_Renderer::part('post-card', ['pid' => $p->ID]); ?>
 			<?php endforeach; ?>
 		</div>
+		<?php if ($has_more) : ?>
+		<?php echo AQ_Blog_Feed::sentinel($shown, '#aq-post-grid'); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built from escaped parts ?>
+		<?php endif; ?>
 	</div>
 </section>
 <?php endif; ?>

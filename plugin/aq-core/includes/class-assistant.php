@@ -1,21 +1,20 @@
 <?php
 /**
- * AQ Assistant — prompt-driven page editing, powered by ChatGPT (OpenAI).
+ * AQ Assistant — prompt-driven page editing, powered by Claude (Anthropic).
  *
  * A chat panel inside the visual builder. The editor describes a change in
  * plain English; this module sends the page's current sections + the section
- * field schema to OpenAI's Chat Completions API, which replies with either a
- * text answer or a proposed NEW sections array via the `update_page` function
- * call. The proposal is validated against the known layouts/fields and returned
- * to the builder, which loads it into the working copy for review — it is NEVER
+ * field schema to Claude (via AQ_Claude), which replies with either a text
+ * answer or a proposed NEW sections array via the `update_page` tool. The
+ * proposal is validated against the known layouts/fields and returned to the
+ * builder, which loads it into the working copy for review — it is NEVER
  * auto-saved. The user reviews and clicks Save, going through the one true write
  * path (AQ_Content_Sync), so the same validation + round-trip rules apply.
  *
- * Key handling: the OpenAI key comes from AutoForge → Integrations
- * (AQ_Integrations::openai_key(), or the AQ_OPENAI_KEY wp-config constant). It is
- * used server-side only and never sent to the browser. Capability-gated on
- * manage_options. No third-party SDK: a plain wp_remote_post to the OpenAI API,
- * consistent with the lean, self-contained plugin.
+ * Key handling: the Claude key comes from AutoForge → Integrations
+ * (AQ_Integrations::anthropic_key(), or the AQ_ANTHROPIC_KEY wp-config constant).
+ * All Anthropic wire calls go through AQ_Claude — this class only builds prompts
+ * and tool schemas and interprets the normalized reply.
  */
 
 if (!defined('ABSPATH')) {
@@ -24,10 +23,8 @@ if (!defined('ABSPATH')) {
 
 class AQ_Assistant {
 
-	const CAP      = 'manage_options';
-	const OPTION   = 'aq_assistant';
-	const ENDPOINT = 'https://api.openai.com/v1/chat/completions';
-	const MODEL    = 'gpt-4o';
+	const CAP    = 'manage_options';
+	const OPTION = 'aq_assistant';
 
 	public static function register(): void {
 		add_action('rest_api_init', [__CLASS__, 'rest_routes']);
@@ -45,32 +42,23 @@ class AQ_Assistant {
 		return is_array($o) ? $o : [];
 	}
 
-	/** Selectable OpenAI models for the assistant. */
+	/** Selectable Claude models for the assistant. */
 	private static function models(): array {
-		return [
-			'gpt-4o'      => 'GPT-4o (recommended)',
-			'gpt-4o-mini' => 'GPT-4o mini (faster, cheaper)',
-		];
+		return AQ_Claude::models();
 	}
 
-	/** The OpenAI API key, sourced from the Integrations store (constant or DB). */
+	/** The Claude API key, sourced from the Integrations store (constant or DB). */
 	public static function api_key(): string {
-		if (class_exists('AQ_Integrations')) {
-			$k = AQ_Integrations::openai_key();
-			if ($k !== '') {
-				return $k;
-			}
-		}
-		return defined('AQ_OPENAI_KEY') && AQ_OPENAI_KEY ? (string) AQ_OPENAI_KEY : '';
+		return AQ_Claude::api_key();
 	}
 
 	public static function model(): string {
 		$m = (string) (self::opts()['model'] ?? '');
-		return $m !== '' ? $m : self::MODEL;
+		return $m !== '' ? $m : AQ_Claude::MODEL;
 	}
 
 	public static function is_configured(): bool {
-		return self::api_key() !== '';
+		return AQ_Claude::is_ready();
 	}
 
 	/* ---------------- settings screen ---------------- */
@@ -91,11 +79,11 @@ class AQ_Assistant {
 		<div class="wrap">
 			<h1>AI Assistant</h1>
 			<?php if ($notice) : ?><div class="notice notice-success is-dismissible"><p><?php echo esc_html($notice); ?></p></div><?php endif; ?>
-			<p>The in-editor chatbot that edits pages from plain-English prompts. Powered by <strong>ChatGPT (OpenAI)</strong>.</p>
+			<p>The in-editor chatbot that edits pages from plain-English prompts. Powered by <strong>Claude (Anthropic)</strong>.</p>
 			<?php if (!$has_key) : ?>
-				<div class="notice notice-warning inline"><p>No OpenAI API key found. Add one under <a href="<?php echo esc_url($int_url); ?>">AutoForge → Integrations</a>, then the assistant turns on.</p></div>
+				<div class="notice notice-warning inline"><p>No Claude API key found. Add one under <a href="<?php echo esc_url($int_url); ?>">AutoForge → Integrations</a>, then the assistant turns on.</p></div>
 			<?php else : ?>
-				<div class="notice notice-info inline"><p>Using your OpenAI key from <a href="<?php echo esc_url($int_url); ?>">Integrations</a>. The key is read server-side only.</p></div>
+				<div class="notice notice-info inline"><p>Using your Claude key from <a href="<?php echo esc_url($int_url); ?>">Integrations</a>. The key is read server-side only.</p></div>
 			<?php endif; ?>
 			<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
 				<input type="hidden" name="action" value="aq_assistant_save">
@@ -109,7 +97,7 @@ class AQ_Assistant {
 									<option value="<?php echo esc_attr($id); ?>" <?php selected($model, $id); ?>><?php echo esc_html($label); ?></option>
 								<?php endforeach; ?>
 							</select>
-							<p class="description">Which OpenAI model powers the assistant.</p>
+							<p class="description">Which Claude model powers the assistant.</p>
 						</td>
 					</tr>
 				</table>
@@ -150,8 +138,8 @@ class AQ_Assistant {
 		if (!current_user_can(self::CAP)) {
 			return;
 		}
-		// The full-screen page builder (aq-pages&page_id=N) has its own in-canvas
-		// assistant drawer — don't stack a second one on top of it.
+		// The full-screen page builder (aq-pages&page_id=N) has its own in-app AI
+		// drawer — don't stack a second one on top.
 		if (isset($_GET['page'], $_GET['page_id']) && $_GET['page'] === 'aq-pages') {
 			return;
 		}
@@ -198,10 +186,10 @@ class AQ_Assistant {
 					<div class="aq-ga-msg aq-ga-msg--bot">Hi! Ask me anything about the site, or tell me what you'd like to change and I'll take you straight to the right page to edit it.</div>
 				</div>
 				<?php if (!$configured) : ?>
-				<div class="aq-ga-note">Add your OpenAI key under <a href="<?php echo $int; ?>">Integrations</a> to turn this on.</div>
+				<div class="aq-ga-note">Add your Claude key under <a href="<?php echo $int; ?>">Integrations</a> to turn this on.</div>
 				<?php endif; ?>
 				<form class="aq-ga-form" id="aq-ga-form">
-					<textarea class="aq-ga-input" id="aq-ga-input" placeholder="<?php echo $configured ? 'Ask me anything…' : 'Add an OpenAI key to enable'; ?>" <?php disabled(!$configured); ?>></textarea>
+					<textarea class="aq-ga-input" id="aq-ga-input" placeholder="<?php echo $configured ? 'Ask me anything…' : 'Add a Claude key to enable'; ?>" <?php disabled(!$configured); ?>></textarea>
 					<button type="submit" class="aq-ga-send" id="aq-ga-send" <?php disabled(!$configured); ?>>Send</button>
 				</form>
 			</div>
@@ -294,8 +282,8 @@ class AQ_Assistant {
 		}
 		$opts        = self::opts();
 		$model_in    = isset($_POST['model']) ? sanitize_text_field((string) wp_unslash($_POST['model'])) : '';
-		$opts['model'] = array_key_exists($model_in, self::models()) ? $model_in : self::MODEL;
-		unset($opts['api_key']); // legacy: the key now lives in Integrations (OpenAI)
+		$opts['model'] = array_key_exists($model_in, self::models()) ? $model_in : AQ_Claude::MODEL;
+		unset($opts['api_key']); // legacy: the key now lives in Integrations (Claude)
 		update_option(self::OPTION, $opts, false);
 		wp_safe_redirect(add_query_arg(['page' => 'aq-assistant', 'updated' => '1'], admin_url('admin.php')));
 		exit;
@@ -325,7 +313,7 @@ class AQ_Assistant {
 
 	public static function rest_global(WP_REST_Request $req) {
 		if (!self::is_configured()) {
-			return new WP_Error('aq_no_key', 'No OpenAI API key configured. Add one under AutoForge → Integrations.', ['status' => 400]);
+			return new WP_Error('aq_no_key', 'No Claude API key configured. Add one under AutoForge → Integrations.', ['status' => 400]);
 		}
 		$body    = $req->get_json_params();
 		$message = trim((string) ($body['message'] ?? ''));
@@ -335,7 +323,7 @@ class AQ_Assistant {
 		if (mb_strlen($message) > 4000) {
 			return new WP_Error('aq_too_long', 'Message is too long.', ['status' => 400]);
 		}
-		$result = self::call_openai_global($message);
+		$result = self::call_claude_global($message);
 		if (is_wp_error($result)) {
 			return $result;
 		}
@@ -378,7 +366,7 @@ class AQ_Assistant {
 
 	public static function rest_chat(WP_REST_Request $req) {
 		if (!self::is_configured()) {
-			return new WP_Error('aq_no_key', 'No OpenAI API key configured. Add one under AutoForge → Integrations.', ['status' => 400]);
+			return new WP_Error('aq_no_key', 'No Claude API key configured. Add one under AutoForge → Integrations.', ['status' => 400]);
 		}
 		$body     = $req->get_json_params();
 		$id       = (int) ($body['id'] ?? 0);
@@ -395,101 +383,48 @@ class AQ_Assistant {
 			return new WP_Error('aq_forbidden', 'You cannot edit this page.', ['status' => 403]);
 		}
 
-		$result = self::call_openai($message, $sections);
+		$result = self::call_claude($message, $sections);
 		if (is_wp_error($result)) {
 			return $result;
 		}
 		return rest_ensure_response($result);
 	}
 
-	/** Validate the saved OpenAI key against the API (GET /v1/models — no token cost). */
+	/** Validate the saved Claude key against the API (GET /v1/models — no token cost). */
 	public static function rest_test(WP_REST_Request $req) {
-		$key = self::api_key();
-		if ($key === '') {
-			return rest_ensure_response(['ok' => false, 'message' => 'No OpenAI key saved (set it under Integrations).']);
-		}
-		$resp = wp_remote_get('https://api.openai.com/v1/models', [
-			'timeout' => 20,
-			'headers' => ['Authorization' => 'Bearer ' . $key],
-		]);
-		if (is_wp_error($resp)) {
-			return rest_ensure_response(['ok' => false, 'message' => 'OpenAI unreachable: ' . $resp->get_error_message()]);
-		}
-		$code = (int) wp_remote_retrieve_response_code($resp);
-		if ($code === 200) {
-			return rest_ensure_response(['ok' => true, 'message' => 'Connected (' . self::model() . ').']);
-		}
-		if ($code === 401 || $code === 403) {
-			return rest_ensure_response(['ok' => false, 'message' => 'OpenAI rejected the key (HTTP ' . $code . ').']);
-		}
-		return rest_ensure_response(['ok' => false, 'message' => 'OpenAI returned HTTP ' . $code . '.']);
+		return rest_ensure_response(AQ_Claude::test());
 	}
 
-	/* ---------------- OpenAI call ---------------- */
+	/* ---------------- Claude calls ---------------- */
 
-	private static function call_openai(string $message, array $sections) {
-		$tool = [
-			'type'     => 'function',
-			'function' => [
-				'name'        => 'update_page',
-				'description' => 'Apply the requested change by returning the COMPLETE new ordered list of page sections. Use this whenever the user asks to add, edit, remove, reorder, or restyle content. Preserve every section and field the user did not ask to change. Only use section "type" values and field names from the provided schema.',
-				'parameters'  => [
-					'type'       => 'object',
-					'properties' => [
-						'summary'  => ['type' => 'string', 'description' => 'One-sentence plain-English summary of what changed.'],
-						'sections' => ['type' => 'array', 'description' => 'The full new sections array.', 'items' => ['type' => 'object']],
-					],
-					'required'   => ['summary', 'sections'],
-				],
+	private static function call_claude(string $message, array $sections) {
+		$tool = AQ_Claude::tool(
+			'update_page',
+			'Apply the requested change by returning the COMPLETE new ordered list of page sections. Use this whenever the user asks to add, edit, remove, reorder, or restyle content. Preserve every section and field the user did not ask to change. Only use section "type" values and field names from the provided schema.',
+			[
+				'summary'  => ['type' => 'string', 'description' => 'One-sentence plain-English summary of what changed.'],
+				'sections' => ['type' => 'array', 'description' => 'The full new sections array.', 'items' => ['type' => 'object']],
 			],
-		];
+			['summary', 'sections']
+		);
 
-		$payload = [
-			'model'       => self::model(),
-			'max_tokens'  => 12000,
-			'messages'    => [
-				['role' => 'system', 'content' => self::system_prompt()],
-				['role' => 'user',   'content' => self::user_prompt($message, $sections)],
-			],
-			'tools'       => [$tool],
-			'tool_choice' => 'auto',
-		];
-
-		$resp = wp_remote_post(self::ENDPOINT, [
-			'timeout' => 120,
-			'headers' => [
-				'content-type'  => 'application/json',
-				'Authorization' => 'Bearer ' . self::api_key(),
-			],
-			'body'    => wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+		$res = AQ_Claude::message([
+			'model'      => self::model(),
+			'max_tokens' => 12000,
+			'system'     => self::system_prompt(),
+			'messages'   => [['role' => 'user', 'content' => self::user_prompt($message, $sections)]],
+			'tools'      => [$tool],
 		]);
-
-		if (is_wp_error($resp)) {
-			return new WP_Error('aq_http', 'Could not reach the AI service: ' . $resp->get_error_message(), ['status' => 502]);
-		}
-		$code = (int) wp_remote_retrieve_response_code($resp);
-		$data = json_decode((string) wp_remote_retrieve_body($resp), true);
-
-		if ($code !== 200 || !is_array($data)) {
-			$msg = is_array($data) && isset($data['error']['message']) ? $data['error']['message'] : ('HTTP ' . $code);
-			return new WP_Error('aq_api', 'AI service error: ' . $msg, ['status' => 502]);
+		if (is_wp_error($res)) {
+			return $res;
 		}
 
-		$choice   = (isset($data['choices'][0]['message']) && is_array($data['choices'][0]['message'])) ? $data['choices'][0]['message'] : [];
-		$reply    = (isset($choice['content']) && is_string($choice['content'])) ? $choice['content'] : '';
-		$proposal = null;
+		$reply    = $res['text'];
 		$summary  = '';
-		if (!empty($choice['tool_calls']) && is_array($choice['tool_calls'])) {
-			foreach ($choice['tool_calls'] as $tc) {
-				if (($tc['function']['name'] ?? '') === 'update_page') {
-					$args = json_decode((string) ($tc['function']['arguments'] ?? ''), true);
-					if (is_array($args)) {
-						$summary  = (string) ($args['summary'] ?? '');
-						$proposal = self::sanitize_sections($args['sections'] ?? null);
-					}
-					break;
-				}
-			}
+		$proposal = null;
+		if ($res['tool_name'] === 'update_page' && is_array($res['tool_input'])) {
+			$summary  = (string) ($res['tool_input']['summary'] ?? '');
+			$proposal = self::sanitize_sections($res['tool_input']['sections'] ?? null);
 		}
 
 		$out = ['ok' => true, 'reply' => $reply !== '' ? $reply : ($summary ?: 'Done.')];
@@ -501,71 +436,38 @@ class AQ_Assistant {
 	}
 
 	/** Global assistant: text answers + an open_page_editor routing tool. */
-	private static function call_openai_global(string $message) {
-		$tool = [
-			'type'     => 'function',
-			'function' => [
-				'name'        => 'open_page_editor',
-				'description' => 'Call this when the user wants to create, edit, change, restyle, or remove content on a SPECIFIC page. Pass the page name or URL path so the user can open it in the visual editor (where changes are reviewed before saving).',
-				'parameters'  => [
-					'type'       => 'object',
-					'properties' => [
-						'page' => ['type' => 'string', 'description' => 'Page title or URL path to edit, e.g. "About" or "/about/".'],
-						'note' => ['type' => 'string', 'description' => 'One short sentence telling the user what to do once the editor opens.'],
-					],
-					'required'   => ['page'],
-				],
+	private static function call_claude_global(string $message) {
+		$tool = AQ_Claude::tool(
+			'open_page_editor',
+			'Call this when the user wants to create, edit, change, restyle, or remove content on a SPECIFIC page. Pass the page name or URL path so the user can open it in the visual editor (where changes are reviewed before saving).',
+			[
+				'page' => ['type' => 'string', 'description' => 'Page title or URL path to edit, e.g. "About" or "/about/".'],
+				'note' => ['type' => 'string', 'description' => 'One short sentence telling the user what to do once the editor opens.'],
 			],
-		];
+			['page']
+		);
 
-		$payload = [
-			'model'       => self::model(),
-			'max_tokens'  => 1200,
-			'messages'    => [
-				['role' => 'system', 'content' => self::global_system_prompt()],
-				['role' => 'user',   'content' => $message],
-			],
-			'tools'       => [$tool],
-			'tool_choice' => 'auto',
-		];
-
-		$resp = wp_remote_post(self::ENDPOINT, [
-			'timeout' => 60,
-			'headers' => [
-				'content-type'  => 'application/json',
-				'Authorization' => 'Bearer ' . self::api_key(),
-			],
-			'body'    => wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+		$res = AQ_Claude::message([
+			'model'      => self::model(),
+			'max_tokens' => 1200,
+			'system'     => self::global_system_prompt(),
+			'messages'   => [['role' => 'user', 'content' => $message]],
+			'tools'      => [$tool],
+			'timeout'    => 60,
 		]);
-
-		if (is_wp_error($resp)) {
-			return new WP_Error('aq_http', 'Could not reach the AI service: ' . $resp->get_error_message(), ['status' => 502]);
-		}
-		$code = (int) wp_remote_retrieve_response_code($resp);
-		$data = json_decode((string) wp_remote_retrieve_body($resp), true);
-		if ($code !== 200 || !is_array($data)) {
-			$msg = is_array($data) && isset($data['error']['message']) ? $data['error']['message'] : ('HTTP ' . $code);
-			return new WP_Error('aq_api', 'AI service error: ' . $msg, ['status' => 502]);
+		if (is_wp_error($res)) {
+			return $res;
 		}
 
-		$choice = (isset($data['choices'][0]['message']) && is_array($data['choices'][0]['message'])) ? $data['choices'][0]['message'] : [];
-		$reply  = (isset($choice['content']) && is_string($choice['content'])) ? trim($choice['content']) : '';
-		$open   = null;
-		if (!empty($choice['tool_calls']) && is_array($choice['tool_calls'])) {
-			foreach ($choice['tool_calls'] as $tc) {
-				if (($tc['function']['name'] ?? '') === 'open_page_editor') {
-					$args = json_decode((string) ($tc['function']['arguments'] ?? ''), true);
-					if (is_array($args)) {
-						$open = self::resolve_page((string) ($args['page'] ?? ''));
-						$note = trim((string) ($args['note'] ?? ''));
-						if ($open) {
-							$reply = $reply !== '' ? $reply : ($note !== '' ? $note : ('Open the ' . $open['title'] . ' page to make that change — you can review it before saving.'));
-						} elseif ($reply === '') {
-							$reply = 'I couldn\'t find a page matching "' . (string) ($args['page'] ?? '') . '". Try the exact page name or URL.';
-						}
-					}
-					break;
-				}
+		$reply = $res['text'];
+		$open  = null;
+		if ($res['tool_name'] === 'open_page_editor' && is_array($res['tool_input'])) {
+			$open = self::resolve_page((string) ($res['tool_input']['page'] ?? ''));
+			$note = trim((string) ($res['tool_input']['note'] ?? ''));
+			if ($open) {
+				$reply = $reply !== '' ? $reply : ($note !== '' ? $note : ('Open the ' . $open['title'] . ' page to make that change — you can review it before saving.'));
+			} elseif ($reply === '') {
+				$reply = 'I couldn\'t find a page matching "' . (string) ($res['tool_input']['page'] ?? '') . '". Try the exact page name or URL.';
 			}
 		}
 

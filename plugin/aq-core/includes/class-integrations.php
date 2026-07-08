@@ -2,13 +2,13 @@
 /**
  * AQ Integrations — secure store + admin tab for third-party API credentials.
  *
- * Holds the OpenAI API key and DataForSEO login/password (grouped per service,
- * each with its own inline "Test" button). The Claude/Anthropic key for the AI
- * assistant lives on AutoForge → AI Assistant (with its own tester there).
+ * Holds the Claude (Anthropic) API key and DataForSEO login/password (grouped
+ * per service, each with its own inline "Test" button). The Claude key powers
+ * every AI feature in the plugin (page assistant, SEO Agent, form-email editor).
  *
  * Security model:
  *  - manage_options only (view, save, test).
- *  - Each secret can be set via a wp-config constant (AQ_OPENAI_KEY,
+ *  - Each secret can be set via a wp-config constant (AQ_ANTHROPIC_KEY,
  *    AQ_DATAFORSEO_LOGIN, AQ_DATAFORSEO_PASSWORD) — most secure, never in the DB.
  *  - DB-stored values are AES-256-CBC encrypted with a key derived from the
  *    site's wp-config salts (wp_salt), so a DB dump alone cannot reveal them.
@@ -16,7 +16,7 @@
  *    never echoed to HTML (only a masked ••••last4 hint) and never sent to JS.
  *    "Test" runs server-side and returns pass/fail only.
  *
- * Consumers read credentials server-side via AQ_Integrations::openai_key() and
+ * Consumers read credentials server-side via AQ_Integrations::anthropic_key() and
  * AQ_Integrations::dataforseo().
  */
 
@@ -32,11 +32,11 @@ class AQ_Integrations {
 	/** Services, each with its own field(s) + Test button. */
 	private static function integrations(): array {
 		return [
-			'openai' => [
-				'label'  => 'OpenAI',
-				'desc'   => 'Used server-side for OpenAI-powered features.',
+			'anthropic' => [
+				'label'  => 'Claude (Anthropic)',
+				'desc'   => 'Powers every AI feature: the page assistant, the SEO Agent write-up, and the form-email editor.',
 				'fields' => [
-					'openai_key' => ['label' => 'API key', 'constant' => 'AQ_OPENAI_KEY', 'hint' => 'Starts with "sk-".'],
+					'anthropic_key' => ['label' => 'API key', 'constant' => 'AQ_ANTHROPIC_KEY', 'hint' => 'Starts with "sk-ant-". Create one at console.anthropic.com.'],
 				],
 			],
 			'dataforseo' => [
@@ -96,8 +96,8 @@ class AQ_Integrations {
 		return $def && !empty($def['constant']) && defined($def['constant']) && constant($def['constant']);
 	}
 
-	public static function openai_key(): string {
-		return self::get('openai_key');
+	public static function anthropic_key(): string {
+		return self::get('anthropic_key');
 	}
 
 	/** ['login' => ..., 'password' => ...] for DataForSEO HTTP Basic auth. */
@@ -247,7 +247,7 @@ class AQ_Integrations {
 					</div>
 				</div>
 			<?php endforeach; ?>
-			<p class="aq-int-hint" style="margin:0 0 14px;">Leave a field blank to keep the saved value. You can also define <code>AQ_OPENAI_KEY</code>, <code>AQ_DATAFORSEO_LOGIN</code>, and <code>AQ_DATAFORSEO_PASSWORD</code> in <code>wp-config.php</code> to keep keys out of the database entirely. Save before testing.</p>
+			<p class="aq-int-hint" style="margin:0 0 14px;">Leave a field blank to keep the saved value. You can also define <code>AQ_ANTHROPIC_KEY</code>, <code>AQ_DATAFORSEO_LOGIN</code>, and <code>AQ_DATAFORSEO_PASSWORD</code> in <code>wp-config.php</code> to keep keys out of the database entirely. Save before testing.</p>
 			<?php submit_button('Save integrations'); ?>
 		</form>
 
@@ -323,16 +323,10 @@ class AQ_Integrations {
 
 	public static function rest_test(WP_REST_Request $req) {
 		$svc = (string) $req['svc'];
-		if ($svc === 'openai') {
-			$key = self::openai_key();
-			if ($key === '') {
-				return rest_ensure_response(['ok' => false, 'message' => 'No OpenAI key saved.']);
-			}
-			$resp = wp_remote_get('https://api.openai.com/v1/models', [
-				'timeout' => 20,
-				'headers' => ['Authorization' => 'Bearer ' . $key],
-			]);
-			return rest_ensure_response(self::eval_http($resp, 'OpenAI'));
+		if ($svc === 'anthropic') {
+			return rest_ensure_response(class_exists('AQ_Claude')
+				? AQ_Claude::test()
+				: ['ok' => false, 'message' => 'Claude client unavailable.']);
 		}
 		if ($svc === 'dataforseo') {
 			$cred = self::dataforseo();

@@ -17,7 +17,7 @@
  *
  * Data source: DataForSEO REST (HTTP Basic). Credentials come from
  * AutoForge → Integrations (AQ_Integrations::dataforseo()). The narrative is
- * written by the same OpenAI key the AI Assistant uses (AQ_Assistant::api_key());
+ * written by Claude via the shared AQ_Claude client (same key as the AI Assistant);
  * with no key it falls back to a clear rules-based summary, so the email always
  * sends. No third-party services beyond the APIs the owner already configured.
  *
@@ -37,10 +37,8 @@ class AQ_SEO_Agent {
 	const LAST    = 'aq_seo_agent_last';  // last full report (html + data)
 	const HISTORY = 'aq_seo_agent_history'; // compact snapshots for trend/diff
 
-	const API_BASE   = 'https://api.dataforseo.com/v3';
-	const OPENAI_URL = 'https://api.openai.com/v1/chat/completions';
-	const OPENAI_MODEL = 'gpt-4o-mini';
-	const MAX_TRACKED  = 15;   // hard cap on keywords scanned per run (cost guard)
+	const API_BASE    = 'https://api.dataforseo.com/v3';
+	const MAX_TRACKED = 15;   // hard cap on keywords scanned per run (cost guard)
 	const HISTORY_KEEP = 12;   // snapshots retained
 
 	public static function register(): void {
@@ -92,8 +90,8 @@ class AQ_SEO_Agent {
 		return $c['login'] !== '' && $c['password'] !== '';
 	}
 
-	public static function openai_ready(): bool {
-		return class_exists('AQ_Assistant') && AQ_Assistant::api_key() !== '';
+	public static function claude_ready(): bool {
+		return class_exists('AQ_Claude') && AQ_Claude::is_ready();
 	}
 
 	/* ---- default seeds (client-agnostic: derived from site config) ---- */
@@ -620,9 +618,9 @@ class AQ_SEO_Agent {
 		return ' <span style="font-size:11px;color:' . $col . ';">(' . ($up ? '+' : '') . $delta . ')</span>';
 	}
 
-	/** OpenAI-written, plain-English narrative + plan. Returns '' if no key / failure. */
+	/** Claude-written, plain-English narrative + plan. Returns '' if no key / failure. */
 	private static function ai_narrative(array $data, array $snapshot, array $diff): string {
-		if (!self::openai_ready()) {
+		if (!self::claude_ready()) {
 			return '';
 		}
 		$brand = function_exists('aq_site') ? (string) (aq_site('name') ?: '') : get_bloginfo('name');
@@ -645,25 +643,16 @@ class AQ_SEO_Agent {
 			'Return ONLY HTML using these tags: <p>, <strong>, <h3>, <ul>, <li>. Start with a one-line plain summary in a <p>. Use one <h3>What this means</h3> section and one <h3>Do this next</h3> ordered list of 3–6 concrete steps. No <html>/<body>, no markdown, no backticks.',
 		]);
 
-		$payload = [
-			'model'      => self::OPENAI_MODEL,
+		$res = AQ_Claude::message([
 			'max_tokens' => 1200,
-			'messages'   => [
-				['role' => 'system', 'content' => $system],
-				['role' => 'user',   'content' => "Here is this run's data (JSON). Write the email.\n\n" . $context],
-			],
-		];
-		$resp = wp_remote_post(self::OPENAI_URL, [
-			'timeout' => 60,
-			'headers' => ['content-type' => 'application/json', 'Authorization' => 'Bearer ' . AQ_Assistant::api_key()],
-			'body'    => wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+			'system'     => $system,
+			'messages'   => [['role' => 'user', 'content' => "Here is this run's data (JSON). Write the email.\n\n" . $context]],
+			'timeout'    => 60,
 		]);
-		if (is_wp_error($resp) || (int) wp_remote_retrieve_response_code($resp) !== 200) {
+		if (is_wp_error($res)) {
 			return '';
 		}
-		$d = json_decode((string) wp_remote_retrieve_body($resp), true);
-		$html = (string) ($d['choices'][0]['message']['content'] ?? '');
-		$html = trim(preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $html));
+		$html = trim(preg_replace('/^```[a-z]*\s*|\s*```$/i', '', $res['text']));
 		if ($html === '') {
 			return '';
 		}
@@ -672,7 +661,7 @@ class AQ_SEO_Agent {
 		]);
 	}
 
-	/** Deterministic fallback narrative when no OpenAI key is configured. */
+	/** Deterministic fallback narrative when no Claude key is configured. */
 	private static function rules_narrative(array $data, array $snapshot, array $diff): string {
 		$count = (int) ($data['overview']['count'] ?? 0);
 		$notRanking = [];
@@ -741,7 +730,7 @@ class AQ_SEO_Agent {
 		}
 		$o        = self::opts();
 		$dfs      = self::dataforseo_ready();
-		$ai       = self::openai_ready();
+		$ai       = self::claude_ready();
 		$last     = get_option(self::LAST, []);
 		$next     = self::next_run_ts();
 		$int_url  = admin_url('admin.php?page=aq-integrations');
@@ -767,7 +756,7 @@ class AQ_SEO_Agent {
 			<div class="notice notice-warning inline"><p><strong>Almost there:</strong> the agent needs your DataForSEO login under <a href="<?php echo esc_url($int_url); ?>">AutoForge → Integrations</a> before it can run.</p></div>
 		<?php endif; ?>
 		<?php if (!$ai) : ?>
-			<div class="notice notice-info inline"><p>No OpenAI key found — reports will still send using a clear built-in summary. Add a key under <a href="<?php echo esc_url($int_url); ?>">Integrations</a> for a friendlier, AI-written write-up.</p></div>
+			<div class="notice notice-info inline"><p>No Claude key found — reports will still send using a clear built-in summary. Add a key under <a href="<?php echo esc_url($int_url); ?>">Integrations</a> for a friendlier, AI-written write-up.</p></div>
 		<?php endif; ?>
 
 		<div class="aq-cards" style="margin-bottom:6px;">

@@ -61,6 +61,7 @@ class AQ_Lead_Capture {
 			'notify_to'      => '',
 			'notify_bcc'     => '',
 			'notify_subject' => '',
+			'email_template' => '',
 			'test_recipient' => (string) get_option('admin_email'),
 			'smtp_host'      => '',
 			'smtp_port'      => 465,
@@ -322,9 +323,57 @@ class AQ_Lead_Capture {
 
 	/* ---------------- notification email ---------------- */
 
-	/** Branded HTML body for the lead-notification email (site name header, no external images). */
-	public static function lead_email_html(array $f, bool $is_test = false): string {
-		$navy = '#15324c'; $accent = '#2f6f4f'; $muted = '#7b8a9a'; $line = '#e7eef2'; $soft = '#f4f8f6';
+	/**
+	 * Palette + font for the notification email, DERIVED FROM THE CLIENT'S BRAND
+	 * so the message matches the live site (no hardcoded colors — client-agnostic):
+	 *   - accent  = brand `themeColor` (buttons/links/eyebrow/rule), else neutral blue
+	 *   - header  = dark band + reversed wordmark when `headerStyle` is 'dark', else light
+	 *   - font    = the brand's Google font (first family), with an email-safe fallback
+	 * Override any of it per client with the `aq_lead_email_theme` filter.
+	 */
+	private static function email_theme(): array {
+		$accent = '';
+		if (function_exists('aq_site')) {
+			$tc = strtolower(trim((string) aq_site('themeColor')));
+			if (preg_match('/^#[0-9a-f]{6}$/', $tc)) { $accent = $tc; }
+		}
+		$dark = function_exists('aq_site') && aq_site('headerStyle') === 'dark';
+		$theme = [
+			'accent'    => $accent !== '' ? $accent : '#2563eb',
+			'ink'       => '#0f172a', // headings + field values
+			'muted'     => '#6b7280', // labels + meta
+			'line'      => '#e6e9ee', // hairlines / card border
+			'soft'      => '#f5f7fa', // page + footer background
+			'header_bg' => $dark ? '#0f172a' : '#ffffff',
+			'header_fg' => $dark ? '#ffffff' : '#0f172a',
+			'font'      => self::email_font(),
+		];
+		return array_merge($theme, (array) apply_filters('aq_lead_email_theme', $theme));
+	}
+
+	/** Email-safe font stack, led by the brand's Google font family when detectable. */
+	private static function email_font(): string {
+		$lead = '';
+		if (function_exists('aq_site')) {
+			$css = str_replace('+', ' ', (string) aq_site('fonts.googleCss'));
+			if ($css !== '' && preg_match('/[?&]family=([A-Za-z0-9\- ]+)/', $css, $m)) {
+				$fam = trim($m[1]);
+				if ($fam !== '') { $lead = "'" . $fam . "', "; }
+			}
+		}
+		return $lead . 'Arial, Helvetica, sans-serif';
+	}
+
+	/**
+	 * Placeholder values injected into the email template. Every value is already
+	 * escaped/safe; the template is admin-authored HTML. Tokens: {{site}} {{host}}
+	 * {{when}} {{title}} {{accent}} {{ink}} {{muted}} {{line}} {{soft}}
+	 * {{header_bg}} {{header_fg}} {{font}} {{phone}} {{home_url}} {{rows}}
+	 * {{banner}} {{foot}}.
+	 */
+	public static function email_tokens(array $f, bool $is_test = false): array {
+		$t     = self::email_theme();
+		$font  = $t['font']; $accent = $t['accent']; $ink = $t['ink']; $muted = $t['muted']; $line = $t['line'];
 		$cfg   = self::get_settings();
 		$title = $cfg['notify_subject'] !== '' ? $cfg['notify_subject'] : 'New website form submission';
 		$when  = function_exists('wp_date') ? wp_date('F j, Y \a\t g:i a') : date('F j, Y');
@@ -339,28 +388,57 @@ class AQ_Lead_Capture {
 			if ($v === '') { continue; }
 			$val = ($k === 'message') ? nl2br(esc_html($v)) : esc_html($v);
 			$rows .= '<tr>'
-				. '<td style="padding:11px 16px 11px 0;border-bottom:1px solid ' . $line . ';color:' . $muted . ';font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:top;width:120px;font-family:Arial,Helvetica,sans-serif">' . esc_html($label) . '</td>'
-				. '<td style="padding:11px 0;border-bottom:1px solid ' . $line . ';color:' . $navy . ';font-size:15px;line-height:1.5;vertical-align:top;font-family:Arial,Helvetica,sans-serif">' . $val . '</td>'
+				. '<td style="padding:11px 16px 11px 0;border-bottom:1px solid ' . $line . ';color:' . $muted . ';font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:top;width:120px;font-family:' . $font . '">' . esc_html($label) . '</td>'
+				. '<td style="padding:11px 0;border-bottom:1px solid ' . $line . ';color:' . $ink . ';font-size:15px;line-height:1.5;vertical-align:top;font-family:' . $font . '">' . $val . '</td>'
 				. '</tr>';
 		}
 		$banner = $is_test
-			? '<div style="background:#fff7e6;color:#7a4e0a;border:1px solid #f4d088;border-radius:8px;padding:10px 14px;margin:0 0 18px;font-size:13px;font-family:Arial,Helvetica,sans-serif"><strong>Test email</strong> &mdash; a design preview of the website form notification. No real customer submitted this.</div>'
+			? '<div style="background:#fff7e6;color:#7a4e0a;border:1px solid #f4d088;border-radius:8px;padding:10px 14px;margin:0 0 18px;font-size:13px;font-family:' . $font . '"><strong>Test email</strong> &mdash; a design preview of the website form notification. No real customer submitted this.</div>'
 			: '';
 		$foot = esc_html($site) . ($phone !== '' ? ' &nbsp;&middot;&nbsp; ' . esc_html($phone) : '')
 			. ' &nbsp;&middot;&nbsp; <a href="' . esc_url(home_url('/')) . '" style="color:' . $accent . ';text-decoration:none;">' . esc_html($host) . '</a>';
 
-		return '<!DOCTYPE html><html lang="en"><body style="margin:0;padding:0;background:' . $soft . ';">'
-			. '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:' . $soft . ';padding:24px 12px;"><tr><td align="center">'
-			. '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid ' . $line . ';border-radius:14px;overflow:hidden;">'
-			. '<tr><td align="center" style="padding:26px 28px 16px;"><span style="font-family:Georgia,\'Times New Roman\',serif;font-size:22px;font-weight:700;color:' . $navy . ';">' . esc_html($site) . '</span></td></tr>'
-			. '<tr><td style="height:4px;background:' . $accent . ';font-size:0;line-height:0;">&nbsp;</td></tr>'
-			. '<tr><td style="padding:26px 30px 6px;">' . $banner
-			. '<p style="margin:0 0 4px;color:' . $accent . ';font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif;">New website enquiry</p>'
-			. '<h1 style="margin:0 0 6px;color:' . $navy . ';font-size:22px;font-family:Georgia,\'Times New Roman\',serif;">' . esc_html($title) . '</h1>'
-			. '<p style="margin:0 0 16px;color:' . $muted . ';font-size:13px;font-family:Arial,Helvetica,sans-serif;">Submitted from ' . esc_html($host) . ' on ' . esc_html($when) . '.</p></td></tr>'
-			. '<tr><td style="padding:0 30px 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' . $rows . '</table></td></tr>'
-			. '<tr><td align="center" style="background:' . $soft . ';padding:18px 30px;border-top:1px solid ' . $line . ';"><p style="margin:0;color:' . $muted . ';font-size:12px;font-family:Arial,Helvetica,sans-serif;">' . $foot . '</p></td></tr>'
+		return [
+			'site' => esc_html($site), 'host' => esc_html($host), 'when' => esc_html($when),
+			'title' => esc_html($title), 'phone' => esc_html($phone), 'home_url' => esc_url(home_url('/')),
+			'accent' => $accent, 'ink' => $ink, 'muted' => $muted, 'line' => $line, 'soft' => $t['soft'],
+			'header_bg' => $t['header_bg'], 'header_fg' => $t['header_fg'], 'font' => $font,
+			'rows' => $rows, 'banner' => $banner, 'foot' => $foot,
+		];
+	}
+
+	/** The engine's built-in, brand-derived template (used when no custom one is saved). */
+	public static function default_email_template(): string {
+		return '<!DOCTYPE html><html lang="en"><body style="margin:0;padding:0;background:{{soft}};">'
+			. '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{soft}};padding:24px 12px;"><tr><td align="center">'
+			. '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid {{line}};border-radius:14px;overflow:hidden;">'
+			. '<tr><td align="center" style="padding:24px 28px;background:{{header_bg}};"><span style="font-family:{{font}};font-size:22px;font-weight:800;letter-spacing:-.01em;color:{{header_fg}};">{{site}}</span></td></tr>'
+			. '<tr><td style="height:4px;background:{{accent}};font-size:0;line-height:0;">&nbsp;</td></tr>'
+			. '<tr><td style="padding:26px 30px 6px;">{{banner}}'
+			. '<p style="margin:0 0 4px;color:{{accent}};font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-family:{{font}};">New website enquiry</p>'
+			. '<h1 style="margin:0 0 6px;color:{{ink}};font-size:22px;font-weight:800;font-family:{{font}};">{{title}}</h1>'
+			. '<p style="margin:0 0 16px;color:{{muted}};font-size:13px;font-family:{{font}};">Submitted from {{host}} on {{when}}.</p></td></tr>'
+			. '<tr><td style="padding:0 30px 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">{{rows}}</table></td></tr>'
+			. '<tr><td align="center" style="background:{{soft}};padding:18px 30px;border-top:1px solid {{line}};"><p style="margin:0;color:{{muted}};font-size:12px;font-family:{{font}};">{{foot}}</p></td></tr>'
 			. '</table></td></tr></table></body></html>';
+	}
+
+	/** Substitute {{tokens}} into a template. Unknown tokens are left as-is. */
+	public static function render_email(string $template, array $tokens): string {
+		$search  = [];
+		$replace = [];
+		foreach ($tokens as $k => $v) {
+			$search[]  = '{{' . $k . '}}';
+			$replace[] = (string) $v;
+		}
+		return str_replace($search, $replace, $template);
+	}
+
+	/** Final HTML body for the lead-notification email: custom template if saved, else the built-in one. */
+	public static function lead_email_html(array $f, bool $is_test = false): string {
+		$custom   = (string) (self::get_settings()['email_template'] ?? '');
+		$template = trim($custom) !== '' ? $custom : self::default_email_template();
+		return self::render_email($template, self::email_tokens($f, $is_test));
 	}
 
 	/** Email the lead to the configured To/BCC with the branded template. */
@@ -523,6 +601,17 @@ class AQ_Lead_Capture {
 			<?php submit_button('Save form settings'); ?>
 		</form>
 
+		<?php
+		$is_default   = trim((string) ($cfg['email_template'] ?? '')) === '' && !get_transient('aq_forms_email_draft');
+		$preview_html = self::render_email(self::editor_template(), self::email_tokens(self::preview_mock(), true));
+		?>
+		<div class="aq-forms-card" style="max-width:900px">
+			<h2>Notification email design</h2>
+			<p class="aq-forms-hint">This is the email you receive on every submission. <?php echo $is_default ? '<span class="aq-badge aq-badge--off">Built-in design</span>' : '<span class="aq-badge aq-badge--ok">Custom design</span>'; ?> The design is set in code per site, matched to the website &mdash; contact your developer to change it.</p>
+			<h3 style="margin:20px 0 8px;font-size:14px;">Current design <span style="font-weight:400;color:#5b6471">(sample data)</span></h3>
+			<iframe title="Email preview" style="width:100%;max-width:640px;height:480px;border:1px solid #dcdfe3;border-radius:10px;background:#fff" srcdoc="<?php echo esc_attr($preview_html); ?>"></iframe>
+		</div>
+
 		<div class="aq-forms-card">
 			<h2>Send a test email</h2>
 			<p class="aq-forms-hint">Send a styled preview of the notification email (sample data) to any address. Does <strong>not</strong> touch your CRM. Uses your SMTP settings if configured.</p>
@@ -548,7 +637,7 @@ class AQ_Lead_Capture {
 
 		// Merge onto existing so we never wipe the legacy test-fill fields.
 		$existing = self::get_settings();
-		update_option(self::OPTION, array_merge($existing, [
+		$merged   = array_merge($existing, [
 			'thankyou_url'   => self::clean_url($in['thankyou_url'] ?? ''),
 			'test_button'    => !empty($in['test_button']),
 			'notify_to'      => self::clean_emails($in['notify_to'] ?? ''),
@@ -561,7 +650,17 @@ class AQ_Lead_Capture {
 			'smtp_from'      => sanitize_email($in['smtp_from'] ?? ''),
 			'smtp_from_name' => sanitize_text_field($in['smtp_from_name'] ?? ''),
 			'ghl_location'   => sanitize_text_field($in['ghl_location'] ?? ''),
-		]), false);
+		]);
+		// The email template is managed in code per site (set_email_template), not here.
+		// Only touch it if this form actually submitted the field (legacy path);
+		// otherwise a Forms save would silently wipe a code-authored template.
+		if (isset($in['email_template'])) {
+			// Stored raw by design — manage_options + nonce gated; wp_kses would strip
+			// the doctype/table/inline-style structure email clients require.
+			$merged['email_template'] = trim((string) wp_unslash($in['email_template']));
+			delete_transient('aq_forms_email_draft'); // saved copy wins; drop any AI draft
+		}
+		update_option(self::OPTION, $merged, false);
 
 		// Write-only secrets: update only when a value was entered; clear on request.
 		// Google/GHL tokens are alphanumeric with - and _; strip anything else defensively.
@@ -605,4 +704,40 @@ class AQ_Lead_Capture {
 		wp_safe_redirect(add_query_arg(['page' => self::SLUG, 'tested' => $ok ? '1' : '0'], admin_url('admin.php')));
 		exit;
 	}
+
+	/* ---------------- email design helpers (rendering + per-site template) ---------------- */
+
+	/** Sample lead used to render the live preview of the email design. */
+	private static function preview_mock(): array {
+		return [
+			'first' => 'Jordan', 'last' => 'Rivera', 'email' => 'jordan@example.com',
+			'phone' => '(781) 555-0142', 'company' => 'Rivera & Co.',
+			'city' => 'Woburn', 'state' => 'MA', 'service' => 'New website',
+			'message' => "Saw your site and would love a quote.\nBest time to reach me is mornings.", 'source' => 'Website form',
+		];
+	}
+
+	/** The template currently shown in the preview: AI draft, else saved, else the built-in default. */
+	public static function editor_template(): string {
+		$draft = get_transient('aq_forms_email_draft');
+		if (is_string($draft) && trim($draft) !== '') {
+			return $draft;
+		}
+		$saved = (string) (self::get_settings()['email_template'] ?? '');
+		return trim($saved) !== '' ? $saved : self::default_email_template();
+	}
+
+	/** Persist a custom email template (empty string reverts to the built-in design). */
+	public static function set_email_template(string $html): void {
+		$existing = self::get_settings();
+		$existing['email_template'] = trim($html);
+		update_option(self::OPTION, $existing, false);
+		delete_transient('aq_forms_email_draft'); // saved copy wins; drop any AI draft
+	}
+
+	/** Whether a custom (non-built-in) template is currently saved. */
+	public static function has_custom_template(): bool {
+		return trim((string) (self::get_settings()['email_template'] ?? '')) !== '';
+	}
+
 }

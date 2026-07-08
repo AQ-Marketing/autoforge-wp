@@ -130,7 +130,7 @@
 
 		if (!CFG.assistant) {
 			var setup = ce('div', 'aqb-asst__log');
-			setup.appendChild(ce('div', 'aqb-asst__hint', 'The assistant needs an OpenAI API key. Add one under AutoForge → Integrations, then reopen this editor.'));
+			setup.appendChild(ce('div', 'aqb-asst__hint', 'The assistant needs a Claude API key. Add one under AutoForge → Integrations, then reopen this editor.'));
 			p.appendChild(setup);
 			return;
 		}
