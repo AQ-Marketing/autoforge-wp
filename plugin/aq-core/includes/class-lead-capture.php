@@ -35,12 +35,116 @@ class AQ_Lead_Capture {
 	const GHL_API    = 'https://services.leadconnectorhq.com';
 	const GHL_VER    = '2021-07-28';
 
+	/** How long a captured value persists, in seconds — 90 days. */
+	const TRACK_COOKIE_TTL    = 7776000;
+	/** GHL custom-field index cache lifetime, in seconds — 6 hours. */
+	const TRACK_MAP_TTL       = 21600;
+	/** Daily cron hook that refreshes the location's custom-field list. */
+	const CRON_FIELD_SYNC     = 'aq_ghl_field_sync';
+	/** Option storing the last field-sync result: ['time' => ts, 'count' => n]. */
+	const OPT_FIELD_SYNC_META = 'aq_ghl_field_sync_meta';
+
 	public static function register(): void {
 		add_action('rest_api_init', [__CLASS__, 'rest_routes']);
 		add_action('admin_menu', [__CLASS__, 'menu'], 25);
 		add_action('admin_post_aq_forms_save', [__CLASS__, 'save']);
 		add_action('admin_post_aq_forms_test', [__CLASS__, 'send_test']);
+		add_action('admin_post_aq_forms_sync_fields', [__CLASS__, 'manual_sync']);
 		add_action('phpmailer_init', [__CLASS__, 'apply_smtp']);
+		// Capture ad/UTM attribution into first-party cookies on the front end.
+		// Printed client-side (in the footer) so it survives full-page caching and
+		// never depends on any individual site's form markup.
+		add_action('wp_footer', [__CLASS__, 'print_tracking_capture'], 5);
+		// Daily refresh of the GHL custom-field list so newly-added fields are
+		// picked up automatically. The cron callback + schedule reconciliation.
+		add_action(self::CRON_FIELD_SYNC, [__CLASS__, 'cron_sync_fields']);
+		add_action('init', [__CLASS__, 'reconcile_field_sync_schedule']);
+		// Media library picker for the email-logo field on the Forms screen.
+		add_action('admin_enqueue_scripts', [__CLASS__, 'admin_assets']);
+	}
+
+	/** Enqueue the WP media library on the Forms screen (for the email-logo picker). */
+	public static function admin_assets(string $hook): void {
+		if (strpos($hook, self::SLUG) !== false) {
+			wp_enqueue_media();
+		}
+	}
+
+	/* ---------------- URL attribution capture ---------------- */
+
+	/** Single first-party cookie that stores captured URL params as JSON. */
+	const TRACK_COOKIE = 'aq_trk';
+
+	/** Normalize a param/field token for matching: lowercase, non-alnum → underscore. */
+	private static function norm_param(string $s): string {
+		$s = strtolower(trim($s));
+		$s = preg_replace('/[^a-z0-9]+/', '_', $s);
+		return trim((string) $s, '_');
+	}
+
+	/**
+	 * Print the front-end capture snippet. On every page load it merges EVERY URL
+	 * query parameter into one first-party JSON cookie (a fresh non-empty value in
+	 * the URL wins; otherwise the stored value persists). The cookie rides along
+	 * with the same-origin fetch the form makes, so the REST handler reads it
+	 * server side — no hidden fields, no per-site JS, cache-proof.
+	 */
+	public static function print_tracking_capture(): void {
+		if (is_admin() || !apply_filters('aq_lead_tracking_enabled', true)) {
+			return;
+		}
+		$cfg = [
+			'cookie' => self::TRACK_COOKIE,
+			'maxAge' => self::TRACK_COOKIE_TTL,
+		];
+		?>
+<script>(function(){try{
+var C=<?php echo wp_json_encode($cfg); ?>;
+var m=document.cookie.match(new RegExp('(?:^|; )'+C.cookie+'=([^;]*)')),store={};
+if(m){try{store=JSON.parse(decodeURIComponent(m[1]))||{};}catch(e){store={};}}
+var q=new URLSearchParams(location.search),changed=false;
+q.forEach(function(v,k){
+if(!/^[A-Za-z0-9_\-]{1,40}$/.test(k))return;
+v=(v||'').trim();if(!v||v.length>500)return;
+if(store[k]!==v){store[k]=v;changed=true;}
+});
+if(changed){var s=JSON.stringify(store);if(s.length<=3500){
+document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+';SameSite=Lax'+(location.protocol==='https:'?';Secure':'');
+}}
+}catch(e){}})();</script>
+		<?php
+	}
+
+	/**
+	 * Resolve the captured attribution values for a submission: the JSON cookie
+	 * overlaid with the current request's own $_GET (so a submit on the ad-landing
+	 * page works even before the cookie round-trips). Every value is sanitized and
+	 * length-capped; merge-token-like junk is dropped.
+	 *
+	 * @return array<string,string> param => value (only non-empty).
+	 */
+	private static function captured_tracking(WP_REST_Request $req): array {
+		$raw = [];
+		if (isset($_COOKIE[self::TRACK_COOKIE])) {
+			$decoded = json_decode(urldecode((string) wp_unslash($_COOKIE[self::TRACK_COOKIE])), true);
+			if (is_array($decoded)) { $raw = $decoded; }
+		}
+		if (!empty($_GET) && is_array($_GET)) {
+			foreach (wp_unslash($_GET) as $k => $v) {
+				if (is_string($k) && !is_array($v)) { $raw[$k] = $v; }
+			}
+		}
+
+		$out = [];
+		foreach ($raw as $k => $v) {
+			if (!is_string($k) || !preg_match('/^[A-Za-z0-9_\-]{1,40}$/', $k)) { continue; }
+			$v = sanitize_text_field((string) $v);
+			if ($v === '' || mb_strlen($v) > 500) { continue; }
+			// Never forward unresolved merge tokens / shortcodes.
+			if (preg_match('/^\{\{.*\}\}$/', $v) || preg_match('/^\[.*\]$/', $v)) { continue; }
+			$out[$k] = $v;
+		}
+		return $out;
 	}
 
 	/** Whether the engine's own route should register. A client integration can
@@ -70,6 +174,10 @@ class AQ_Lead_Capture {
 			'smtp_from'      => '',
 			'smtp_from_name' => '',
 			'ghl_location'   => '',
+			'email_logo'     => '', // logo image URL shown in the notification email header
+			'email_logo_w'   => 0,  // measured display width (px), capped to fit the header
+			'email_logo_h'   => 0,  // measured display height (px)
+			'field_sync_daily' => true, // auto-check GHL for new custom fields each morning
 			// legacy test-fill fields (kept for the admin test button JS)
 			'test_name'      => 'Test Tester',
 			'test_email'     => 'test@example.com',
@@ -219,6 +327,10 @@ class AQ_Lead_Capture {
 
 		$f = compact('first', 'last', 'email', 'phone', 'company', 'website', 'address', 'city', 'state', 'zip', 'service', 'message', 'source');
 
+		// Ad/UTM attribution captured from the landing URL (cookie / body / query).
+		// Carried on $f so both the CRM push and the notification email can use it.
+		$f['tracking'] = self::captured_tracking($req);
+
 		// CRM push (best-effort) — never lose the lead if GHL is down; email fires too.
 		$ghl_ok = false;
 		if (self::ghl_ready()) {
@@ -291,6 +403,12 @@ class AQ_Lead_Capture {
 			'tags'        => $tags,
 		], static function ($v) { return $v !== '' && $v !== null && $v !== []; });
 
+		// Attach captured ad/UTM attribution to matching GHL custom fields.
+		$custom = self::ghl_custom_fields(is_array($f['tracking'] ?? null) ? $f['tracking'] : []);
+		if (!empty($custom)) {
+			$payload['customFields'] = $custom;
+		}
+
 		$resp = self::ghl_request('POST', '/contacts/upsert', $payload);
 		if (is_wp_error($resp)) {
 			return $resp->get_error_message();
@@ -307,8 +425,8 @@ class AQ_Lead_Capture {
 		return true;
 	}
 
-	private static function ghl_request(string $method, string $path, array $body) {
-		return wp_remote_request(self::GHL_API . $path, [
+	private static function ghl_request(string $method, string $path, array $body = []) {
+		$args = [
 			'method'  => $method,
 			'timeout' => 15,
 			'headers' => [
@@ -317,8 +435,213 @@ class AQ_Lead_Capture {
 				'Content-Type'  => 'application/json',
 				'Accept'        => 'application/json',
 			],
-			'body'    => wp_json_encode($body),
-		]);
+		];
+		// Only send a JSON body on write methods; a GET with a body trips some hosts.
+		if (strtoupper($method) !== 'GET') {
+			$args['body'] = wp_json_encode($body);
+		}
+		return wp_remote_request(self::GHL_API . $path, $args);
+	}
+
+	/* ---------------- GHL custom-field mapping (ad/UTM attribution) ---------------- */
+
+	/**
+	 * Build the `customFields` payload for a submission — DETECT & FILL ONLY.
+	 *
+	 * We pull the location's entire custom-field list from GHL and fill EVERY field
+	 * that matches a captured URL variable (by field name or GHL fieldKey, however
+	 * the account named it). We never create fields — GHL is the source of truth for
+	 * what exists; the ads team / admin sets fields up there, and whatever they add
+	 * is picked up automatically (immediately via the manual check, or by the next
+	 * daily sync). Nothing is gclid-specific — gclid/utm are just examples.
+	 *
+	 * @param array<string,string> $captured param => value (all captured URL vars).
+	 * @return array<int,array{id:string,value:string}>
+	 */
+	private static function ghl_custom_fields(array $captured): array {
+		$captured = array_filter($captured, static function ($v) { return is_string($v) && trim($v) !== ''; });
+		if (empty($captured)) {
+			return [];
+		}
+		$index = self::ghl_field_index(); // [normalized name|fieldKey => field id] for ALL fields
+		if (empty($index)) {
+			return [];
+		}
+		$out  = [];
+		$used = [];
+		foreach ($captured as $param => $value) {
+			$np = self::norm_param($param);
+			if ($np === '') { continue; }
+			// A matching field may be named plainly ("gclid"/"Campaign ID"), prefixed
+			// "AQM - ", or carry the auto-generated `contact.` fieldKey — try each form.
+			// Fill EVERY distinct field that matches, not just the first: a location
+			// may carry duplicate fields for the same variable (e.g. "AQM - utm_source"
+			// AND "UTM Source"), and we want all of them populated. `$used` keys off the
+			// field id so we never write the same field twice.
+			foreach ([$np, 'aqm_' . $np, 'contact_' . $np, 'contact_aqm_' . $np] as $c) {
+				if (!empty($index[$c]) && empty($used[$index[$c]])) {
+					$out[] = ['id' => $index[$c], 'value' => (string) $value];
+					$used[$index[$c]] = true;
+				}
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Normalized index of the location's custom fields: [normalized name|key => id].
+	 * Each field is registered under both its name and its fieldKey so a param can
+	 * match either. Cached for TRACK_MAP_TTL; the last good index is also kept in a
+	 * non-autoloaded option and reused if the API is unreachable. Pass $force to
+	 * bypass the cache and re-fetch (used by the daily cron and manual check).
+	 *
+	 * @return array<string,string>
+	 */
+	private static function ghl_field_index(bool $force = false): array {
+		$loc = self::ghl_location();
+		if ($loc === '' || self::ghl_token() === '') {
+			return [];
+		}
+		if (!$force) {
+			$cached = get_transient('aq_ghl_field_idx_' . md5($loc));
+			if (is_array($cached)) {
+				return $cached;
+			}
+		}
+		$fields = self::ghl_fetch_custom_fields($loc);
+		if ($fields === null) {
+			$fallback = get_option('aq_ghl_field_idx_opt_' . md5($loc), []);
+			return is_array($fallback) ? $fallback : [];
+		}
+		$index = self::build_field_index($fields);
+		self::store_field_index($loc, $index);
+		return $index;
+	}
+
+	/** Turn a raw GHL custom-field list into [normalized name|fieldKey => id]. */
+	private static function build_field_index(array $fields): array {
+		$index = [];
+		foreach ($fields as $field) {
+			$id = (string) ($field['id'] ?? '');
+			if ($id === '') { continue; }
+			foreach ([$field['name'] ?? '', $field['fieldKey'] ?? ''] as $token) {
+				$n = self::norm_param((string) $token);
+				if ($n !== '' && !isset($index[$n])) { $index[$n] = $id; }
+			}
+		}
+		return $index;
+	}
+
+	/** Persist the field index to both the short-lived cache and the durable fallback. */
+	private static function store_field_index(string $loc, array $index): void {
+		set_transient('aq_ghl_field_idx_' . md5($loc), $index, self::TRACK_MAP_TTL);
+		update_option('aq_ghl_field_idx_opt_' . md5($loc), $index, false);
+	}
+
+	/* ---------------- custom-field discovery (daily cron + manual) ---------------- */
+
+	/**
+	 * Force-refresh the location's custom-field list from GHL and record the result.
+	 * Returns [ok, count, error]. `count` is the number of distinct custom fields
+	 * now known. Safe to call any time; degrades to an error result if GHL is
+	 * unreachable or not connected (never throws).
+	 *
+	 * @return array{ok:bool,count:int,error:string}
+	 */
+	public static function sync_fields(): array {
+		$loc = self::ghl_location();
+		if ($loc === '' || self::ghl_token() === '') {
+			return ['ok' => false, 'count' => 0, 'error' => 'GHL is not connected.'];
+		}
+		$fields = self::ghl_fetch_custom_fields($loc);
+		if ($fields === null) {
+			return ['ok' => false, 'count' => 0, 'error' => 'Could not reach GoHighLevel.'];
+		}
+		$index = self::build_field_index($fields);
+		self::store_field_index($loc, $index);
+		$count = count(array_unique(array_values($index)));
+		update_option(self::OPT_FIELD_SYNC_META, ['time' => time(), 'count' => $count], false);
+		return ['ok' => true, 'count' => $count, 'error' => ''];
+	}
+
+	/** Daily cron callback — refresh the field list so new GHL fields are picked up. */
+	public static function cron_sync_fields(): void {
+		if (self::ghl_ready()) {
+			self::sync_fields();
+		}
+	}
+
+	/**
+	 * Keep the daily-sync cron in step with the setting + connection state. Schedules
+	 * a daily event (first run next morning, site time) when the option is on and GHL
+	 * is connected; clears it otherwise. Runs cheaply on every `init`.
+	 */
+	public static function reconcile_field_sync_schedule(): void {
+		$want      = !empty(self::get_settings()['field_sync_daily']) && self::ghl_ready();
+		$scheduled = wp_next_scheduled(self::CRON_FIELD_SYNC);
+		if ($want && !$scheduled) {
+			wp_schedule_event(self::next_morning_ts(), 'daily', self::CRON_FIELD_SYNC);
+		} elseif (!$want && $scheduled) {
+			wp_unschedule_event($scheduled, self::CRON_FIELD_SYNC);
+		}
+	}
+
+	/** Timestamp for the next 6:00 in the site's timezone. */
+	private static function next_morning_ts(): int {
+		try {
+			$tz   = function_exists('wp_timezone') ? wp_timezone() : new DateTimeZone(date_default_timezone_get());
+			$now  = new DateTime('now', $tz);
+			$next = new DateTime('today 06:00', $tz);
+			if ($next <= $now) {
+				$next->modify('+1 day');
+			}
+			return $next->getTimestamp();
+		} catch (Exception $e) {
+			return time() + DAY_IN_SECONDS;
+		}
+	}
+
+	/** Admin "Check for new custom fields now" button handler. */
+	public static function manual_sync(): void {
+		if (!current_user_can(self::CAP) || !check_admin_referer('aq_forms_sync_fields')) {
+			wp_die('Not allowed.');
+		}
+		$res = self::sync_fields();
+		wp_safe_redirect(add_query_arg(
+			['page' => self::SLUG, 'synced' => $res['ok'] ? (string) $res['count'] : 'err'],
+			admin_url('admin.php')
+		));
+		exit;
+	}
+
+	/**
+	 * Fetch all custom fields for a location. Returns a list of field arrays, or
+	 * null on transport/HTTP error (so the caller can fall back to cache).
+	 *
+	 * @return array<int,array>|null
+	 */
+	private static function ghl_fetch_custom_fields(string $loc): ?array {
+		$resp = self::ghl_request('GET', '/locations/' . rawurlencode($loc) . '/customFields');
+		if (is_wp_error($resp)) {
+			error_log('[aq-core] GHL custom-field fetch failed (' . $resp->get_error_message() . ').');
+			return null;
+		}
+		$code = (int) wp_remote_retrieve_response_code($resp);
+		if ($code < 200 || $code >= 300) {
+			error_log('[aq-core] GHL custom-field fetch HTTP ' . $code . '.');
+			return null;
+		}
+		$body = json_decode(wp_remote_retrieve_body($resp), true);
+		if (!is_array($body)) {
+			return null;
+		}
+		if (isset($body['customFields']) && is_array($body['customFields'])) {
+			return $body['customFields'];
+		}
+		if (isset($body['fields']) && is_array($body['fields'])) {
+			return $body['fields'];
+		}
+		return is_array($body) ? $body : null;
 	}
 
 	/* ---------------- notification email ---------------- */
@@ -365,6 +688,54 @@ class AQ_Lead_Capture {
 	}
 
 	/**
+	 * Set the notification-email logo URL and remember its display size. Public so
+	 * both the admin save path and programmatic callers (wp eval) can use it.
+	 */
+	public static function set_email_logo(string $url): void {
+		$url = esc_url_raw(trim($url));
+		$opt = get_option(self::OPTION, []);
+		if (!is_array($opt)) { $opt = []; }
+		$opt['email_logo'] = $url;
+		[$opt['email_logo_w'], $opt['email_logo_h']] = self::measure_logo($url);
+		update_option(self::OPTION, $opt, false);
+	}
+
+	/**
+	 * Measure a logo image and return the [width, height] it should DISPLAY at in
+	 * the email — the natural size scaled down to fit within 200×64, never up.
+	 * Returns [0, 0] when the image can't be measured (caller falls back to CSS caps).
+	 *
+	 * @return array{0:int,1:int}
+	 */
+	private static function measure_logo(string $url): array {
+		if ($url === '') { return [0, 0]; }
+		$size = false;
+		$path = self::url_to_path($url);
+		if ($path !== '' && is_readable($path)) {
+			$size = @getimagesize($path);
+		}
+		if (!$size && ini_get('allow_url_fopen')) {
+			$size = @getimagesize($url); // remote fallback; best-effort
+		}
+		if (!is_array($size) || empty($size[0]) || empty($size[1])) {
+			return [0, 0];
+		}
+		$w = (int) $size[0];
+		$h = (int) $size[1];
+		$scale = min(200 / $w, 64 / $h, 1); // fit within 200 wide × 64 tall, don't upscale
+		return [max(1, (int) round($w * $scale)), max(1, (int) round($h * $scale))];
+	}
+
+	/** Map a local uploads URL to its filesystem path (empty if not a local upload). */
+	private static function url_to_path(string $url): string {
+		$up = wp_upload_dir();
+		if (!empty($up['baseurl']) && !empty($up['basedir']) && strpos($url, $up['baseurl']) === 0) {
+			return $up['basedir'] . substr($url, strlen($up['baseurl']));
+		}
+		return '';
+	}
+
+	/**
 	 * Placeholder values injected into the email template. Every value is already
 	 * escaped/safe; the template is admin-authored HTML. Tokens: {{site}} {{host}}
 	 * {{when}} {{title}} {{accent}} {{ink}} {{muted}} {{line}} {{soft}}
@@ -381,6 +752,28 @@ class AQ_Lead_Capture {
 		$host  = (string) wp_parse_url(home_url(), PHP_URL_HOST);
 		$phone = (string) (function_exists('aq_site') ? aq_site('phone') : '');
 
+		// Header lockup: the configured email logo image if set, else the site name
+		// as a text wordmark (the built-in default). Email-safe sizing: explicit
+		// width/height attributes (measured at save time, capped to fit the header)
+		// so Outlook — which ignores max-width — renders it at the right size too;
+		// max-width:100% keeps it inside narrow mobile clients.
+		$logo = trim((string) ($cfg['email_logo'] ?? ''));
+		$lw   = (int) ($cfg['email_logo_w'] ?? 0);
+		$lh   = (int) ($cfg['email_logo_h'] ?? 0);
+		// Prefer the inline CID (embedded image) when one is prepared for this send;
+		// it renders without the client fetching the origin URL. esc_url() strips the
+		// cid: scheme, so only URL fallbacks go through esc_url().
+		$src = is_array(self::$embed_logo) ? 'cid:' . self::$embed_logo['cid'] : esc_url($logo);
+		if ($logo !== '' && $lw > 0 && $lh > 0) {
+			$logo_html = '<img src="' . esc_attr($src) . '" alt="' . esc_attr($site) . '" width="' . $lw . '" height="' . $lh . '" style="display:block;width:' . $lw . 'px;height:' . $lh . 'px;max-width:100%;margin:0 auto;border:0;">';
+		} elseif ($logo !== '') {
+			// Dimensions unknown (e.g. remote image we couldn't measure) — fall back
+			// to CSS caps that keep it neat in modern clients.
+			$logo_html = '<img src="' . esc_attr($src) . '" alt="' . esc_attr($site) . '" style="display:block;width:auto;height:auto;max-width:200px;max-height:64px;margin:0 auto;border:0;">';
+		} else {
+			$logo_html = '<span style="font-family:' . $font . ';font-size:22px;font-weight:800;letter-spacing:-.01em;color:' . $t['header_fg'] . ';">' . esc_html($site) . '</span>';
+		}
+
 		$rows = '';
 		$map = ['first' => 'First name', 'last' => 'Last name', 'email' => 'Email', 'phone' => 'Phone', 'company' => 'Company', 'website' => 'Website', 'address' => 'Address', 'city' => 'City', 'state' => 'State', 'zip' => 'Zip', 'service' => 'Service', 'message' => 'Message', 'source' => 'Source'];
 		foreach ($map as $k => $label) {
@@ -390,6 +783,16 @@ class AQ_Lead_Capture {
 			$rows .= '<tr>'
 				. '<td style="padding:11px 16px 11px 0;border-bottom:1px solid ' . $line . ';color:' . $muted . ';font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:top;width:120px;font-family:' . $font . '">' . esc_html($label) . '</td>'
 				. '<td style="padding:11px 0;border-bottom:1px solid ' . $line . ';color:' . $ink . ';font-size:15px;line-height:1.5;vertical-align:top;font-family:' . $font . '">' . $val . '</td>'
+				. '</tr>';
+		}
+		// Ad / campaign attribution (gclid, utm_*, …) captured from the landing URL.
+		$tracking = isset($f['tracking']) && is_array($f['tracking']) ? $f['tracking'] : [];
+		foreach ($tracking as $tk => $tv) {
+			$tv = (string) $tv;
+			if ($tv === '') { continue; }
+			$rows .= '<tr>'
+				. '<td style="padding:11px 16px 11px 0;border-bottom:1px solid ' . $line . ';color:' . $muted . ';font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:top;width:120px;font-family:' . $font . '">' . esc_html($tk) . '</td>'
+				. '<td style="padding:11px 0;border-bottom:1px solid ' . $line . ';color:' . $ink . ';font-size:15px;line-height:1.5;vertical-align:top;word-break:break-all;font-family:' . $font . '">' . esc_html($tv) . '</td>'
 				. '</tr>';
 		}
 		$banner = $is_test
@@ -403,6 +806,7 @@ class AQ_Lead_Capture {
 			'title' => esc_html($title), 'phone' => esc_html($phone), 'home_url' => esc_url(home_url('/')),
 			'accent' => $accent, 'ink' => $ink, 'muted' => $muted, 'line' => $line, 'soft' => $t['soft'],
 			'header_bg' => $t['header_bg'], 'header_fg' => $t['header_fg'], 'font' => $font,
+			'logo' => $logo_html,
 			'rows' => $rows, 'banner' => $banner, 'foot' => $foot,
 		];
 	}
@@ -412,7 +816,7 @@ class AQ_Lead_Capture {
 		return '<!DOCTYPE html><html lang="en"><body style="margin:0;padding:0;background:{{soft}};">'
 			. '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{soft}};padding:24px 12px;"><tr><td align="center">'
 			. '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid {{line}};border-radius:14px;overflow:hidden;">'
-			. '<tr><td align="center" style="padding:24px 28px;background:{{header_bg}};"><span style="font-family:{{font}};font-size:22px;font-weight:800;letter-spacing:-.01em;color:{{header_fg}};">{{site}}</span></td></tr>'
+			. '<tr><td align="center" style="padding:24px 28px;background:{{header_bg}};">{{logo}}</td></tr>'
 			. '<tr><td style="height:4px;background:{{accent}};font-size:0;line-height:0;">&nbsp;</td></tr>'
 			. '<tr><td style="padding:26px 30px 6px;">{{banner}}'
 			. '<p style="margin:0 0 4px;color:{{accent}};font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-family:{{font}};">New website enquiry</p>'
@@ -434,11 +838,94 @@ class AQ_Lead_Capture {
 		return str_replace($search, $replace, $template);
 	}
 
+	/**
+	 * The logo to embed in the CURRENT email as an inline CID attachment, or null.
+	 * Set by lead_email_html() (which the token reader consults) and consumed by
+	 * wp_mail_with_logo(). Embedding the image inline means the client never has to
+	 * fetch an external URL — so it renders even where an image proxy (e.g. HEY's
+	 * gopher) can't reach the origin CDN.
+	 *
+	 * @var array|null
+	 */
+	private static $embed_logo = null;
+
+	/** Content-ID used for the inline logo. */
+	const LOGO_CID = 'aqmlogo';
+
+	/**
+	 * Resolve the configured email logo into something embeddable: a local file
+	 * path when it lives in this site's uploads, otherwise its fetched bytes.
+	 * Returns null when there's no logo or it can't be obtained (caller then falls
+	 * back to a plain <img src="url">).
+	 *
+	 * @return array|null
+	 */
+	private static function prepare_logo_embed(): ?array {
+		$url = trim((string) (self::get_settings()['email_logo'] ?? ''));
+		if ($url === '') {
+			return null;
+		}
+		$name = basename((string) wp_parse_url($url, PHP_URL_PATH)) ?: 'logo';
+		$path = self::url_to_path($url);
+		if ($path !== '' && is_readable($path)) {
+			return ['cid' => self::LOGO_CID, 'path' => $path, 'name' => $name];
+		}
+		$resp = wp_remote_get($url, ['timeout' => 10]);
+		if (!is_wp_error($resp)) {
+			$code  = (int) wp_remote_retrieve_response_code($resp);
+			$bytes = wp_remote_retrieve_body($resp);
+			if ($code >= 200 && $code < 300 && $bytes !== '') {
+				$type = wp_remote_retrieve_header($resp, 'content-type');
+				return ['cid' => self::LOGO_CID, 'bytes' => $bytes, 'type' => $type ?: 'image/jpeg', 'name' => $name];
+			}
+		}
+		return null;
+	}
+
 	/** Final HTML body for the lead-notification email: custom template if saved, else the built-in one. */
 	public static function lead_email_html(array $f, bool $is_test = false): string {
+		// Decide the inline-logo embed for this send BEFORE rendering, so the
+		// {{logo}} token can point at cid: when embedding is possible.
+		self::$embed_logo = self::prepare_logo_embed();
 		$custom   = (string) (self::get_settings()['email_template'] ?? '');
 		$template = trim($custom) !== '' ? $custom : self::default_email_template();
 		return self::render_email($template, self::email_tokens($f, $is_test));
+	}
+
+	/**
+	 * wp_mail() wrapper that attaches the prepared logo as an inline CID image for
+	 * this one send (scoped: the phpmailer_init hook is added, then removed).
+	 */
+	private static function wp_mail_with_logo(string $to, string $subject, string $html, array $headers): bool {
+		$embed = self::$embed_logo;
+		$cb = null;
+		if (is_array($embed)) {
+			$cb = static function ($phpmailer) use ($embed) {
+				try {
+					if (!empty($embed['path'])) {
+						$phpmailer->addEmbeddedImage($embed['path'], $embed['cid'], $embed['name'] ?? 'logo');
+					} elseif (!empty($embed['bytes'])) {
+						$phpmailer->addStringEmbeddedImage($embed['bytes'], $embed['cid'], $embed['name'] ?? 'logo', 'base64', $embed['type'] ?? 'image/jpeg');
+					}
+				} catch (\Throwable $e) {
+					// Never let an embed problem block the send — the <img> just
+					// falls back to the (possibly proxy-blocked) URL.
+				}
+			};
+			add_action('phpmailer_init', $cb);
+		}
+		$ok = wp_mail($to, $subject, $html, $headers);
+		if ($cb) {
+			remove_action('phpmailer_init', $cb);
+		}
+		return (bool) $ok;
+	}
+
+	/** Build + send a lead/notification email with the inline logo embedded. */
+	public static function send_lead_email(array $f, bool $is_test, string $to, string $subject, array $extra_headers = []): bool {
+		$html    = self::lead_email_html($f, $is_test); // sets self::$embed_logo
+		$headers = array_merge(['Content-Type: text/html; charset=UTF-8'], $extra_headers);
+		return self::wp_mail_with_logo($to, $subject, $html, $headers);
 	}
 
 	/** Email the lead to the configured To/BCC with the branded template. */
@@ -449,14 +936,14 @@ class AQ_Lead_Capture {
 		if ($to === '') {
 			return false;
 		}
-		$headers = ['Content-Type: text/html; charset=UTF-8'];
+		$extra = [];
 		if ($cfg['notify_bcc'] !== '') {
-			$headers[] = 'Bcc: ' . $cfg['notify_bcc'];
+			$extra[] = 'Bcc: ' . $cfg['notify_bcc'];
 		}
 		if (($f['email'] ?? '') !== '' && is_email($f['email'])) {
-			$headers[] = 'Reply-To: ' . $f['email'];
+			$extra[] = 'Reply-To: ' . $f['email'];
 		}
-		return (bool) wp_mail($to, $subject, self::lead_email_html($f, false), $headers);
+		return self::send_lead_email($f, false, $to, $subject, $extra);
 	}
 
 	/* ---------------- helpers ---------------- */
@@ -518,6 +1005,10 @@ class AQ_Lead_Capture {
 			<?php if ($_GET['tested'] === '1') : ?><div class="notice notice-success is-dismissible"><p>Test email sent to <strong><?php echo esc_html($cfg['test_recipient']); ?></strong>. Check the inbox (and spam).</p></div>
 			<?php else : ?><div class="notice notice-error is-dismissible"><p>Test email could not be sent — check the recipient address.</p></div><?php endif; ?>
 		<?php endif; ?>
+		<?php if (isset($_GET['synced'])) : ?>
+			<?php if ($_GET['synced'] === 'err') : ?><div class="notice notice-error is-dismissible"><p>Couldn&rsquo;t check GoHighLevel for custom fields — confirm the connection and try again.</p></div>
+			<?php else : ?><div class="notice notice-success is-dismissible"><p>Custom-field list refreshed — <strong><?php echo (int) $_GET['synced']; ?></strong> field<?php echo ((int) $_GET['synced'] === 1) ? '' : 's'; ?> detected in your GoHighLevel location.</p></div><?php endif; ?>
+		<?php endif; ?>
 
 		<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
 			<input type="hidden" name="action" value="aq_forms_save">
@@ -538,6 +1029,29 @@ class AQ_Lead_Capture {
 			</div>
 
 			<div class="aq-forms-card">
+				<h2>Email logo</h2>
+				<p class="aq-forms-hint">Shown at the top of every admin form-submission email. Leave blank to use the site name as text. A wide PNG or JPG works best &mdash; it&rsquo;s sized automatically to fit the header (up to 200&times;64px).</p>
+				<div class="aq-forms-field" style="margin-bottom:10px"><input type="text" id="aq-email-logo-url" name="email_logo" value="<?php echo esc_attr($cfg['email_logo']); ?>" placeholder="https://&hellip;/logo.png" style="width:100%;max-width:520px"></div>
+				<p style="margin:0 0 12px">
+					<button type="button" class="button button-secondary" id="aq-email-logo-pick">Select / upload image</button>
+					<button type="button" class="button-link" id="aq-email-logo-clear" style="margin-left:10px;color:#b32d2e">Clear</button>
+				</p>
+				<img id="aq-email-logo-preview" src="<?php echo esc_url($cfg['email_logo']); ?>" alt="" style="max-width:220px;max-height:80px;height:auto;border:1px solid #e6e9ee;border-radius:8px;padding:10px;background:#fff;<?php echo $cfg['email_logo'] ? '' : 'display:none'; ?>">
+				<script>
+				jQuery(function($){
+					var frame;
+					$('#aq-email-logo-pick').on('click',function(e){e.preventDefault();
+						if(frame){frame.open();return;}
+						frame=wp.media({title:'Select email logo',button:{text:'Use this image'},library:{type:'image'},multiple:false});
+						frame.on('select',function(){var a=frame.state().get('selection').first().toJSON();var url=a.url;$('#aq-email-logo-url').val(url);$('#aq-email-logo-preview').attr('src',url).show();});
+						frame.open();
+					});
+					$('#aq-email-logo-clear').on('click',function(e){e.preventDefault();$('#aq-email-logo-url').val('');$('#aq-email-logo-preview').hide().attr('src','');});
+				});
+				</script>
+			</div>
+
+			<div class="aq-forms-card">
 				<h2>Push to GoHighLevel (CRM)</h2>
 				<p class="aq-forms-hint">
 					<?php echo $ghl_ready ? '<span class="aq-badge aq-badge--ok">Connected</span>' : '<span class="aq-badge aq-badge--off">Not connected</span>'; ?>
@@ -552,6 +1066,20 @@ class AQ_Lead_Capture {
 						<input type="password" name="ghl_token" value="" autocomplete="off" placeholder="<?php echo $ghl_token ? '•••••••••• (saved — leave blank to keep)' : 'Paste the PIT'; ?>">
 						<?php if ($ghl_token) : ?><label style="display:flex;align-items:center;gap:7px;font-weight:400;margin-top:8px;font-size:13px"><input type="checkbox" name="ghl_token_clear" value="1"> Remove the saved token</label><?php endif; ?>
 						<p class="aq-forms-hint" style="margin:6px 0 0">Stored write-only — never shown again after saving.</p>
+					<?php endif; ?>
+				</div>
+				<hr style="border:none;border-top:1px solid #e6e9ee;margin:16px 0">
+				<div class="aq-forms-field" style="margin-bottom:0">
+					<label style="display:flex;align-items:flex-start;gap:10px;font-weight:400;line-height:1.5">
+						<input type="checkbox" name="field_sync_daily" value="1" <?php checked(!empty($cfg['field_sync_daily'])); ?> style="margin-top:3px">
+						<span><strong>Auto-check for new custom fields each morning.</strong> Every URL variable a visitor arrives with (gclid, utm_*, campaign IDs, anything) is matched to a matching custom field in your GoHighLevel location and filled in on submit. This daily check picks up any fields you add in GHL so they start filling automatically.</span>
+					</label>
+					<?php
+					$sync_meta = get_option(self::OPT_FIELD_SYNC_META, []);
+					if (is_array($sync_meta) && !empty($sync_meta['time'])) :
+						$when = function_exists('wp_date') ? wp_date('M j, Y \a\t g:i a', (int) $sync_meta['time']) : date('M j, Y', (int) $sync_meta['time']);
+						?>
+						<p class="aq-forms-hint" style="margin:8px 0 0 30px">Last checked <?php echo esc_html($when); ?> — <strong><?php echo (int) ($sync_meta['count'] ?? 0); ?></strong> custom field<?php echo ((int) ($sync_meta['count'] ?? 0) === 1) ? '' : 's'; ?> detected.</p>
 					<?php endif; ?>
 				</div>
 			</div>
@@ -600,6 +1128,18 @@ class AQ_Lead_Capture {
 
 			<?php submit_button('Save form settings'); ?>
 		</form>
+
+		<?php if ($ghl_ready) : ?>
+		<div class="aq-forms-card">
+			<h2>Custom fields in GoHighLevel</h2>
+			<p class="aq-forms-hint">The plugin reads the custom fields in your GHL location and fills any that match an incoming URL variable. Added a new field in GHL? Check now to pick it up immediately instead of waiting for the daily refresh.</p>
+			<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin:0">
+				<input type="hidden" name="action" value="aq_forms_sync_fields">
+				<?php wp_nonce_field('aq_forms_sync_fields'); ?>
+				<button type="submit" class="button button-secondary">Check for new custom fields now</button>
+			</form>
+		</div>
+		<?php endif; ?>
 
 		<?php
 		$is_default   = trim((string) ($cfg['email_template'] ?? '')) === '' && !get_transient('aq_forms_email_draft');
@@ -650,7 +1190,11 @@ class AQ_Lead_Capture {
 			'smtp_from'      => sanitize_email($in['smtp_from'] ?? ''),
 			'smtp_from_name' => sanitize_text_field($in['smtp_from_name'] ?? ''),
 			'ghl_location'   => sanitize_text_field($in['ghl_location'] ?? ''),
+			'email_logo'     => esc_url_raw(trim((string) ($in['email_logo'] ?? ''))),
+			'field_sync_daily' => !empty($in['field_sync_daily']),
 		]);
+		// Measure the (possibly new) email logo so the email can size it to fit.
+		[$merged['email_logo_w'], $merged['email_logo_h']] = self::measure_logo($merged['email_logo']);
 		// The email template is managed in code per site (set_email_template), not here.
 		// Only touch it if this form actually submitted the field (legacy path);
 		// otherwise a Forms save would silently wipe a code-authored template.
@@ -679,6 +1223,10 @@ class AQ_Lead_Capture {
 			}
 		}
 
+		// Bring the daily field-sync cron in line with the (possibly changed) toggle
+		// and connection state now that both settings and token are saved.
+		self::reconcile_field_sync_schedule();
+
 		wp_safe_redirect(add_query_arg(['page' => self::SLUG, 'updated' => '1'], admin_url('admin.php')));
 		exit;
 	}
@@ -700,7 +1248,7 @@ class AQ_Lead_Capture {
 			'service' => 'Test service', 'message' => "This is a test of the website-form email design.\nA real submission's Reply-To is the visitor's email.", 'source' => 'Admin test',
 		];
 		$subject = '[TEST] ' . ($cfg['notify_subject'] !== '' ? $cfg['notify_subject'] : 'Website form submission');
-		$ok = ($to !== '') && (bool) wp_mail($to, $subject, self::lead_email_html($mock, true), ['Content-Type: text/html; charset=UTF-8']);
+		$ok = ($to !== '') && self::send_lead_email($mock, true, $to, $subject);
 		wp_safe_redirect(add_query_arg(['page' => self::SLUG, 'tested' => $ok ? '1' : '0'], admin_url('admin.php')));
 		exit;
 	}
