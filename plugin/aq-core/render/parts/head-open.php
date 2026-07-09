@@ -19,7 +19,7 @@ $aq_fonts = function_exists('aq_site') ? aq_site('fonts.googleCss') : null;
 <html <?php language_attributes(); ?>>
 <head>
 <meta charset="<?php bloginfo('charset'); ?>" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <?php wp_head(); ?>
 <?php if ($aq_fonts) : ?>
 <link rel="preconnect" href="https://fonts.googleapis.com" />

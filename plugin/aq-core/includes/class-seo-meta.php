@@ -90,7 +90,8 @@ class AQ_SEO_Meta {
 			echo '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />' . "\n";
 		}
 
-		echo '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />' . "\n";
+		// viewport is emitted once in render/parts/head-open.php (before wp_head)
+		// so it is present even if this SEO head ever short-circuits.
 		$theme_color = (string) (aq_site('themeColor') ?: '#445b44');
 		echo '<meta name="theme-color" content="' . esc_attr($theme_color) . '" />' . "\n";
 
