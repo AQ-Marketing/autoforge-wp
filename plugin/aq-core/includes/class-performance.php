@@ -511,9 +511,7 @@ class AQ_Performance {
 				<div id="aq-psi-result"></div>
 				<p class="aq-perf-msg" id="aq-psi-msg" role="status" aria-live="polite"></p>
 
-				<?php if ($psi_locked) : ?>
-					<p class="aq-perf-muted" style="margin-top:12px;">Key is <strong>locked by the <code>AQ_PSI_KEY</code> constant</strong> in <code>wp-config.php</code> (shared across all sites) — edit it there.</p>
-				<?php else : ?>
+				<?php if (!$psi_locked) : ?>
 				<details style="margin-top:14px;">
 					<summary class="aq-perf-muted" style="cursor:pointer;">Replace or remove API key</summary>
 					<form class="aq-perf-form" id="aq-psi-key-form" style="margin-top:10px;">

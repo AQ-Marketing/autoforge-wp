@@ -32,6 +32,7 @@ class AQ_LLMs {
 		if ($path !== 'llms.txt') {
 			return;
 		}
+		status_header(200); // else WP's 404 (this path has no matching query) stands and agents discard the body
 		nocache_headers();
 		header('Content-Type: text/plain; charset=utf-8');
 		header('X-Robots-Tag: noindex');
@@ -69,19 +70,29 @@ class AQ_LLMs {
 		$out .= self::config_section('Services', 'services', $base);
 		$out .= self::config_section('Specialty Services', 'specialty', $base);
 
-		// Service areas.
-		$towns = (array) (aq_site('towns') ?: []);
-		if ($towns) {
-			$area_base = (string) (aq_site('megamenu.areas.base') ?: '/service-area/');
-			$out      .= "\n## Service Areas\n";
-			foreach ($towns as $t) {
+		// Service areas — towns may carry an explicit 'href' (brand.json shape) or
+		// just a 'slug'; support both. Build rows first so an empty list never
+		// leaves a dangling "## Service Areas" header.
+		$area_base = (string) (aq_site('megamenu.areas.base') ?: '/service-area/');
+		$rows = '';
+		foreach ((array) (aq_site('towns') ?: []) as $t) {
+			$nm = self::clean((string) ($t['name'] ?? ''));
+			if ($nm === '') {
+				continue;
+			}
+			$href = (string) ($t['href'] ?? '');
+			if ($href === '') {
 				$slug = (string) ($t['slug'] ?? '');
-				$nm   = (string) ($t['name'] ?? '');
-				if ($slug === '' || $nm === '') {
+				if ($slug === '') {
 					continue;
 				}
-				$out .= '- [' . self::clean($nm) . '](' . $base . self::path($area_base, $slug) . ")\n";
+				$href = self::path($area_base, $slug);
 			}
+			$url   = (strpos($href, 'http') === 0) ? $href : $base . '/' . ltrim($href, '/');
+			$rows .= '- [' . $nm . '](' . $url . ")\n";
+		}
+		if ($rows !== '') {
+			$out .= "\n## Service Areas\n" . $rows;
 		}
 
 		return $out;
@@ -109,8 +120,11 @@ class AQ_LLMs {
 	}
 
 	/**
-	 * Published, indexable pages as {title,url}. Mirrors AQ_Sitemap's exclusions:
-	 * skip noindex pages and the city×service pages that canonicalize away.
+	 * Published, indexable pages as {title,url} for the curated "## Pages" list.
+	 * Skips noindex pages and EVERYTHING nested under the /service-area/ hub —
+	 * the individual city pages (and city×service pages) are near-duplicate at
+	 * scale and are already represented by the dedicated "## Service Areas"
+	 * section, so listing all 84 here would just be noise for an agent.
 	 */
 	private static function page_links(): array {
 		$ids = get_posts([
@@ -127,9 +141,9 @@ class AQ_LLMs {
 			if (get_post_meta($pid, 'seo_noindex', true)) {
 				continue;
 			}
-			$anc = get_post_ancestors($pid);
-			if (count($anc) === 2 && get_post_field('post_name', (int) end($anc)) === 'service-area') {
-				continue; // /service-area/{city}/{service}/ canonicalizes to the service page
+			$anc = get_post_ancestors($pid); // nearest-first; furthest (root) is end()
+			if ($anc && get_post_field('post_name', (int) end($anc)) === 'service-area') {
+				continue; // any page under the /service-area/ hub → covered by "## Service Areas"
 			}
 			$url = get_permalink($pid);
 			if ($url) {
@@ -144,9 +158,11 @@ class AQ_LLMs {
 		return '/' . trim($base, '/') . '/' . trim($slug, '/') . '/';
 	}
 
-	/** Collapse to a single clean line (no tags, no newlines). */
+	/** Collapse to a single clean line (no tags, no HTML entities, no newlines). */
 	private static function clean(string $s): string {
-		$s = (string) preg_replace('/\s+/', ' ', wp_strip_all_tags($s));
+		$s = wp_strip_all_tags($s);
+		$s = html_entity_decode($s, ENT_QUOTES | ENT_HTML5, 'UTF-8'); // "&amp;" -> "&" for plain text
+		$s = (string) preg_replace('/\s+/', ' ', $s);
 		return trim($s);
 	}
 }
