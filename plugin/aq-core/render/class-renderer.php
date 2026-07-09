@@ -40,6 +40,38 @@ class AQ_Renderer {
 
 		// Take over rendering. Priority 50 so it runs after most theme filters.
 		add_filter('template_include', [__CLASS__, 'route'], 50);
+
+		// Plugin-owned scroll-reveal FAILSAFE. The theme's site.js drives the
+		// entrance animation (adds `.reveal` = opacity:0, then `.reveal-in` when a
+		// section scrolls in), but that theme asset is frozen per-site by the
+		// updater — so a reliability fix there can't reach the fleet. This footer
+		// script lives in the PLUGIN (updates with every release) and is purely
+		// ADDITIVE: it only ever ADDS `.reveal-in` to stranded elements, so it
+		// coexists with any version of the theme's reveal logic without competing
+		// observers. Guarantees no content is ever left invisible.
+		add_action('wp_footer', [__CLASS__, 'print_reveal_failsafe'], 99);
+	}
+
+	/**
+	 * Print the reveal failsafe (see register()). Reveals the hero/first section
+	 * immediately, honors prefers-reduced-motion, force-reveals anything still
+	 * hidden ~1.2s after load, and re-reveals after a BFCache restore.
+	 */
+	public static function print_reveal_failsafe(): void {
+		if (is_admin() || !apply_filters('aq_reveal_failsafe_enabled', true)) {
+			return;
+		}
+		?>
+<script>(function(){try{
+var reduce=window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches;
+function revealAll(){var e=document.querySelectorAll('.reveal:not(.reveal-in)');for(var i=0;i<e.length;i++)e[i].classList.add('reveal-in');}
+function revealHero(){var s=document.querySelector('section.hero,.hero')||document.querySelector('main > section, main > div > section');if(!s)return;if(s.classList.contains('reveal'))s.classList.add('reveal-in');var e=s.querySelectorAll('.reveal:not(.reveal-in)');for(var i=0;i<e.length;i++)e[i].classList.add('reveal-in');}
+function run(){if(reduce){revealAll();return;}revealHero();setTimeout(revealAll,1200);}
+if(document.readyState!=='loading')run();else document.addEventListener('DOMContentLoaded',run);
+window.addEventListener('load',function(){setTimeout(revealAll,200);});
+window.addEventListener('pageshow',function(ev){if(ev.persisted)revealAll();});
+}catch(e){}})();</script>
+		<?php
 	}
 
 	/**
