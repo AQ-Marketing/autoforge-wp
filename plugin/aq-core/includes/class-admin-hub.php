@@ -28,6 +28,7 @@ class AQ_Admin_Hub {
 		add_submenu_page(self::SLUG, 'SEO', 'SEO', self::CAP, 'aq-seo', ['AQ_SEO_Manager', 'render']);
 		add_submenu_page(self::SLUG, 'Locations', 'Locations', self::CAP, 'aq-locations', ['AQ_Locations', 'render']);
 		add_submenu_page(self::SLUG, 'Navigation', 'Navigation', self::CAP, 'aq-navigation', ['AQ_Navigation', 'render']);
+		add_submenu_page(self::SLUG, 'Footer', 'Footer', self::CAP, 'aq-footer', ['AQ_Footer', 'render']);
 		add_submenu_page(self::SLUG, 'Performance', 'Performance', self::CAP, 'aq-performance', ['AQ_Performance', 'render']);
 		// Boost (the performance module) has NO settings UI. It runs a single
 		// code-locked config (see the $aq_boost_config block in aq-core.php), so
@@ -134,6 +135,7 @@ class AQ_Admin_Hub {
 			'aq-seo-agent'  => 'SEO Agent',
 			'aq-locations'  => 'Locations',
 			'aq-navigation' => 'Navigation',
+			'aq-footer'     => 'Footer',
 			'aq-logo'       => 'Logo',
 			'aq-performance'=> 'Performance',
 			'aq-forms'      => 'Forms',

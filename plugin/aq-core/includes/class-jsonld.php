@@ -184,14 +184,36 @@ class AQ_JsonLd {
 			$node['openingHoursSpecification'] = $hours;
 		}
 
-		// sameAs — social/GBP profiles. Real data already lives in config['social']
-		// but was never surfaced in schema; this is a direct entity-linking win.
+		// sameAs — social/GBP profiles, pulled from both the legacy config['social']
+		// list and the admin-editable footer.social repeater below.
 		$same_as = [];
 		foreach ((array) ($site['social'] ?? []) as $s) {
 			$href = is_array($s) ? (string) ($s['href'] ?? '') : (string) $s;
 			$href = trim($href);
 			if ($href !== '' && filter_var($href, FILTER_VALIDATE_URL)) {
 				$same_as[] = $href;
+			}
+		}
+		// footer.social — admin-editable {network, url} repeater rows (AutoForge
+		// → Navigation → Footer — Social). A site still on the pre-repeater
+		// {facebook, instagram} shape is normalized the same way
+		// render/parts/site-footer.php does.
+		$footer_social_raw = (array) aq_site('footer.social');
+		if (array_key_exists('facebook', $footer_social_raw) || array_key_exists('instagram', $footer_social_raw)) {
+			$footer_social = [];
+			foreach (['facebook', 'instagram'] as $network) {
+				$url = (string) ($footer_social_raw[$network] ?? '');
+				if ($url !== '' && $url !== '#') {
+					$footer_social[] = ['network' => $network, 'url' => $url];
+				}
+			}
+		} else {
+			$footer_social = $footer_social_raw;
+		}
+		foreach ($footer_social as $s) {
+			$url = trim((string) ($s['url'] ?? ''));
+			if ($url !== '' && filter_var($url, FILTER_VALIDATE_URL)) {
+				$same_as[] = $url;
 			}
 		}
 		if ($same_as) {

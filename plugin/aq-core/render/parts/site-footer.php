@@ -11,13 +11,13 @@ $addr      = aq_site('address') ?: [];
 $logo_id   = (int) aq_site('logo.idDark');
 $year      = date('Y');
 
-// Footer link columns + social come from site config (AutoForge → Navigation);
+// Footer link columns + social come from site config (AutoForge → Footer);
 // the baked-in defaults in config/site.php reproduce this footer 1:1.
 $f_company     = aq_site('footer.company') ?: [];
 $f_inspections = aq_site('footer.inspections') ?: [];
 $f_legal       = (array) aq_site('footer.legal');
-// footer.social is a list of {network, url} rows (AutoForge → Navigation →
-// Footer — Social). A site still holding the old fixed {facebook, instagram}
+// footer.social is a list of {network, url, target} rows (AutoForge → Footer
+// → Footer — Social). A site still holding the old fixed {facebook, instagram}
 // shape (pre social-icon-repeater) is normalized here so it keeps rendering
 // until the admin screen is re-saved.
 $f_social_raw = aq_site('footer.social') ?: [];
@@ -26,7 +26,7 @@ if (array_key_exists('facebook', $f_social_raw) || array_key_exists('instagram',
 	foreach (['facebook', 'instagram'] as $network) {
 		$url = (string) ($f_social_raw[$network] ?? '#');
 		if ($url !== '' && $url !== '#') {
-			$f_social[] = ['network' => $network, 'url' => $url];
+			$f_social[] = ['network' => $network, 'url' => $url, 'target' => '_blank'];
 		}
 	}
 } else {
@@ -62,9 +62,11 @@ $copyright  = aq_site('labels.copyright') ?: 'All rights reserved.';
 					$network = (string) ($s['network'] ?? '');
 					$icon    = function_exists('aq_social_icon_svg') ? aq_social_icon_svg($network) : '';
 					if ($icon === '') continue;
-					$label = aq_social_networks()[$network]['label'] ?? ucfirst($network);
+					$label  = aq_social_networks()[$network]['label'] ?? ucfirst($network);
+					$target = ((string) ($s['target'] ?? '_blank')) === '_self' ? '_self' : '_blank';
+					$rel    = $target === '_blank' ? ' rel="noopener noreferrer"' : '';
 				?>
-				<a href="<?php echo esc_url($s['url'] ?? '#'); ?>" class="w-9 h-9 rounded-full bg-black/30 hover:bg-accent-500 transition flex items-center justify-center text-white no-underline" aria-label="<?php echo esc_attr($label); ?>">
+				<a href="<?php echo esc_url($s['url'] ?? '#'); ?>" target="<?php echo esc_attr($target); ?>"<?php echo $rel; ?> class="w-9 h-9 rounded-full bg-black/30 hover:bg-accent-500 transition flex items-center justify-center text-white no-underline" aria-label="<?php echo esc_attr($label); ?>">
 					<?php echo $icon; ?>
 				</a>
 				<?php endforeach; ?>

@@ -490,6 +490,27 @@
       ],
       "repeaters": {}
     },
+    "contact_form": {
+      "v": 1,
+      "fields": [
+        "heading",
+        "intro",
+        "inspection_types_label",
+        "inspection_types",
+        "specialty_services_label",
+        "specialty_services",
+        "submit_label",
+        "consent_text",
+        "thankyou_href",
+        "sidebar_heading",
+        "privacy_href",
+        "terms_href"
+      ],
+      "repeaters": {
+        "inspection_types": ["label"],
+        "specialty_services": ["label"]
+      }
+    },
     "post_feed": {
       "v": 1,
       "fields": [

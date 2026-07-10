@@ -281,6 +281,8 @@ class AQ_Editor {
 			'rich_section'     => 'Rich Section (HTML)',
 			'raw_html'         => 'Raw HTML',
 			'policy_embed'     => 'Policy Embed (Termly)',
+			// Lead capture
+			'contact_form'     => 'Contact Form',
 		];
 	}
 
@@ -603,6 +605,26 @@ class AQ_Editor {
 			]],
 			'policy_embed' => ['fields' => [
 				['name' => 'policy_id', 'label' => 'Termly policy ID', 'type' => 'text'],
+			]],
+
+			/* ---------------- lead capture ---------------- */
+			'contact_form' => ['fields' => [
+				['name' => 'heading', 'label' => 'Heading', 'type' => 'text'],
+				['name' => 'intro', 'label' => 'Intro text', 'type' => 'textarea'],
+				['name' => 'inspection_types_label', 'label' => 'Inspection-type group label', 'type' => 'text'],
+				['name' => 'inspection_types', 'label' => 'Inspection types (required, pick one)', 'type' => 'repeater', 'subfields' => [
+					['name' => 'label', 'label' => 'Option label', 'type' => 'text'],
+				]],
+				['name' => 'specialty_services_label', 'label' => 'Specialty-services group label', 'type' => 'text'],
+				['name' => 'specialty_services', 'label' => 'Specialty services (optional, pick any)', 'type' => 'repeater', 'subfields' => [
+					['name' => 'label', 'label' => 'Option label', 'type' => 'text'],
+				]],
+				['name' => 'submit_label', 'label' => 'Button text', 'type' => 'text'],
+				['name' => 'consent_text', 'label' => 'Consent/legal text (optional, e.g. SMS opt-in)', 'type' => 'textarea'],
+				['name' => 'thankyou_href', 'label' => 'Thank-you page link', 'type' => 'url'],
+				['name' => 'sidebar_heading', 'label' => 'Sidebar heading', 'type' => 'text'],
+				['name' => 'privacy_href', 'label' => 'Privacy policy link', 'type' => 'url'],
+				['name' => 'terms_href', 'label' => 'Terms link', 'type' => 'url'],
 			]],
 		];
 

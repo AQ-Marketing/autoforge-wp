@@ -2,10 +2,12 @@
 /**
  * AutoForge — Navigation editor (tab: aq-navigation).
  *
- * Edits the header primary menu and the footer link columns + social, all of
- * which live in the `aq_site_config` overlay (config/site.php defaults). Writes
- * go through AQ_Site_Config::update() so they ride on top of the file defaults
- * and feed aq_site() in parts/site-header.php + parts/site-footer.php.
+ * Edits the header primary menu + header CTA button + blog/shared chrome
+ * labels, all of which live in the `aq_site_config` overlay (config/site.php
+ * defaults). Writes go through AQ_Site_Config::update() so they ride on top
+ * of the file defaults and feed aq_site() in parts/site-header.php. Footer
+ * link columns, social icons, footer/sticky-bar CTA, and the footer contact
+ * heading live on their own screen — see AQ_Footer (tab: aq-footer).
  *
  * Header menu = a drag-to-reorder list of items. An item can be a plain link, a
  * dropdown filled with sub-links the editor adds (rendered as a rich panel with
@@ -21,12 +23,13 @@
  * REST: POST aq/v1/site-nav → validate + save. Gated on manage_options + the WP
  * REST nonce. Vanilla JS, no build step. SQLite-safe (option get/update only).
  *
- * Export/Import: the editor can download the current nav + footer as a JSON file
- * (for editing or hand-off) and import one back. Import POSTs to the same
- * /site-nav route, so the identical sanitization runs; both are client-side with
- * no extra endpoint. Because nav/footer link lists are sequential arrays,
- * AQ_Site_Config::update() replaces them wholesale, so an import cleanly drops
- * rows the file omits.
+ * Export/Import: the editor can download the current menu + chrome labels as a
+ * JSON file (for editing or hand-off) and import one back. Import POSTs to the
+ * same /site-nav route, so the identical sanitization runs; both are
+ * client-side with no extra endpoint. Because nav is a sequential array,
+ * AQ_Site_Config::update() replaces it wholesale, so an import cleanly drops
+ * rows the file omits. Footer data has its own Export/Import on the Footer
+ * screen (aq/v1/site-footer).
  */
 
 if (!defined('ABSPATH')) {
@@ -92,70 +95,6 @@ class AQ_Navigation {
 			return '#';
 		}
 		return esc_url_raw($v);
-	}
-
-	/** Sanitize a list of {label, href} rows; drop empties. */
-	private static function links($raw): array {
-		$out = [];
-		if (is_array($raw)) {
-			foreach ($raw as $row) {
-				if (!is_array($row)) {
-					continue;
-				}
-				$label = sanitize_text_field((string) ($row['label'] ?? ''));
-				if ($label === '') {
-					continue;
-				}
-				$out[] = ['label' => $label, 'href' => self::url((string) ($row['href'] ?? '#'))];
-			}
-		}
-		return array_values($out);
-	}
-
-	/** Sanitize a list of {network, url} footer social-icon rows; drop unknown networks + empty URLs. */
-	private static function social_links($raw): array {
-		$out     = [];
-		$allowed = array_keys(aq_social_networks());
-		if (is_array($raw)) {
-			foreach ($raw as $row) {
-				if (!is_array($row)) {
-					continue;
-				}
-				$network = (string) ($row['network'] ?? '');
-				if (!in_array($network, $allowed, true)) {
-					continue;
-				}
-				$url = self::url((string) ($row['url'] ?? '#'));
-				if ($url === '#') {
-					continue;
-				}
-				$out[] = ['network' => $network, 'url' => $url];
-			}
-		}
-		return array_values($out);
-	}
-
-	/**
-	 * Read stored footer.social for the editor form. Accepts the current
-	 * {network, url} row list, and migrates the old fixed {facebook, instagram}
-	 * shape (pre social-icon-repeater) so existing sites don't lose their links
-	 * the first time this screen loads after an update.
-	 */
-	private static function social_rows_for_editing($raw): array {
-		if (!is_array($raw)) {
-			return [];
-		}
-		if (array_key_exists('facebook', $raw) || array_key_exists('instagram', $raw)) {
-			$rows = [];
-			foreach (['facebook', 'instagram'] as $network) {
-				$url = (string) ($raw[$network] ?? '#');
-				if ($url !== '' && $url !== '#') {
-					$rows[] = ['network' => $network, 'url' => $url];
-				}
-			}
-			return $rows;
-		}
-		return array_values($raw);
 	}
 
 	/** Sanitize a manual dropdown's sub-links {label, href, tagline?}; drop empties. */
@@ -269,46 +208,15 @@ class AQ_Navigation {
 			$patch['nav'] = array_values($nav);
 		}
 
-		if (isset($in['footer']) && is_array($in['footer'])) {
-			$f = [];
-			foreach (['company', 'inspections'] as $col) {
-				if (isset($in['footer'][$col]) && is_array($in['footer'][$col])) {
-					$f[$col] = [
-						'heading' => sanitize_text_field((string) ($in['footer'][$col]['heading'] ?? '')),
-						'links'   => self::links($in['footer'][$col]['links'] ?? []),
-					];
-				}
-			}
-			if (array_key_exists('legal', $in['footer'])) {
-				$f['legal'] = self::links($in['footer']['legal']);
-			}
-			if (isset($in['footer']['social']) && is_array($in['footer']['social'])) {
-				$f['social'] = self::social_links($in['footer']['social']);
-			}
-			if (isset($in['footer']['contact']) && is_array($in['footer']['contact'])) {
-				$f['contact'] = [
-					'heading' => sanitize_text_field((string) ($in['footer']['contact']['heading'] ?? 'Contact Us')),
-				];
-			}
-			if ($f) {
-				$patch['footer'] = $f;
-			}
-		}
+		// Footer link columns, legal links, social icons, footer/sticky-bar CTA,
+		// and the footer contact heading now live on their own screen — see
+		// AQ_Footer (tab: aq-footer, REST route aq/v1/site-footer).
 
-		// Header + footer CTA buttons (label + href).
-		foreach (['headerCta', 'footerCta'] as $ctaKey) {
-			if (isset($in[$ctaKey]) && is_array($in[$ctaKey])) {
-				$patch[$ctaKey] = [
-					'label' => sanitize_text_field((string) ($in[$ctaKey]['label'] ?? '')),
-					'href'  => self::url((string) ($in[$ctaKey]['href'] ?? '/schedule/')),
-				];
-			}
-		}
-
-		// Sticky call bar settings.
-		if (isset($in['stickyBar']) && is_array($in['stickyBar'])) {
-			$patch['stickyBar'] = [
-				'label' => sanitize_text_field((string) ($in['stickyBar']['label'] ?? '')),
+		// Header CTA button (label + href).
+		if (isset($in['headerCta']) && is_array($in['headerCta'])) {
+			$patch['headerCta'] = [
+				'label' => sanitize_text_field((string) ($in['headerCta']['label'] ?? '')),
+				'href'  => self::url((string) ($in['headerCta']['href'] ?? '/schedule/')),
 			];
 		}
 
@@ -472,18 +380,13 @@ class AQ_Navigation {
 			wp_die(esc_html__('You do not have permission to access this page.', 'aq-core'));
 		}
 
-		$cfg    = class_exists('AQ_Site_Config') ? AQ_Site_Config::get() : (function_exists('aq_site') ? (array) aq_site() : []);
-		$nav    = is_array($cfg['nav'] ?? null) ? array_values($cfg['nav']) : [];
-		$footer = is_array($cfg['footer'] ?? null) ? $cfg['footer'] : [];
-		$company= is_array($footer['company'] ?? null) ? $footer['company'] : [];
-		$insp   = is_array($footer['inspections'] ?? null) ? $footer['inspections'] : [];
-		$legal  = is_array($footer['legal'] ?? null) ? array_values($footer['legal']) : [];
-		$social = self::social_rows_for_editing($footer['social'] ?? []);
+		$cfg = class_exists('AQ_Site_Config') ? AQ_Site_Config::get() : (function_exists('aq_site') ? (array) aq_site() : []);
+		$nav = is_array($cfg['nav'] ?? null) ? array_values($cfg['nav']) : [];
 
 		$nonce = wp_create_nonce('wp_rest');
 		$rest  = esc_url_raw(rest_url('aq/v1/site-nav'));
 
-		AQ_Admin_Hub::open('Navigation', 'Edit the header menu and footer links. Changes go live on every page.', 'aq-navigation');
+		AQ_Admin_Hub::open('Navigation', 'Edit the header menu. Changes go live on every page. Footer links live on their own Footer screen.', 'aq-navigation');
 		self::style();
 
 		echo '<div id="aq-nav-notice" class="aq-nav-notice" style="display:none;"></div>';
@@ -492,7 +395,7 @@ class AQ_Navigation {
 		/* ---------------- Export / Import ---------------- */
 		echo '<div class="aq-panel aq-nav-io">';
 		echo '<h2>Export / Import</h2>';
-		echo '<p class="aq-nav-help">Download the menu and footer below as a JSON file you can edit or hand off, then import that file here to apply it. <strong>Importing replaces</strong> the header menu and footer links currently shown &mdash; it takes effect as soon as you confirm.</p>';
+		echo '<p class="aq-nav-help">Download the menu below as a JSON file you can edit or hand off, then import that file here to apply it. <strong>Importing replaces</strong> the header menu currently shown &mdash; it takes effect as soon as you confirm.</p>';
 		echo '<div class="aq-nav-iobtns">';
 		echo '<button type="button" class="aq-btn aq-btn--ghost" id="aq-nav-export">Export to file</button>';
 		echo '<button type="button" class="aq-btn aq-btn--ghost" id="aq-nav-import-btn">Import from file&hellip;</button>';
@@ -511,39 +414,14 @@ class AQ_Navigation {
 		echo '<p style="margin-top:14px;"><button type="button" class="aq-btn aq-btn--ghost" id="aq-nav-add">+ Add menu item</button></p>';
 		echo '</div>';
 
-		/* ---------------- Header + Footer CTA buttons ---------------- */
+		/* ---------------- Header CTA button ---------------- */
 		$hcta = is_array($cfg['headerCta'] ?? null) ? $cfg['headerCta'] : [];
-		$fcta = is_array($cfg['footerCta'] ?? null) ? $cfg['footerCta'] : [];
-		echo '<div class="aq-nav-twocol">';
 		echo '<div class="aq-panel"><h2>Header CTA button</h2>';
 		echo '<p class="aq-nav-help">The primary button at the right end of the header bar.</p>';
 		echo '<div class="aq-nav-grid">';
 		self::text('headerCta.label', 'Button text', (string) ($hcta['label'] ?? 'Schedule Inspection'));
 		self::text('headerCta.href',  'Button link', (string) ($hcta['href'] ?? '/schedule/'));
 		echo '</div></div>';
-		echo '<div class="aq-panel"><h2>Footer CTA button</h2>';
-		echo '<p class="aq-nav-help">The call-to-action in the footer and sticky call bar.</p>';
-		echo '<div class="aq-nav-grid">';
-		self::text('footerCta.label', 'Button text', (string) ($fcta['label'] ?? 'Request a Call Back'));
-		self::text('footerCta.href',  'Button link', (string) ($fcta['href'] ?? '/schedule/'));
-		echo '</div></div>';
-		echo '</div>';
-
-		/* ---------------- Sticky bar + footer contact heading ------------ */
-		$sbar     = is_array($cfg['stickyBar'] ?? null) ? $cfg['stickyBar'] : [];
-		$f_contact = is_array($cfg['footer']['contact'] ?? null) ? $cfg['footer']['contact'] : [];
-		echo '<div class="aq-nav-twocol">';
-		echo '<div class="aq-panel"><h2>Sticky call bar</h2>';
-		echo '<p class="aq-nav-help">The bar fixed to the bottom of the screen. Button text and link come from the Footer CTA above.</p>';
-		echo '<div class="aq-nav-grid">';
-		self::text('stickyBar.label', 'Prompt text', (string) ($sbar['label'] ?? 'Questions? Call us:'));
-		echo '</div></div>';
-		echo '<div class="aq-panel"><h2>Footer — Contact column</h2>';
-		echo '<p class="aq-nav-help">The heading above the phone/address block in the footer. Contact details come from Locations.</p>';
-		echo '<div class="aq-nav-grid">';
-		self::text('footer.contact.heading', 'Column heading', (string) ($f_contact['heading'] ?? 'Contact Us'));
-		echo '</div></div>';
-		echo '</div>';
 
 		/* ---------------- Post CTA + Blog labels ----------------------- */
 		$pcta  = is_array($cfg['postCta'] ?? null) ? $cfg['postCta'] : [];
@@ -582,39 +460,6 @@ class AQ_Navigation {
 		self::text('labels.homeLabel',        'Breadcrumb &ldquo;Home&rdquo;', (string) ($labels['homeLabel'] ?? 'Home'));
 		echo '</div></div>';
 
-		/* ---------------- Footer columns ---------------- */
-		echo '<div class="aq-nav-twocol">';
-		self::footer_col('company', 'Footer — Company column', (string) ($company['heading'] ?? 'Company'), is_array($company['links'] ?? null) ? $company['links'] : []);
-		self::footer_col('inspections', 'Footer — Inspections column', (string) ($insp['heading'] ?? 'Inspections'), is_array($insp['links'] ?? null) ? $insp['links'] : []);
-		echo '</div>';
-
-		/* ---------------- Legal + social ---------------- */
-		echo '<div class="aq-nav-twocol">';
-
-		echo '<div class="aq-panel"><h2>Footer — Legal links</h2>';
-		echo '<p class="aq-nav-help">The small links in the footer&rsquo;s bottom bar.</p>';
-		echo '<table class="aq-table"><thead><tr><th style="width:30px;">#</th><th>Label</th><th>Link</th><th style="width:96px;">Order</th><th style="width:46px;"></th></tr></thead>';
-		echo '<tbody id="aq-nav-legal">';
-		foreach ($legal as $l) {
-			echo self::link_row_html((string) ($l['label'] ?? ''), (string) ($l['href'] ?? ''));
-		}
-		echo '</tbody></table>';
-		echo '<p style="margin-top:12px;"><button type="button" class="aq-btn aq-btn--ghost aq-nav-addlink" data-tbody="aq-nav-legal">+ Add link</button></p>';
-		echo '</div>';
-
-		echo '<div class="aq-panel"><h2>Footer — Social</h2>';
-		echo '<p class="aq-nav-help">The icons in the footer. Add one row per profile, choose the network, and paste its URL.</p>';
-		echo '<table class="aq-table"><thead><tr><th style="width:30px;">#</th><th style="width:170px;">Network</th><th>Profile URL</th><th style="width:96px;">Order</th><th style="width:46px;"></th></tr></thead>';
-		echo '<tbody id="aq-nav-social">';
-		foreach ($social as $s) {
-			echo self::social_row_html((string) ($s['network'] ?? ''), (string) ($s['url'] ?? ''));
-		}
-		echo '</tbody></table>';
-		echo '<p style="margin-top:12px;"><button type="button" class="aq-btn aq-btn--ghost" id="aq-nav-social-add">+ Add social icon</button></p>';
-		echo '</div>';
-
-		echo '</div>'; // twocol
-
 		echo '<div class="aq-nav-savebar">';
 		echo '<button type="button" class="aq-btn" id="aq-nav-save">Save navigation</button>';
 		echo '<span class="aq-nav-saving" id="aq-nav-saving" style="display:none;">Saving…</span>';
@@ -628,20 +473,6 @@ class AQ_Navigation {
 
 	/* ---------------- render helpers ---------------- */
 
-	private static function footer_col(string $key, string $title, string $heading, array $links): void {
-		echo '<div class="aq-panel"><h2>' . esc_html($title) . '</h2>';
-		echo '<label class="aq-nav-field"><span class="aq-nav-label">Column heading</span>';
-		printf('<input type="text" class="aq-nav-input" data-key="footer.%s.heading" value="%s" /></label>', esc_attr($key), esc_attr($heading));
-		echo '<table class="aq-table" style="margin-top:14px;"><thead><tr><th style="width:30px;">#</th><th>Label</th><th>Link</th><th style="width:96px;">Order</th><th style="width:46px;"></th></tr></thead>';
-		printf('<tbody id="aq-nav-%s">', esc_attr($key));
-		foreach (array_values($links) as $l) {
-			echo self::link_row_html((string) ($l['label'] ?? ''), (string) ($l['href'] ?? ''));
-		}
-		echo '</tbody></table>';
-		printf('<p style="margin-top:12px;"><button type="button" class="aq-btn aq-btn--ghost aq-nav-addlink" data-tbody="aq-nav-%s">+ Add link</button></p>', esc_attr($key));
-		echo '</div>';
-	}
-
 	private static function text(string $key, string $label, string $value): void {
 		printf(
 			'<label class="aq-nav-field"><span class="aq-nav-label">%s</span><input type="text" class="aq-nav-input" data-key="%s" value="%s" /></label>',
@@ -649,41 +480,6 @@ class AQ_Navigation {
 			esc_attr($key),
 			esc_attr($value)
 		);
-	}
-
-	private static function order_cell(): string {
-		return '<td class="aq-nav-order">'
-			. '<button type="button" class="aq-iconbtn aq-nav-up" title="Move up">&uarr;</button>'
-			. '<button type="button" class="aq-iconbtn aq-nav-down" title="Move down">&darr;</button></td>'
-			. '<td><button type="button" class="aq-iconbtn aq-iconbtn--del aq-nav-del" title="Remove">&times;</button></td>';
-	}
-
-	private static function link_row_html(string $label, string $href): string {
-		return '<tr class="aq-nav-row">'
-			. '<td class="aq-nav-idx">&bull;</td>'
-			. '<td><input type="text" class="aq-nav-input aq-nav-label-i" value="' . esc_attr($label) . '" placeholder="Link text" /></td>'
-			. '<td><input type="text" class="aq-nav-input aq-nav-href-i" value="' . esc_attr($href) . '" placeholder="/path/ or https://" /></td>'
-			. self::order_cell()
-			. '</tr>';
-	}
-
-	private static function social_network_options(string $selected): string {
-		$opts = '<option value="">— choose —</option>';
-		foreach (aq_social_networks() as $key => $net) {
-			$opts .= '<option value="' . esc_attr($key) . '"' . selected($selected, $key, false) . '>' . esc_html($net['label']) . '</option>';
-		}
-		return $opts;
-	}
-
-	/** One footer social-icon row: network select (drives the icon) + URL. */
-	private static function social_row_html(string $network, string $url): string {
-		$preview = $network !== '' ? '<span class="aq-social-preview">' . aq_social_icon_svg($network) . '</span>' : '';
-		return '<tr class="aq-nav-row">'
-			. '<td class="aq-nav-idx">&bull;</td>'
-			. '<td><div class="aq-social-select-wrap">' . $preview . '<select class="aq-nav-input aq-nav-network-i">' . self::social_network_options($network) . '</select></div></td>'
-			. '<td><input type="text" class="aq-nav-input aq-nav-href-i" value="' . esc_attr($url) . '" placeholder="https://facebook.com/…" /></td>'
-			. self::order_cell()
-			. '</tr>';
 	}
 
 	/** Wrap inner SVG markup in the site's 24×24 stroke <svg> (for previews). */
@@ -898,9 +694,6 @@ class AQ_Navigation {
 			.aq-hub .aq-iconbtn--del:hover { background:#fbe7e7; }
 			.aq-hub .aq-nav-twocol { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
 			@media (max-width:1100px){ .aq-hub .aq-nav-twocol { grid-template-columns:1fr; } }
-			.aq-hub .aq-social-select-wrap { display:flex; align-items:center; gap:8px; }
-			.aq-hub .aq-social-preview { display:flex; align-items:center; justify-content:center; width:22px; height:22px; flex-shrink:0; color:#c8102e; }
-			.aq-hub .aq-social-select-wrap select { flex:1; min-width:0; }
 			.aq-hub .aq-nav-savebar { position:sticky; bottom:0; margin-top:22px; padding:16px 0; display:flex; align-items:center; gap:14px; }
 			.aq-hub .aq-nav-saving { font-size:13px; color:#5b6471; }
 			.aq-hub .aq-nav-notice { padding:12px 16px; border-radius:10px; font-size:13px; font-weight:600; margin-bottom:16px; }
@@ -964,14 +757,8 @@ class AQ_Navigation {
 	}
 
 	private static function script(string $rest, string $nonce): void {
-		$blank_link   = self::link_row_html('', '');
-		$blank_item   = self::item_card_html([]);
-		$blank_child  = self::child_row_html();
-		$blank_social = self::social_row_html('', '');
-		$social_icons = [];
-		foreach (aq_social_networks() as $key => $net) {
-			$social_icons[$key] = aq_social_icon_svg($key);
-		}
+		$blank_item  = self::item_card_html([]);
+		$blank_child = self::child_row_html();
 		// Saved mega-menu config rides along in Export (so a round-trip never drops
 		// it) and Import can carry an edited set. The curated icon set (inner SVG,
 		// <svg> wrapper stripped) feeds the per-link icon picker.
@@ -992,57 +779,11 @@ class AQ_Navigation {
 			var REST = <?php echo wp_json_encode($rest); ?>, NONCE = <?php echo wp_json_encode($nonce); ?>;
 			var PANELS = <?php echo wp_json_encode($panels); ?>;
 			var ICONS = <?php echo wp_json_encode($icon_set); ?>;
-			var BLANK_LINK = <?php echo wp_json_encode($blank_link); ?>;
 			var BLANK_ITEM = <?php echo wp_json_encode($blank_item); ?>;
 			var BLANK_CHILD = <?php echo wp_json_encode($blank_child); ?>;
-			var BLANK_SOCIAL = <?php echo wp_json_encode($blank_social); ?>;
-			var SOCIAL_ICONS = <?php echo wp_json_encode($social_icons); ?>;
 			function $(s, c) { return (c || document).querySelector(s); }
 			function $all(s, c) { return Array.prototype.slice.call((c || document).querySelectorAll(s)); }
 			function val(s, c) { var el = $(s, c); return el ? (el.value || '').trim() : ''; }
-
-			/* ---------- Footer tables (unchanged: bullet rows + up/down/del) ---------- */
-			function renumber(tbody) {
-				$all('.aq-nav-row', tbody).forEach(function (tr, i) {
-					var idx = $('.aq-nav-idx', tr); if (idx) { idx.textContent = (i + 1); }
-				});
-			}
-			function updateSocialPreview(sel) {
-				var wrap = sel.closest('.aq-social-select-wrap');
-				if (!wrap) return;
-				var preview = wrap.querySelector('.aq-social-preview');
-				var svg = SOCIAL_ICONS[sel.value] || '';
-				if (!preview) {
-					preview = document.createElement('span');
-					preview.className = 'aq-social-preview';
-					wrap.insertBefore(preview, wrap.firstChild);
-				}
-				preview.innerHTML = svg;
-			}
-			function wireRow(tr) {
-				var tbody = tr.parentNode;
-				var del = $('.aq-nav-del', tr), up = $('.aq-nav-up', tr), down = $('.aq-nav-down', tr);
-				if (del) del.addEventListener('click', function () { tbody.removeChild(tr); renumber(tbody); });
-				if (up) up.addEventListener('click', function () { var p = tr.previousElementSibling; if (p) { tbody.insertBefore(tr, p); renumber(tbody); } });
-				if (down) down.addEventListener('click', function () { var n = tr.nextElementSibling; if (n) { tbody.insertBefore(n, tr); renumber(tbody); } });
-				var networkSel = $('.aq-nav-network-i', tr);
-				if (networkSel) networkSel.addEventListener('change', function () { updateSocialPreview(networkSel); });
-			}
-			function addRow(tbody, html, focusFirst) {
-				var tmp = document.createElement('tbody');
-				tmp.innerHTML = html.trim();
-				var tr = tmp.querySelector('tr');
-				tbody.appendChild(tr);
-				wireRow(tr);
-				renumber(tbody);
-				if (focusFirst) { var f = $('.aq-nav-label-i', tr) || $('.aq-nav-network-i', tr); if (f) f.focus(); }
-			}
-			$all('#aq-nav-form tbody').forEach(function (tb) { $all('.aq-nav-row', tb).forEach(wireRow); renumber(tb); });
-			$all('.aq-nav-addlink').forEach(function (btn) {
-				btn.addEventListener('click', function () { var tb = document.getElementById(btn.getAttribute('data-tbody')); if (tb) addRow(tb, BLANK_LINK, true); });
-			});
-			var addSocial = $('#aq-nav-social-add');
-			if (addSocial) addSocial.addEventListener('click', function () { addRow($('#aq-nav-social'), BLANK_SOCIAL, true); });
 
 			/* ---------- Header menu: drag-to-reorder parent/child ---------- */
 			var itemsRoot = $('#aq-nav-items');
@@ -1223,17 +964,6 @@ class AQ_Navigation {
 			}
 
 			/* ---------- Collect + save ---------- */
-			function rowsFrom(id) {
-				return $all('.aq-nav-row', document.getElementById(id)).map(function (tr) {
-					return { label: (($('.aq-nav-label-i', tr) || {}).value || '').trim(), href: (($('.aq-nav-href-i', tr) || {}).value || '').trim() };
-				}).filter(function (r) { return r.label !== ''; });
-			}
-			function socialRowsFrom(id) {
-				return $all('.aq-nav-row', document.getElementById(id)).map(function (tr) {
-					return { network: (($('.aq-nav-network-i', tr) || {}).value || ''), url: (($('.aq-nav-href-i', tr) || {}).value || '').trim() };
-				}).filter(function (r) { return r.network !== '' && r.url !== ''; });
-			}
-
 			function setDeep(obj, dotted, v) {
 				var parts = dotted.split('.'), node = obj;
 				for (var i = 0; i < parts.length - 1; i++) { if (typeof node[parts[i]] !== 'object' || node[parts[i]] === null) node[parts[i]] = {}; node = node[parts[i]]; }
@@ -1275,8 +1005,6 @@ class AQ_Navigation {
 					return item;
 				}).filter(function (it) { return it.label !== ''; });
 
-				// Footer columns (unchanged).
-				p.footer = { company: { links: rowsFrom('aq-nav-company') }, inspections: { links: rowsFrom('aq-nav-inspections') }, legal: rowsFrom('aq-nav-legal'), social: socialRowsFrom('aq-nav-social') };
 				$all('.aq-nav-input[data-key]').forEach(function (inp) { setDeep(p, inp.getAttribute('data-key'), inp.value.trim()); });
 				return p;
 			}
@@ -1297,7 +1025,7 @@ class AQ_Navigation {
 					.then(function (res) {
 						if (res.ok && res.body && res.body.ok) {
 							var n = (res.body.saved && res.body.saved.nav) ? res.body.saved.nav.length : 0;
-							notice('Saved. ' + n + ' header item' + (n === 1 ? '' : 's') + ' and the footer links are live.', true);
+							notice('Saved. ' + n + ' header item' + (n === 1 ? '' : 's') + ' live.', true);
 						} else { notice('Save failed: ' + ((res.body && (res.body.message || res.body.code)) || 'unknown error'), false); }
 					})
 					.catch(function (e) { notice('Save failed: ' + e.message, false); })
@@ -1323,10 +1051,7 @@ class AQ_Navigation {
 					_exported: new Date().toISOString(),
 					_site: location.hostname || '',
 					nav: data.nav || [],
-					footer: data.footer || {},
 					headerCta: data.headerCta || {},
-					footerCta: data.footerCta || {},
-					stickyBar: data.stickyBar || {},
 					postCta: data.postCta || {},
 					blog: data.blog || {},
 					labels: data.labels || {},
@@ -1336,7 +1061,7 @@ class AQ_Navigation {
 				var host = (location.hostname || 'site').replace(/[^a-z0-9.\-]/gi, '');
 				var stamp = new Date().toISOString().slice(0, 10);
 				download('navigation-' + host + '-' + stamp + '.json', JSON.stringify(payload, null, 2));
-				notice('Exported the current menu and footer to a JSON file.', true);
+				notice('Exported the current menu to a JSON file.', true);
 			});
 
 			var importBtn = $('#aq-nav-import-btn'), importFile = $('#aq-nav-import-file');
@@ -1353,18 +1078,15 @@ class AQ_Navigation {
 						if (!data || typeof data !== 'object') { notice('Import failed: unexpected file contents.', false); return; }
 						var payload = {};
 						if (Array.isArray(data.nav)) payload.nav = data.nav;
-						if (data.footer && typeof data.footer === 'object') payload.footer = data.footer;
 						if (data.megamenu && typeof data.megamenu === 'object') payload.megamenu = data.megamenu;
 						if (Array.isArray(data.towns)) payload.towns = data.towns;
 						if (data.headerCta && typeof data.headerCta === 'object') payload.headerCta = data.headerCta;
-						if (data.footerCta && typeof data.footerCta === 'object') payload.footerCta = data.footerCta;
-						if (data.stickyBar && typeof data.stickyBar === 'object') payload.stickyBar = data.stickyBar;
 						if (data.postCta && typeof data.postCta === 'object') payload.postCta = data.postCta;
 						if (data.blog && typeof data.blog === 'object') payload.blog = data.blog;
 						if (data.labels && typeof data.labels === 'object') payload.labels = data.labels;
-						if (!payload.nav && !payload.footer && !payload.megamenu && !payload.towns && !payload.headerCta && !payload.footerCta) { notice('Import failed: no menu, footer, or dropdown data found in that file.', false); return; }
+						if (!payload.nav && !payload.megamenu && !payload.towns && !payload.headerCta) { notice('Import failed: no menu or dropdown data found in that file.', false); return; }
 						var n = payload.nav ? payload.nav.length : 0;
-						if (!window.confirm('Import will replace your header menu, footer, and dropdown panel contents' + (n ? ' (' + n + ' menu item' + (n === 1 ? '' : 's') + ')' : '') + '. Continue?')) return;
+						if (!window.confirm('Import will replace your header menu and dropdown panel contents' + (n ? ' (' + n + ' menu item' + (n === 1 ? '' : 's') + ')' : '') + '. Continue?')) return;
 						if (saving) saving.style.display = 'inline';
 						fetch(REST, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'X-WP-Nonce': NONCE }, body: JSON.stringify(payload) })
 							.then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
