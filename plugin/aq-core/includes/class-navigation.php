@@ -112,6 +112,52 @@ class AQ_Navigation {
 		return array_values($out);
 	}
 
+	/** Sanitize a list of {network, url} footer social-icon rows; drop unknown networks + empty URLs. */
+	private static function social_links($raw): array {
+		$out     = [];
+		$allowed = array_keys(aq_social_networks());
+		if (is_array($raw)) {
+			foreach ($raw as $row) {
+				if (!is_array($row)) {
+					continue;
+				}
+				$network = (string) ($row['network'] ?? '');
+				if (!in_array($network, $allowed, true)) {
+					continue;
+				}
+				$url = self::url((string) ($row['url'] ?? '#'));
+				if ($url === '#') {
+					continue;
+				}
+				$out[] = ['network' => $network, 'url' => $url];
+			}
+		}
+		return array_values($out);
+	}
+
+	/**
+	 * Read stored footer.social for the editor form. Accepts the current
+	 * {network, url} row list, and migrates the old fixed {facebook, instagram}
+	 * shape (pre social-icon-repeater) so existing sites don't lose their links
+	 * the first time this screen loads after an update.
+	 */
+	private static function social_rows_for_editing($raw): array {
+		if (!is_array($raw)) {
+			return [];
+		}
+		if (array_key_exists('facebook', $raw) || array_key_exists('instagram', $raw)) {
+			$rows = [];
+			foreach (['facebook', 'instagram'] as $network) {
+				$url = (string) ($raw[$network] ?? '#');
+				if ($url !== '' && $url !== '#') {
+					$rows[] = ['network' => $network, 'url' => $url];
+				}
+			}
+			return $rows;
+		}
+		return array_values($raw);
+	}
+
 	/** Sanitize a manual dropdown's sub-links {label, href, tagline?}; drop empties. */
 	private static function children($raw): array {
 		$out = [];
@@ -237,10 +283,7 @@ class AQ_Navigation {
 				$f['legal'] = self::links($in['footer']['legal']);
 			}
 			if (isset($in['footer']['social']) && is_array($in['footer']['social'])) {
-				$f['social'] = [
-					'facebook'  => self::url((string) ($in['footer']['social']['facebook'] ?? '#')),
-					'instagram' => self::url((string) ($in['footer']['social']['instagram'] ?? '#')),
-				];
+				$f['social'] = self::social_links($in['footer']['social']);
 			}
 			if (isset($in['footer']['contact']) && is_array($in['footer']['contact'])) {
 				$f['contact'] = [
@@ -435,7 +478,7 @@ class AQ_Navigation {
 		$company= is_array($footer['company'] ?? null) ? $footer['company'] : [];
 		$insp   = is_array($footer['inspections'] ?? null) ? $footer['inspections'] : [];
 		$legal  = is_array($footer['legal'] ?? null) ? array_values($footer['legal']) : [];
-		$social = is_array($footer['social'] ?? null) ? $footer['social'] : [];
+		$social = self::social_rows_for_editing($footer['social'] ?? []);
 
 		$nonce = wp_create_nonce('wp_rest');
 		$rest  = esc_url_raw(rest_url('aq/v1/site-nav'));
@@ -560,11 +603,15 @@ class AQ_Navigation {
 		echo '</div>';
 
 		echo '<div class="aq-panel"><h2>Footer — Social</h2>';
-		echo '<p class="aq-nav-help">Profile URLs for the footer icons. Use <code>#</code> to leave a link inactive.</p>';
-		echo '<div class="aq-nav-grid">';
-		self::text('footer.social.facebook', 'Facebook URL', (string) ($social['facebook'] ?? '#'));
-		self::text('footer.social.instagram', 'Instagram URL', (string) ($social['instagram'] ?? '#'));
-		echo '</div></div>';
+		echo '<p class="aq-nav-help">The icons in the footer. Add one row per profile, choose the network, and paste its URL.</p>';
+		echo '<table class="aq-table"><thead><tr><th style="width:30px;">#</th><th style="width:170px;">Network</th><th>Profile URL</th><th style="width:96px;">Order</th><th style="width:46px;"></th></tr></thead>';
+		echo '<tbody id="aq-nav-social">';
+		foreach ($social as $s) {
+			echo self::social_row_html((string) ($s['network'] ?? ''), (string) ($s['url'] ?? ''));
+		}
+		echo '</tbody></table>';
+		echo '<p style="margin-top:12px;"><button type="button" class="aq-btn aq-btn--ghost" id="aq-nav-social-add">+ Add social icon</button></p>';
+		echo '</div>';
 
 		echo '</div>'; // twocol
 
@@ -616,6 +663,25 @@ class AQ_Navigation {
 			. '<td class="aq-nav-idx">&bull;</td>'
 			. '<td><input type="text" class="aq-nav-input aq-nav-label-i" value="' . esc_attr($label) . '" placeholder="Link text" /></td>'
 			. '<td><input type="text" class="aq-nav-input aq-nav-href-i" value="' . esc_attr($href) . '" placeholder="/path/ or https://" /></td>'
+			. self::order_cell()
+			. '</tr>';
+	}
+
+	private static function social_network_options(string $selected): string {
+		$opts = '<option value="">— choose —</option>';
+		foreach (aq_social_networks() as $key => $net) {
+			$opts .= '<option value="' . esc_attr($key) . '"' . selected($selected, $key, false) . '>' . esc_html($net['label']) . '</option>';
+		}
+		return $opts;
+	}
+
+	/** One footer social-icon row: network select (drives the icon) + URL. */
+	private static function social_row_html(string $network, string $url): string {
+		$preview = $network !== '' ? '<span class="aq-social-preview">' . aq_social_icon_svg($network) . '</span>' : '';
+		return '<tr class="aq-nav-row">'
+			. '<td class="aq-nav-idx">&bull;</td>'
+			. '<td><div class="aq-social-select-wrap">' . $preview . '<select class="aq-nav-input aq-nav-network-i">' . self::social_network_options($network) . '</select></div></td>'
+			. '<td><input type="text" class="aq-nav-input aq-nav-href-i" value="' . esc_attr($url) . '" placeholder="https://facebook.com/…" /></td>'
 			. self::order_cell()
 			. '</tr>';
 	}
@@ -832,6 +898,9 @@ class AQ_Navigation {
 			.aq-hub .aq-iconbtn--del:hover { background:#fbe7e7; }
 			.aq-hub .aq-nav-twocol { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
 			@media (max-width:1100px){ .aq-hub .aq-nav-twocol { grid-template-columns:1fr; } }
+			.aq-hub .aq-social-select-wrap { display:flex; align-items:center; gap:8px; }
+			.aq-hub .aq-social-preview { display:flex; align-items:center; justify-content:center; width:22px; height:22px; flex-shrink:0; color:#c8102e; }
+			.aq-hub .aq-social-select-wrap select { flex:1; min-width:0; }
 			.aq-hub .aq-nav-savebar { position:sticky; bottom:0; margin-top:22px; padding:16px 0; display:flex; align-items:center; gap:14px; }
 			.aq-hub .aq-nav-saving { font-size:13px; color:#5b6471; }
 			.aq-hub .aq-nav-notice { padding:12px 16px; border-radius:10px; font-size:13px; font-weight:600; margin-bottom:16px; }
@@ -895,9 +964,14 @@ class AQ_Navigation {
 	}
 
 	private static function script(string $rest, string $nonce): void {
-		$blank_link  = self::link_row_html('', '');
-		$blank_item  = self::item_card_html([]);
-		$blank_child = self::child_row_html();
+		$blank_link   = self::link_row_html('', '');
+		$blank_item   = self::item_card_html([]);
+		$blank_child  = self::child_row_html();
+		$blank_social = self::social_row_html('', '');
+		$social_icons = [];
+		foreach (aq_social_networks() as $key => $net) {
+			$social_icons[$key] = aq_social_icon_svg($key);
+		}
 		// Saved mega-menu config rides along in Export (so a round-trip never drops
 		// it) and Import can carry an edited set. The curated icon set (inner SVG,
 		// <svg> wrapper stripped) feeds the per-link icon picker.
@@ -921,6 +995,8 @@ class AQ_Navigation {
 			var BLANK_LINK = <?php echo wp_json_encode($blank_link); ?>;
 			var BLANK_ITEM = <?php echo wp_json_encode($blank_item); ?>;
 			var BLANK_CHILD = <?php echo wp_json_encode($blank_child); ?>;
+			var BLANK_SOCIAL = <?php echo wp_json_encode($blank_social); ?>;
+			var SOCIAL_ICONS = <?php echo wp_json_encode($social_icons); ?>;
 			function $(s, c) { return (c || document).querySelector(s); }
 			function $all(s, c) { return Array.prototype.slice.call((c || document).querySelectorAll(s)); }
 			function val(s, c) { var el = $(s, c); return el ? (el.value || '').trim() : ''; }
@@ -931,12 +1007,26 @@ class AQ_Navigation {
 					var idx = $('.aq-nav-idx', tr); if (idx) { idx.textContent = (i + 1); }
 				});
 			}
+			function updateSocialPreview(sel) {
+				var wrap = sel.closest('.aq-social-select-wrap');
+				if (!wrap) return;
+				var preview = wrap.querySelector('.aq-social-preview');
+				var svg = SOCIAL_ICONS[sel.value] || '';
+				if (!preview) {
+					preview = document.createElement('span');
+					preview.className = 'aq-social-preview';
+					wrap.insertBefore(preview, wrap.firstChild);
+				}
+				preview.innerHTML = svg;
+			}
 			function wireRow(tr) {
 				var tbody = tr.parentNode;
 				var del = $('.aq-nav-del', tr), up = $('.aq-nav-up', tr), down = $('.aq-nav-down', tr);
 				if (del) del.addEventListener('click', function () { tbody.removeChild(tr); renumber(tbody); });
 				if (up) up.addEventListener('click', function () { var p = tr.previousElementSibling; if (p) { tbody.insertBefore(tr, p); renumber(tbody); } });
 				if (down) down.addEventListener('click', function () { var n = tr.nextElementSibling; if (n) { tbody.insertBefore(n, tr); renumber(tbody); } });
+				var networkSel = $('.aq-nav-network-i', tr);
+				if (networkSel) networkSel.addEventListener('change', function () { updateSocialPreview(networkSel); });
 			}
 			function addRow(tbody, html, focusFirst) {
 				var tmp = document.createElement('tbody');
@@ -945,12 +1035,14 @@ class AQ_Navigation {
 				tbody.appendChild(tr);
 				wireRow(tr);
 				renumber(tbody);
-				if (focusFirst) { var f = $('.aq-nav-label-i', tr); if (f) f.focus(); }
+				if (focusFirst) { var f = $('.aq-nav-label-i', tr) || $('.aq-nav-network-i', tr); if (f) f.focus(); }
 			}
 			$all('#aq-nav-form tbody').forEach(function (tb) { $all('.aq-nav-row', tb).forEach(wireRow); renumber(tb); });
 			$all('.aq-nav-addlink').forEach(function (btn) {
 				btn.addEventListener('click', function () { var tb = document.getElementById(btn.getAttribute('data-tbody')); if (tb) addRow(tb, BLANK_LINK, true); });
 			});
+			var addSocial = $('#aq-nav-social-add');
+			if (addSocial) addSocial.addEventListener('click', function () { addRow($('#aq-nav-social'), BLANK_SOCIAL, true); });
 
 			/* ---------- Header menu: drag-to-reorder parent/child ---------- */
 			var itemsRoot = $('#aq-nav-items');
@@ -1136,6 +1228,11 @@ class AQ_Navigation {
 					return { label: (($('.aq-nav-label-i', tr) || {}).value || '').trim(), href: (($('.aq-nav-href-i', tr) || {}).value || '').trim() };
 				}).filter(function (r) { return r.label !== ''; });
 			}
+			function socialRowsFrom(id) {
+				return $all('.aq-nav-row', document.getElementById(id)).map(function (tr) {
+					return { network: (($('.aq-nav-network-i', tr) || {}).value || ''), url: (($('.aq-nav-href-i', tr) || {}).value || '').trim() };
+				}).filter(function (r) { return r.network !== '' && r.url !== ''; });
+			}
 
 			function setDeep(obj, dotted, v) {
 				var parts = dotted.split('.'), node = obj;
@@ -1179,7 +1276,7 @@ class AQ_Navigation {
 				}).filter(function (it) { return it.label !== ''; });
 
 				// Footer columns (unchanged).
-				p.footer = { company: { links: rowsFrom('aq-nav-company') }, inspections: { links: rowsFrom('aq-nav-inspections') }, legal: rowsFrom('aq-nav-legal'), social: {} };
+				p.footer = { company: { links: rowsFrom('aq-nav-company') }, inspections: { links: rowsFrom('aq-nav-inspections') }, legal: rowsFrom('aq-nav-legal'), social: socialRowsFrom('aq-nav-social') };
 				$all('.aq-nav-input[data-key]').forEach(function (inp) { setDeep(p, inp.getAttribute('data-key'), inp.value.trim()); });
 				return p;
 			}
