@@ -545,6 +545,35 @@ $layouts['policy_embed'] = [
 	],
 ];
 
+/* contact_form — native lead-capture form + direct-contact sidebar, posts to
+ * the engine's /wp-json/aqm/v1/contact (AQ_Lead_Capture). Replaces
+ * third-party form-widget iframe embeds with a structured, editable section. */
+$layouts['contact_form'] = [
+	'key' => 'layout_aq_contact_form',
+	'name' => 'contact_form',
+	'label' => 'Contact Form',
+	'sub_fields' => [
+		aq_field('cform', 'heading'),
+		aq_field('cform', 'intro', 'textarea'),
+		aq_field('cform', 'inspection_types_label', 'text', ['label' => 'Inspection-type group label']),
+		aq_field('cform', 'inspection_types', 'repeater', [
+			'label' => 'Inspection types (required, pick one)',
+			'sub_fields' => [aq_field('cform_it', 'label')],
+		]),
+		aq_field('cform', 'specialty_services_label', 'text', ['label' => 'Specialty-services group label']),
+		aq_field('cform', 'specialty_services', 'repeater', [
+			'label' => 'Specialty services (optional, pick any)',
+			'sub_fields' => [aq_field('cform_sv', 'label')],
+		]),
+		aq_field('cform', 'submit_label', 'text', ['label' => 'Button text']),
+		aq_field('cform', 'consent_text', 'textarea', ['label' => 'Consent/legal text (optional, e.g. SMS opt-in)']),
+		aq_field('cform', 'thankyou_href', 'text', ['label' => 'Thank-you page link']),
+		aq_field('cform', 'sidebar_heading', 'text', ['label' => 'Sidebar heading']),
+		aq_field('cform', 'privacy_href', 'text', ['label' => 'Privacy policy link']),
+		aq_field('cform', 'terms_href', 'text', ['label' => 'Terms link']),
+	],
+];
+
 // Per-site extensibility: a theme registers its own section layouts via this
 // filter (add_filter('aq_section_layouts', ...)) WITHOUT editing the shared
 // plugin. Critical: an unregistered flexible-content layout makes ACF DROP the
