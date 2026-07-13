@@ -62,8 +62,10 @@ class AQ_Updater {
 		add_filter('plugins_api', [__CLASS__, 'plugins_api'], 10, 3);
 		add_filter('upgrader_source_selection', [__CLASS__, 'fix_source_dir'], 10, 4);
 		add_filter('http_request_args', [__CLASS__, 'auth_download'], 10, 2);
-		// Drop the cached release lookup right after any plugin update completes.
-		add_action('upgrader_process_complete', [__CLASS__, 'flush_cache'], 10, 0);
+		// After any update completes: drop the cached release lookup, and — if it
+		// was OUR plugin/theme — force-clear the stale "update available" flag so
+		// the notice can't come back on the next page load.
+		add_action('upgrader_process_complete', [__CLASS__, 'on_upgrade_complete'], 10, 2);
 		// Preserve a client's compiled theme assets across a companion-theme update
 		// (the release ships only the neutral stub, which would otherwise clobber
 		// the live per-client build). Stash before, restore after.
@@ -190,6 +192,48 @@ class AQ_Updater {
 		// correct without this, but this makes the swap take effect right away.
 		if (defined('AQ_CORE_FILE') && function_exists('opcache_invalidate')) {
 			@opcache_invalidate(AQ_CORE_FILE, true);
+		}
+	}
+
+	/**
+	 * upgrader_process_complete: always flush our release cache; and if this run
+	 * updated OUR plugin or companion theme, delete the whole update_plugins /
+	 * update_themes site transient so WordPress rebuilds it from scratch on the
+	 * next request.
+	 *
+	 * Why the wholesale delete matters: the Plugins-page "Update now" button runs
+	 * through wp_ajax_update_plugin(), which finishes the upgrade with
+	 * clear_update_cache = FALSE. That leaves the PRE-update response (still
+	 * flagging us for update) sitting in the transient, with last_checked fresh —
+	 * so the notice reappears on the very next page load, and the only thing that
+	 * clears it is running the update a SECOND time. This is the root of the
+	 * "have to update twice before it sticks" bug. Dropping the transient here
+	 * guarantees a clean re-check regardless of how the update was triggered.
+	 */
+	public static function on_upgrade_complete($upgrader = null, $hook_extra = []): void {
+		self::flush_cache();
+
+		if (!is_array($hook_extra)) {
+			return;
+		}
+		$type = (string) ($hook_extra['type'] ?? '');
+
+		if ($type === 'plugin') {
+			$plugins = (array) ($hook_extra['plugins'] ?? []);
+			if (($hook_extra['plugin'] ?? '') !== '') {
+				$plugins[] = (string) $hook_extra['plugin'];
+			}
+			if (in_array(self::basename(), $plugins, true)) {
+				delete_site_transient('update_plugins');
+			}
+		} elseif ($type === 'theme') {
+			$themes = (array) ($hook_extra['themes'] ?? []);
+			if (($hook_extra['theme'] ?? '') !== '') {
+				$themes[] = (string) $hook_extra['theme'];
+			}
+			if (in_array(self::THEME_SLUG, $themes, true)) {
+				delete_site_transient('update_themes');
+			}
 		}
 	}
 
