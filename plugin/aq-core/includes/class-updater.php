@@ -160,8 +160,37 @@ class AQ_Updater {
 		return defined('AQ_CORE_VERSION') ? (string) AQ_CORE_VERSION : '0.0.0';
 	}
 
+	/**
+	 * The version to treat as "installed" when deciding whether an update is due.
+	 *
+	 * Prefer the version WordPress just scanned from the plugin's file header on
+	 * disk ($transient->checked), because get_plugins() reads the raw file with
+	 * get_file_data() — it does NOT include the file, so it bypasses PHP OPcache.
+	 * The AQ_CORE_VERSION constant, by contrast, comes from the INCLUDED plugin
+	 * file, which OPcache can keep serving stale for a while after a one-click
+	 * update on hosts that don't revalidate timestamps every request (Pressable,
+	 * WP Engine, etc.). Trusting the constant there makes the just-applied update
+	 * reappear — the "I have to update twice before it sticks" bug — because the
+	 * re-check still sees the old version. Falling back to the constant keeps
+	 * behaviour unchanged when WP hasn't supplied a checked version.
+	 */
+	private static function installed_version($transient, string $basename): string {
+		if (is_object($transient) && !empty($transient->checked[$basename])) {
+			return (string) $transient->checked[$basename];
+		}
+		return self::current_version();
+	}
+
 	public static function flush_cache(): void {
 		delete_transient(self::CACHE_KEY);
+		// Drop the OPcache entry for the plugin's main file too, so the running
+		// site picks up the freshly-installed code (and its new version constant)
+		// immediately instead of serving the pre-update bytecode. Pairs with
+		// installed_version() reading the on-disk header: detection is already
+		// correct without this, but this makes the swap take effect right away.
+		if (defined('AQ_CORE_FILE') && function_exists('opcache_invalidate')) {
+			@opcache_invalidate(AQ_CORE_FILE, true);
+		}
 	}
 
 	/**
@@ -310,11 +339,14 @@ class AQ_Updater {
 		if (!$release || empty($release['version']) || empty($release['zip'])) {
 			return $transient;
 		}
-		if (version_compare($release['version'], self::current_version(), '<=')) {
-			return $transient;
-		}
 
 		$basename = self::basename();
+		if (version_compare($release['version'], self::installed_version($transient, $basename), '<=')) {
+			// Already up to date. Clear any stale "update available" entry a prior
+			// check may have written, so the notice never lingers after an update.
+			unset($transient->response[$basename]);
+			return $transient;
+		}
 		// For private repos with an asset API URL, route the download through the
 		// API endpoint so auth_download() can attach the token + octet-stream.
 		$package = (self::token() !== '' && !empty($release['asset_api'])) ? $release['asset_api'] : $release['zip'];
