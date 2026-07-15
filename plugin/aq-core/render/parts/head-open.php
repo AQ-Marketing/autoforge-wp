@@ -12,9 +12,10 @@
  * onload async hack) so @font-face is known before first paint — otherwise
  * text paints in a fallback face and visibly "pops" to the brand font once
  * the CSS lands. preconnect + preload keep that blocking cost near-zero.
- * We also force display=optional so the browser never does the jarring
- * mid-view swap: brand font if it's ready fast, clean fallback for that one
- * view otherwise (then cached) — either way no flash.
+ * We force display=swap so the brand font ALWAYS wins once it loads (brief
+ * fallback, then swap) — never a permanent fallback face. (display=optional
+ * was tried but it drops the brand font entirely for the first, uncached view,
+ * which reads as "wrong font"; swap + preload is the right brand-fidelity call.)
  */
 
 if (!defined('ABSPATH')) {
@@ -23,14 +24,14 @@ if (!defined('ABSPATH')) {
 
 $aq_fonts = function_exists('aq_site') ? aq_site('fonts.googleCss') : null;
 
-// Normalise the font-display strategy to "optional" to kill the flash of
-// unstyled text (generic font -> brand font). Rewrite an existing display=
-// value or append one if the brand URL omitted it.
+// Normalise the font-display strategy to "swap" so the brand font reliably
+// applies once loaded (fallback shown only briefly). Rewrite an existing
+// display= value or append one if the brand URL omitted it.
 if ($aq_fonts) {
 	if (preg_match('/([?&])display=[^&]*/', $aq_fonts)) {
-		$aq_fonts = preg_replace('/([?&])display=[^&]*/', '$1display=optional', $aq_fonts);
+		$aq_fonts = preg_replace('/([?&])display=[^&]*/', '$1display=swap', $aq_fonts);
 	} else {
-		$aq_fonts .= (strpos($aq_fonts, '?') === false ? '?' : '&') . 'display=optional';
+		$aq_fonts .= (strpos($aq_fonts, '?') === false ? '?' : '&') . 'display=swap';
 	}
 }
 ?>

@@ -136,6 +136,7 @@ class AQ_Admin_Hub {
 			'aq-locations'  => 'Locations',
 			'aq-navigation' => 'Navigation',
 			'aq-footer'     => 'Footer',
+			'aq-redirects'  => 'Redirects',
 			'aq-logo'       => 'Logo',
 			'aq-performance'=> 'Performance',
 			'aq-forms'      => 'Forms',
@@ -231,7 +232,7 @@ class AQ_Admin_Hub {
 		echo '<div class="aq-panel"><h2>Quick actions</h2>';
 		echo '<p><a class="aq-btn" href="' . esc_url(admin_url('admin.php?page=aq-pages')) . '">Manage pages &amp; editor</a> ';
 		echo '<a class="aq-btn aq-btn--ghost" href="' . esc_url(admin_url('admin.php?page=aq-performance')) . '">Performance &amp; cache</a></p>';
-		echo '<p style="color:#5b6471;font-size:13px;margin-top:14px;">Next up: the visual page editor (live preview + click-to-edit), SEO manager, and the AI assistant.</p>';
+		echo '<p style="color:#5b6471;font-size:13px;margin-top:14px;">Next up: the visual page editor (live preview + click-to-edit) and SEO manager.</p>';
 		echo '</div>';
 		echo '</div>';
 	}

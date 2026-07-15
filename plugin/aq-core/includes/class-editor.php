@@ -117,7 +117,7 @@ class AQ_Editor {
 			'schema'    => self::field_schema(),
 			'labels'    => self::layout_labels(),
 			'icons'     => self::icon_library(),
-			'assistant' => class_exists('AQ_Assistant') && AQ_Assistant::is_configured(),
+			'assistant' => false,
 		]);
 
 		echo '<div id="aq-builder-root" data-page-id="' . (int) $page_id . '">'
@@ -684,6 +684,13 @@ class AQ_Editor {
 				$schema[$type]['fields'] = array_merge($schema[$type]['fields'], $fields);
 			}
 		}
+		/**
+		 * Let the active theme add editable-field schemas for its OWN bespoke section
+		 * layouts (e.g. aqm_termly) so they become editable in the visual builder —
+		 * without baking client-specific layouts into the client-agnostic engine.
+		 * A theme adds: $schema['my_layout'] = ['fields' => [ ['name'=>..,'label'=>..,'type'=>..], ]].
+		 */
+		$schema = (array) apply_filters('aq_editor_field_schema', $schema);
 		return $schema;
 	}
 

@@ -73,7 +73,7 @@ $addr_lines = (array) (aq_site('footer.address') ?: ['400 Tradecenter Dr, Suite 
 				<ul>
 					<li><?php echo wp_kses_post(implode('<br>', array_map('esc_html', $addr_lines))); ?></li>
 					<li><a href="tel:<?php echo esc_attr($ptel); ?>"><?php echo esc_html($phone); ?></a></li>
-					<li><a href="mailto:<?php echo esc_attr($email); ?>"><?php echo esc_html($email); ?></a></li>
+					<li><span class="footer-email"><?php echo esc_html($email); ?></span></li>
 				</ul>
 			</div>
 		</div>

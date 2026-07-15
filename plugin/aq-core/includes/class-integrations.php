@@ -4,7 +4,7 @@
  *
  * Holds the Claude (Anthropic) API key and DataForSEO login/password (grouped
  * per service, each with its own inline "Test" button). The Claude key powers
- * every AI feature in the plugin (page assistant, SEO Agent, form-email editor).
+ * every AI feature in the plugin (SEO Agent, form-email editor).
  *
  * Security model:
  *  - manage_options only (view, save, test).
@@ -34,7 +34,7 @@ class AQ_Integrations {
 		return [
 			'anthropic' => [
 				'label'  => 'Claude (Anthropic)',
-				'desc'   => 'Powers every AI feature: the page assistant, the SEO Agent write-up, and the form-email editor.',
+				'desc'   => 'Powers every AI feature: the SEO Agent write-up and the form-email editor.',
 				'fields' => [
 					'anthropic_key' => ['label' => 'API key', 'constant' => 'AQ_ANTHROPIC_KEY', 'hint' => 'Starts with "sk-ant-". Create one at console.anthropic.com.'],
 				],

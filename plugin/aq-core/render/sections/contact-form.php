@@ -183,7 +183,7 @@ $consent_text        = (string) ($s['consent_text'] ?? '');
 					<?php if ($email !== '') : ?>
 					<p class="mt-4 text-brand-50">
 						<strong>Email:</strong><br>
-						<a href="mailto:<?php echo esc_attr($email); ?>" class="text-white"><?php echo esc_html($email); ?></a>
+						<span class="text-white"><?php echo esc_html($email); ?></span>
 					</p>
 					<?php endif; ?>
 					<?php if ($addr_line1 !== '') : ?>

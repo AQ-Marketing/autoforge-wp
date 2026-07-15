@@ -888,3 +888,14 @@ add_filter('aq_section_layouts', function (array $layouts) {
 
 	return $layouts;
 });
+
+/* Expose bespoke aqm_* layouts' editable fields to the VISUAL BUILDER (AQ_Editor),
+ * which sources its fields from the engine's field_schema() — not the ACF layout
+ * registration above. Without this, these sections show "no editable fields" in the
+ * builder even though the ACF fields exist. (Engine hook added in class-editor.php.) */
+add_filter('aq_editor_field_schema', function ($schema) {
+	$schema['aqm_termly'] = ['fields' => [
+		['name' => 'data_id', 'label' => 'Termly embed / policy ID', 'type' => 'textarea'],
+	]];
+	return $schema;
+});

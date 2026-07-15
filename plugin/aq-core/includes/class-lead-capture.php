@@ -342,6 +342,46 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		return $out;
 	}
 
+	/**
+	 * Any submitted field that is NOT a standard/known field or a system/tracking
+	 * key, collected in submission order. Sanitized + capped — untrusted input.
+	 *
+	 * @return array<string,string>
+	 */
+	private static function capture_custom(WP_REST_Request $req): array {
+		$reserved = ['first_name', 'firstname', 'last_name', 'lastname', 'name', 'email', 'phone', 'message', 'service', 'company', 'business', 'website', 'address', 'city', 'state', 'zip', 'postal_code', 'postalcode', 'source', 'consent', '_wpnonce', 'action', 'company_hp', 'company_url', 'hp', 'rest_route'];
+		$out = [];
+		foreach ((array) $req->get_params() as $k => $v) {
+			if (count($out) >= 20) {
+				break;
+			}
+			if (!is_string($k)) {
+				continue;
+			}
+			$key = preg_replace('/[^a-z0-9_-]/', '', strtolower($k));
+			if ($key === '' || in_array($key, $reserved, true)) {
+				continue;
+			}
+			if (strpos($key, 'utm_') === 0 || in_array($key, ['gclid', 'fbclid', 'msclkid'], true)) {
+				continue; // tracking handled separately (captured_tracking)
+			}
+			if (is_array($v)) {
+				$v = implode(', ', array_map('sanitize_text_field', array_map('strval', $v)));
+			} else {
+				$v = sanitize_textarea_field((string) $v);
+			}
+			$v = trim($v);
+			if ($v === '') {
+				continue;
+			}
+			if (mb_strlen($v) > 2000) {
+				$v = mb_substr($v, 0, 2000);
+			}
+			$out[$key] = $v;
+		}
+		return $out;
+	}
+
 	/** Whether the engine's own route should register. A client integration can
 	 *  force it off (e.g. a bespoke handler wants the route). */
 	public static function enabled(): bool {
@@ -372,6 +412,13 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'email_logo'     => '', // logo image URL shown in the notification email header
 			'email_logo_w'   => 0,  // measured display width (px), capped to fit the header
 			'email_logo_h'   => 0,  // measured display height (px)
+			// Editable email styling (AutoForge → Forms). Blank/'' = brand-derived default.
+			'email_header_bg'    => '',
+			'email_header_fg'    => '',
+			'email_accent'       => '',
+			'email_border_color' => '',
+			'email_bg'           => '',
+			'email_radius'       => '', // '' = default 14px
 			'field_sync_daily' => true, // auto-check GHL for new custom fields each morning
 			// legacy test-fill fields (kept for the admin test button JS)
 			'test_name'      => 'Test Tester',
@@ -525,6 +572,9 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		// Ad/UTM attribution captured from the landing URL (cookie / body / query).
 		// Carried on $f so both the CRM push and the notification email can use it.
 		$f['tracking'] = self::captured_tracking($req);
+
+		// Custom fields: any submitted field beyond the standard set, sanitized + capped.
+		$f['custom'] = self::capture_custom($req);
 
 		// CRM push (best-effort) — never lose the lead if GHL is down; email fires too.
 		$ghl_ok = false;
@@ -849,7 +899,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 	 *   - font    = the brand's Google font (first family), with an email-safe fallback
 	 * Override any of it per client with the `aq_lead_email_theme` filter.
 	 */
-	private static function email_theme(): array {
+	private static function email_theme(bool $overlay = true): array {
 		$accent = '';
 		if (function_exists('aq_site')) {
 			$tc = strtolower(trim((string) aq_site('themeColor')));
@@ -865,7 +915,21 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'header_bg' => $dark ? '#0f172a' : '#ffffff',
 			'header_fg' => $dark ? '#ffffff' : '#0f172a',
 			'font'      => self::email_font(),
+			'radius'    => 14,
 		];
+		// Admin overlay (AutoForge → Forms → Email styling). Blank/invalid = keep derived.
+		// $overlay=false returns the pure brand-derived defaults (used by the live preview).
+		if ($overlay) {
+			$cfg = self::get_settings();
+			$hex = static fn ($v) => (is_string($v) && preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', trim($v))) ? trim($v) : '';
+			if ($c = $hex($cfg['email_header_bg'] ?? ''))    { $theme['header_bg'] = $c; }
+			if ($c = $hex($cfg['email_header_fg'] ?? ''))    { $theme['header_fg'] = $c; }
+			if ($c = $hex($cfg['email_accent'] ?? ''))       { $theme['accent']    = $c; }
+			if ($c = $hex($cfg['email_border_color'] ?? '')) { $theme['line']      = $c; }
+			if ($c = $hex($cfg['email_bg'] ?? ''))           { $theme['soft']      = $c; }
+			$theme['radius'] = (($cfg['email_radius'] ?? '') === '') ? 14 : max(0, min(28, (int) $cfg['email_radius']));
+		}
+
 		return array_merge($theme, (array) apply_filters('aq_lead_email_theme', $theme));
 	}
 
@@ -983,6 +1047,17 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 				. '<td style="padding:11px 0;border-bottom:1px solid ' . $line . ';color:' . $ink . ';font-size:15px;line-height:1.5;vertical-align:top;font-family:' . $font . '">' . $val . '</td>'
 				. '</tr>';
 		}
+		// Custom fields (any extra submitted field) — one labeled row each, in order.
+		$custom = isset($f['custom']) && is_array($f['custom']) ? $f['custom'] : [];
+		foreach ($custom as $ck => $cv) {
+			$cv = (string) $cv;
+			if ($cv === '') { continue; }
+			$label = ucfirst(str_replace(['_', '-'], ' ', (string) $ck));
+			$rows .= '<tr>'
+				. '<td style="padding:11px 16px 11px 0;border-bottom:1px solid ' . $line . ';color:' . $muted . ';font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:top;width:120px;font-family:' . $font . '">' . esc_html($label) . '</td>'
+				. '<td style="padding:11px 0;border-bottom:1px solid ' . $line . ';color:' . $ink . ';font-size:15px;line-height:1.5;vertical-align:top;font-family:' . $font . '">' . nl2br(esc_html($cv)) . '</td>'
+				. '</tr>';
+		}
 		// Ad / campaign attribution (gclid, utm_*, …) captured from the landing URL.
 		$tracking = isset($f['tracking']) && is_array($f['tracking']) ? $f['tracking'] : [];
 		foreach ($tracking as $tk => $tv) {
@@ -1004,6 +1079,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'title' => esc_html($title), 'phone' => esc_html($phone), 'home_url' => esc_url(home_url('/')),
 			'accent' => $accent, 'ink' => $ink, 'muted' => $muted, 'line' => $line, 'soft' => $t['soft'],
 			'header_bg' => $t['header_bg'], 'header_fg' => $t['header_fg'], 'font' => $font,
+			'radius' => (int) ($t['radius'] ?? 14),
 			'logo' => $logo_html,
 			'rows' => $rows, 'banner' => $banner, 'foot' => $foot,
 		];
@@ -1013,7 +1089,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 	public static function default_email_template(): string {
 		return '<!DOCTYPE html><html lang="en"><body style="margin:0;padding:0;background:{{soft}};">'
 			. '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:{{soft}};padding:24px 12px;"><tr><td align="center">'
-			. '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid {{line}};border-radius:14px;overflow:hidden;">'
+			. '<table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border:1px solid {{line}};border-radius:{{radius}}px;overflow:hidden;">'
 			. '<tr><td align="center" style="padding:24px 28px;background:{{header_bg}};">{{logo}}</td></tr>'
 			. '<tr><td style="height:4px;background:{{accent}};font-size:0;line-height:0;">&nbsp;</td></tr>'
 			. '<tr><td style="padding:26px 30px 6px;">{{banner}}'
@@ -1156,6 +1232,12 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		return esc_url_raw($v);
 	}
 
+	/** A 3- or 6-digit hex color (with leading #), or '' when blank/invalid. */
+	private static function clean_hex($v): string {
+		$v = trim((string) $v);
+		return preg_match('/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', $v) ? $v : '';
+	}
+
 	private static function clean_emails($v): string {
 		$out = [];
 		foreach (preg_split('/[,;]+/', (string) $v) as $e) {
@@ -1195,7 +1277,15 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'service' => (string) ($f['service'] ?? ''),
 			'source'  => (string) ($f['source'] ?? ''),
 		];
-		$out = preg_replace_callback('/\{([a-zA-Z_]+)\}/', static function ($m) use ($map) {
+		// Merge custom fields so {facility_type}, {frequency}, … resolve too; the
+		// standard tokens above keep priority on their names.
+		if (isset($f['custom']) && is_array($f['custom'])) {
+			foreach ($f['custom'] as $ck => $cv) {
+				$ck = strtolower((string) $ck);
+				if (!array_key_exists($ck, $map)) { $map[$ck] = (string) $cv; }
+			}
+		}
+		$out = preg_replace_callback('/\{([a-zA-Z0-9_-]+)\}/', static function ($m) use ($map) {
 			$k = strtolower($m[1]);
 			return array_key_exists($k, $map) ? $map[$k] : $m[0];
 		}, $tpl);
@@ -1283,11 +1373,51 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 					$('#aq-email-logo-pick').on('click',function(e){e.preventDefault();
 						if(frame){frame.open();return;}
 						frame=wp.media({title:'Select email logo',button:{text:'Use this image'},library:{type:'image'},multiple:false});
-						frame.on('select',function(){var a=frame.state().get('selection').first().toJSON();var url=a.url;$('#aq-email-logo-url').val(url);$('#aq-email-logo-preview').attr('src',url).show();});
+						frame.on('select',function(){var a=frame.state().get('selection').first().toJSON();var url=a.url;$('#aq-email-logo-url').val(url);$('#aq-email-logo-preview').attr('src',url).show();document.getElementById('aq-email-logo-url').dispatchEvent(new Event('input',{bubbles:true}));});
 						frame.open();
 					});
-					$('#aq-email-logo-clear').on('click',function(e){e.preventDefault();$('#aq-email-logo-url').val('');$('#aq-email-logo-preview').hide().attr('src','');});
+					$('#aq-email-logo-clear').on('click',function(e){e.preventDefault();$('#aq-email-logo-url').val('');$('#aq-email-logo-preview').hide().attr('src','');document.getElementById('aq-email-logo-url').dispatchEvent(new Event('input',{bubbles:true}));});
 				});
+				</script>
+			</div>
+
+			<div class="aq-forms-card">
+				<h2>Email styling</h2>
+				<p class="aq-forms-hint">Customize the notification email. Leave a field blank to use your brand colors.</p>
+				<div class="aq-forms-row">
+					<?php
+					$aq_email_colors = [
+						'email_header_bg'    => 'Header background',
+						'email_header_fg'    => 'Header text / logo',
+						'email_accent'       => 'Accent (bar + links)',
+						'email_border_color' => 'Border color',
+						'email_bg'           => 'Background',
+					];
+					foreach ($aq_email_colors as $ck => $clabel) :
+						$cv = (string) ($cfg[$ck] ?? '');
+					?>
+					<div class="aq-forms-field" style="margin-bottom:10px">
+						<label><?php echo esc_html($clabel); ?></label>
+						<span style="display:inline-flex;align-items:center;gap:8px">
+							<input type="color" value="<?php echo esc_attr($cv !== '' ? $cv : '#ffffff'); ?>" data-hex-for="<?php echo esc_attr($ck); ?>" style="width:40px;height:32px;padding:0;border:1px solid #c9cfd6;border-radius:6px;cursor:pointer">
+							<input type="text" name="<?php echo esc_attr($ck); ?>" id="aqf-<?php echo esc_attr($ck); ?>" value="<?php echo esc_attr($cv); ?>" placeholder="brand default" style="width:130px" pattern="#?[0-9A-Fa-f]{3,6}">
+						</span>
+					</div>
+					<?php endforeach; ?>
+					<div class="aq-forms-field" style="margin-bottom:10px">
+						<label>Corner radius (px)</label>
+						<input type="number" name="email_radius" min="0" max="28" value="<?php echo esc_attr((string) ($cfg['email_radius'] ?? '')); ?>" placeholder="14" style="width:90px">
+					</div>
+				</div>
+				<script>
+				(function(){
+					document.querySelectorAll('input[type=color][data-hex-for]').forEach(function(pick){
+						var txt=document.getElementById('aqf-'+pick.getAttribute('data-hex-for'));
+						if(!txt)return;
+						pick.addEventListener('input',function(){txt.value=pick.value;});
+						txt.addEventListener('input',function(){ if(/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(txt.value)) pick.value=txt.value; });
+					});
+				})();
 				</script>
 			</div>
 
@@ -1383,14 +1513,57 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 
 		<?php
 		$is_default   = trim((string) ($cfg['email_template'] ?? '')) === '' && !get_transient('aq_forms_email_draft');
-		$preview_html = self::render_email(self::editor_template(), self::email_tokens(self::preview_mock(), true));
+		$preview_tpl      = self::editor_template();
+		$preview_tokens   = self::email_tokens(self::preview_mock(), true);
+		$preview_defaults = self::email_theme(false); // pure brand-derived, for blank-control fallback
+		$preview_html     = self::render_email($preview_tpl, $preview_tokens);
 		?>
 		<div class="aq-forms-card" style="max-width:900px">
 			<h2>Notification email design</h2>
-			<p class="aq-forms-hint">This is the email you receive on every submission. <?php echo $is_default ? '<span class="aq-badge aq-badge--off">Built-in design</span>' : '<span class="aq-badge aq-badge--ok">Custom design</span>'; ?> The design is set in code per site, matched to the website &mdash; contact your developer to change it.</p>
-			<h3 style="margin:20px 0 8px;font-size:14px;">Current design <span style="font-weight:400;color:#5b6471">(sample data)</span></h3>
-			<iframe title="Email preview" style="width:100%;max-width:640px;height:480px;border:1px solid #dcdfe3;border-radius:10px;background:#fff" srcdoc="<?php echo esc_attr($preview_html); ?>"></iframe>
+			<p class="aq-forms-hint">This is the email you receive on every submission. <?php echo $is_default ? '<span class="aq-badge aq-badge--off">Built-in design</span>' : '<span class="aq-badge aq-badge--ok">Custom design</span>'; ?> Adjust the colors and corner radius in <strong>Email styling</strong> above &mdash; the preview updates as you type. Save form settings to keep your changes.</p>
+			<h3 style="margin:20px 0 8px;font-size:14px;">Live preview <span style="font-weight:400;color:#5b6471">(sample data)</span></h3>
+			<iframe id="aq-email-preview" title="Email preview" style="width:100%;max-width:640px;height:480px;border:1px solid #dcdfe3;border-radius:10px;background:#fff" srcdoc="<?php echo esc_attr($preview_html); ?>"></iframe>
 		</div>
+		<script>
+		(function(){
+			var frame=document.getElementById('aq-email-preview');
+			if(!frame)return;
+			var TPL=<?php echo wp_json_encode($preview_tpl); ?>;
+			var TOK=<?php echo wp_json_encode($preview_tokens); ?>;
+			var DEF=<?php echo wp_json_encode([
+				'header_bg'=>$preview_defaults['header_bg'], 'header_fg'=>$preview_defaults['header_fg'],
+				'accent'=>$preview_defaults['accent'], 'line'=>$preview_defaults['line'],
+				'soft'=>$preview_defaults['soft'], 'radius'=>(int) $preview_defaults['radius'],
+				'font'=>$preview_defaults['font'],
+			]); ?>;
+			var SITE=<?php echo wp_json_encode(self::site_name()); ?>;
+			var MAP={email_header_bg:'header_bg',email_header_fg:'header_fg',email_accent:'accent',email_border_color:'line',email_bg:'soft'};
+			function hx(v){return /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test((v||'').trim())?v.trim():'';}
+			function render(){
+				var t={}; for(var k in TOK){t[k]=TOK[k];}
+				Object.keys(MAP).forEach(function(name){
+					var el=document.querySelector('[name="'+name+'"]');
+					t[MAP[name]]=(el?hx(el.value):'')||DEF[MAP[name]];
+				});
+				var r=document.querySelector('[name="email_radius"]');
+				t.radius=(r&&r.value!=='')?Math.max(0,Math.min(28,parseInt(r.value,10)||0)):DEF.radius;
+				// Rebuild the logo token live: image if a URL is set, else the site-name
+				// wordmark tinted with the (live) header text color.
+				var lu=(document.querySelector('[name="email_logo"]')||{}).value; lu=(lu||'').trim();
+				var esc=function(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');};
+				if(lu){ t.logo='<img src="'+esc(lu)+'" alt="'+esc(SITE)+'" style="display:block;width:auto;height:auto;max-width:200px;max-height:64px;margin:0 auto;border:0;">'; }
+				else{ t.logo='<span style="font-family:'+DEF.font+';font-size:22px;font-weight:800;letter-spacing:-.01em;color:'+t.header_fg+';">'+esc(SITE)+'</span>'; }
+				var html=TPL;
+				Object.keys(t).forEach(function(k){ html=html.split('{{'+k+'}}').join(String(t[k])); });
+				frame.srcdoc=html;
+			}
+			['email_header_bg','email_header_fg','email_accent','email_border_color','email_bg','email_radius','email_logo'].forEach(function(name){
+				var el=document.querySelector('[name="'+name+'"]');
+				if(el){el.addEventListener('input',render);el.addEventListener('change',render);}
+			});
+			document.querySelectorAll('input[type=color][data-hex-for]').forEach(function(p){ p.addEventListener('input',render); });
+		})();
+		</script>
 
 		<div class="aq-forms-card">
 			<h2>Send a test email</h2>
@@ -1432,6 +1605,12 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'ghl_location'   => sanitize_text_field($in['ghl_location'] ?? ''),
 			'email_logo'     => esc_url_raw(trim((string) ($in['email_logo'] ?? ''))),
 			'field_sync_daily' => !empty($in['field_sync_daily']),
+			'email_header_bg'    => self::clean_hex($in['email_header_bg'] ?? ''),
+			'email_header_fg'    => self::clean_hex($in['email_header_fg'] ?? ''),
+			'email_accent'       => self::clean_hex($in['email_accent'] ?? ''),
+			'email_border_color' => self::clean_hex($in['email_border_color'] ?? ''),
+			'email_bg'           => self::clean_hex($in['email_bg'] ?? ''),
+			'email_radius'       => (($in['email_radius'] ?? '') === '') ? '' : (string) max(0, min(28, (int) $in['email_radius'])),
 		]);
 		// Measure the (possibly new) email logo so the email can size it to fit.
 		[$merged['email_logo_w'], $merged['email_logo_h']] = self::measure_logo($merged['email_logo']);
