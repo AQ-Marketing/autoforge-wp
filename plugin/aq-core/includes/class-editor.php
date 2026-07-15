@@ -604,7 +604,7 @@ class AQ_Editor {
 				['name' => 'html', 'label' => 'HTML (advanced)', 'type' => 'code'],
 			]],
 			'policy_embed' => ['fields' => [
-				['name' => 'policy_id', 'label' => 'Termly policy ID', 'type' => 'text'],
+				['name' => 'policy_id', 'label' => 'Termly embed / policy ID', 'type' => 'textarea'],
 			]],
 
 			/* ---------------- lead capture ---------------- */

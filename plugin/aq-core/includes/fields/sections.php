@@ -541,7 +541,7 @@ $layouts['policy_embed'] = [
 	'name' => 'policy_embed',
 	'label' => 'Policy Embed (Termly)',
 	'sub_fields' => [
-		aq_field('policy', 'policy_id', 'text', ['instructions' => 'Paste the Termly policy data-id from your Termly dashboard (e.g. a9d5fa62-e9ae-49d7-b822-797966b1399d). The document renders itself; nothing else is needed.']),
+		aq_field('policy', 'policy_id', 'textarea', ['label' => 'Termly embed / policy ID', 'instructions' => 'Paste the full Termly embed snippet from your Termly dashboard, OR just the bare policy data-id (e.g. a9d5fa62-e9ae-49d7-b822-797966b1399d). Either works — the document renders itself.']),
 	],
 ];
 
