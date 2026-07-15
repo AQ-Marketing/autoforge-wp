@@ -33,6 +33,17 @@ if (!defined('ABSPATH')) {
 
 class AQ_HCaptcha {
 
+	/**
+	 * AQ Marketing's shared hCaptcha SITE key (public — it appears in page HTML on
+	 * every site regardless). Baked in as the fleet default so hCaptcha is on by
+	 * default the moment a site also has the secret; no per-site site-key entry.
+	 * A per-site option or the AQ_HCAPTCHA_SITE_KEY constant still overrides it, and
+	 * the `aq_hcaptcha_default_site_key` filter can change/blank it per install.
+	 * The SECRET is deliberately NOT here — this repo is public, so the secret lives
+	 * only in the write-only per-site option or the AQ_HCAPTCHA_SECRET constant.
+	 */
+	const DEFAULT_SITE_KEY = '57dbb09e-7bd5-45f8-8846-f1175f9fb33c';
+
 	/** Write-only secret option (non-autoloaded). Overridden by the AQ_HCAPTCHA_SECRET constant. */
 	const OPT_SECRET = 'aq_hcaptcha_secret';
 	/** hCaptcha server-side verification endpoint. */
@@ -49,12 +60,19 @@ class AQ_HCaptcha {
 
 	/* ---------------- keys ---------------- */
 
-	/** Public site key: wp-config constant wins, else the Forms setting. */
+	/**
+	 * Public site key: wp-config constant wins, else the per-site Forms setting,
+	 * else the fleet default (so every site has a working site key with no setup).
+	 */
 	public static function site_key(): string {
 		if (defined('AQ_HCAPTCHA_SITE_KEY') && AQ_HCAPTCHA_SITE_KEY) {
 			return (string) AQ_HCAPTCHA_SITE_KEY;
 		}
-		return (string) (AQ_Lead_Capture::get_settings()['hcaptcha_site_key'] ?? '');
+		$set = (string) (AQ_Lead_Capture::get_settings()['hcaptcha_site_key'] ?? '');
+		if ($set !== '') {
+			return $set;
+		}
+		return (string) apply_filters('aq_hcaptcha_default_site_key', self::DEFAULT_SITE_KEY);
 	}
 
 	/** Secret key: wp-config constant wins, else the write-only option. */
