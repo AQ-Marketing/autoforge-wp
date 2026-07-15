@@ -23,31 +23,18 @@ $map_label = (string) ($s['map_label'] ?? 'Map showing the AQ Marketing office i
 $rest      = esc_url_raw(rest_url('aqm/v1/contact'));
 $map_src   = 'https://www.google.com/maps?q=' . rawurlencode($map_q) . '&output=embed';
 
-// Thank-you redirect + admin test-fill button (AutoForge -> Forms). Both are
-// off-by-default-safe: no thank-you URL = the existing inline success message;
-// the test button is gated server-side on manage_options, so its markup and
-// mock data never reach anonymous visitors at all.
-$forms_cfg  = class_exists('AQ_Lead_Capture') ? AQ_Lead_Capture::get_settings() : ['thankyou_url' => '', 'test_button' => false];
+// Thank-you redirect (AutoForge -> Forms): no thank-you URL = the inline success
+// message. The admin-only "Fill with test data" button is injected globally by
+// AQ_Lead_Capture (footer), so it lands here too — no per-template markup needed.
+$forms_cfg  = class_exists('AQ_Lead_Capture') ? AQ_Lead_Capture::get_settings() : ['thankyou_url' => ''];
 $thankyou   = (string) $forms_cfg['thankyou_url'];
 $thankyou_url = $thankyou !== '' && $thankyou[0] === '/' ? home_url($thankyou) : $thankyou;
-$show_test_btn = current_user_can('manage_options') && !empty($forms_cfg['test_button']);
 ?>
 <section>
 	<div class="wrap">
 		<div class="contact-grid">
-			<form class="contact-form" id="contactForm" action="<?php echo esc_url($rest); ?>" method="POST" data-success="<?php echo esc_attr($success); ?>" data-thankyou="<?php echo esc_attr($thankyou_url); ?>" novalidate
+			<form class="contact-form" id="contactForm" data-aq-lead action="<?php echo esc_url($rest); ?>" method="POST" data-success="<?php echo esc_attr($success); ?>" data-thankyou="<?php echo esc_attr($thankyou_url); ?>" novalidate
 				toolname="contact_form" tooldescription="<?php echo esc_attr($heading !== '' ? $heading : 'Submit a contact request'); ?>">
-				<?php if ($show_test_btn) : ?>
-				<button type="button" id="contactFormTestFill" style="display:block;width:100%;margin:0 0 16px;padding:9px 14px;background:#0d1014;color:#fff;border:0;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer">🔧 Fill with test data (admin only)</button>
-				<script>window.AQ_CONTACT_TEST = <?php echo wp_json_encode([
-					'name'     => (string) ($forms_cfg['test_name'] ?? 'Test Tester'),
-					'email'    => (string) ($forms_cfg['test_email'] ?? 'test@example.com'),
-					'phone'    => (string) ($forms_cfg['test_phone'] ?? ''),
-					'business' => (string) ($forms_cfg['test_business'] ?? ''),
-					'website'  => 'https://example.com',
-					'message'  => (string) ($forms_cfg['test_message'] ?? ''),
-				]); ?>;</script>
-				<?php endif; ?>
 				<h2 style="font-size:22px;margin-bottom:6px"<?php echo ka_field_attr('heading'); ?>><?php echo esc_html($heading); ?></h2>
 				<?php if ($sub !== '') : ?><p style="margin-bottom:24px;font-size:14px"<?php echo ka_field_attr('sub'); ?>><?php echo esc_html($sub); ?></p><?php endif; ?>
 
@@ -159,58 +146,6 @@ $show_test_btn = current_user_can('manage_options') && !empty($forms_cfg['test_b
 	@media (max-width:1024px){.contact-grid{grid-template-columns:1fr}.contact-info{position:static}.contact-form{padding:28px}}
 	@media (max-width:720px){.contact-form .row2{grid-template-columns:1fr}}
 </style>
-<script>
-	(function(){
-		var form=document.getElementById('contactForm');
-		var status=document.getElementById('formStatus');
-		if(!form||!status) return;
-		var okMsg=form.getAttribute('data-success')||"Got it — we'll be in touch shortly.";
-		var thankYouUrl=form.getAttribute('data-thankyou')||'';
-		form.addEventListener('submit',async function(e){
-			if(form.elements['company_hp'] && form.elements['company_hp'].value){e.preventDefault();return;}
-			if(!form.checkValidity()){return;}
-			e.preventDefault();
-			status.style.color='var(--muted)';
-			status.textContent='Sending…';
-			try{
-				var fd=new FormData(form);
-				var res=await fetch(form.action,{method:'POST',body:fd,headers:{'Accept':'application/json'}});
-				if(res.ok){
-					if(thankYouUrl){ window.location.href=thankYouUrl; return; }
-					status.style.color='var(--green)';
-					status.textContent='✓ '+okMsg;
-					form.reset();
-				}else{
-					throw new Error('Network');
-				}
-			}catch(err){
-				status.style.color='var(--teal)';
-				status.innerHTML='Something went wrong. Please <a href="tel:+17817306971" style="color:inherit;text-decoration:underline">call (781) 730-6971</a> or email <a href="mailto:hello@aqmarketing.com" style="color:inherit;text-decoration:underline">hello@aqmarketing.com</a>.';
-			}
-		});
-
-		// Admin-only "fill with test data" button (AutoForge -> Forms). The button
-		// markup + AQ_CONTACT_TEST data only exist in the page at all when the
-		// server already verified the visitor is a logged-in admin; nothing extra
-		// to gate here.
-		var fillBtn=document.getElementById('contactFormTestFill');
-		if(fillBtn && window.AQ_CONTACT_TEST){
-			fillBtn.addEventListener('click',function(){
-				var d=window.AQ_CONTACT_TEST;
-				var nameParts=(d.name||'').split(/\s+/);
-				var set=function(name,val){ var el=form.elements[name]; if(el && val) el.value=val; };
-				set('firstName', nameParts[0]||'');
-				set('lastName', nameParts.slice(1).join(' ')||'');
-				set('email', d.email);
-				set('phone', d.phone);
-				set('business', d.business);
-				set('website', d.website);
-				set('message', d.message);
-				var svc=form.elements['service'];
-				if(svc && svc.options.length>1){ svc.selectedIndex=1; }
-				var consent=form.elements['consent'];
-				if(consent){ consent.checked=true; }
-			});
-		}
-	})();
-</script>
+<?php /* Submission + thank-you redirect handled fleet-wide by the engine's canonical
+	lead-form handler (AQ_Lead_Capture::print_lead_form_handler, footer) via the
+	data-aq-lead marker on the form. No per-template submit script needed. */ ?>

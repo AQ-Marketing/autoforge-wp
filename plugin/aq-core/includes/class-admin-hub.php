@@ -139,6 +139,7 @@ class AQ_Admin_Hub {
 			'aq-logo'       => 'Logo',
 			'aq-performance'=> 'Performance',
 			'aq-forms'      => 'Forms',
+			'aq-legal'      => 'Legal',
 			'aq-tracking'   => 'Tracking',
 			'aq-integrations'=> 'Integrations',
 			'aq-import'     => 'Import',

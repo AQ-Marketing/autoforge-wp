@@ -55,6 +55,18 @@ class AQ_Lead_Capture {
 		// Printed client-side (in the footer) so it survives full-page caching and
 		// never depends on any individual site's form markup.
 		add_action('wp_footer', [__CLASS__, 'print_tracking_capture'], 5);
+		// Admin-only "Fill with test data" button. Injected globally in the footer so
+		// it lands on EVERY lead form (any current or future form template) without
+		// per-template markup — the whole engine, every site. Gated server-side on
+		// manage_options + the Forms setting, so its markup/mock data never reach
+		// anonymous visitors at all.
+		add_action('wp_footer', [__CLASS__, 'print_test_fill'], 20);
+		// Canonical lead-form submit + thank-you redirect for the whole fleet. Printed
+		// once in the footer; binds any form carrying the `data-aq-lead` marker (opt-in,
+		// so a site whose theme still self-handles submission can't double-submit). This
+		// is THE single place form success behavior lives — every site built with the
+		// engine redirects to the same thank-you page on success. See print_lead_form_handler().
+		add_action('wp_footer', [__CLASS__, 'print_lead_form_handler'], 6);
 		// Daily refresh of the GHL custom-field list so newly-added fields are
 		// picked up automatically. The cron callback + schedule reconciliation.
 		add_action(self::CRON_FIELD_SYNC, [__CLASS__, 'cron_sync_fields']);
@@ -116,6 +128,189 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 	}
 
 	/**
+	 * Resolve the site-wide thank-you redirect target: the Forms `thankyou_url`
+	 * setting, root-relative paths kept as-is (so they work on any host). Empty
+	 * when unset — the handler then falls back to an inline success message rather
+	 * than inventing a URL that might 404. A form's own `data-thankyou` attribute
+	 * takes precedence over this in the client script.
+	 */
+	private static function thankyou_target(): string {
+		$ty = trim((string) (self::get_settings()['thankyou_url'] ?? ''));
+		if ($ty === '') {
+			return '';
+		}
+		return $ty[0] === '/' ? $ty : esc_url_raw($ty);
+	}
+
+	/**
+	 * Print the engine's canonical lead-form handler once in the footer. It binds
+	 * every form carrying the `data-aq-lead` marker (opt-in — never double-binds a
+	 * theme that still self-handles), POSTs the form to the lead endpoint, and on
+	 * success sends the visitor to the thank-you page. Redirect precedence:
+	 * the form's own `data-thankyou` attribute → the Forms `thankyou_url` setting →
+	 * (neither set) an inline success message. On failure the submit button
+	 * re-enables and an inline error shows. Honeypot + native validation respected.
+	 *
+	 * This makes "submit → thank-you page" identical on every site built with the
+	 * engine, instead of each theme reimplementing (and drifting on) success behavior.
+	 */
+	public static function print_lead_form_handler(): void {
+		if (is_admin()) {
+			return;
+		}
+		$cfg = [
+			'thankyou' => self::thankyou_target(),
+			'ok'       => (string) apply_filters('aq_lead_success_message', "Thanks — your request is in. We'll be in touch shortly."),
+			'err'      => (string) apply_filters('aq_lead_error_message', "Sorry — that didn't go through. Please try again, or call us directly."),
+		];
+		?>
+<script>(function(){
+var CFG=<?php echo wp_json_encode($cfg); ?>;
+function bind(form){
+if(form.dataset.aqLeadBound)return;form.dataset.aqLeadBound='1';
+form.addEventListener('submit',function(e){
+e.preventDefault();
+var hp=form.querySelector('[name="company_hp"],[name="company_url"]');
+if(hp&&hp.value)return; // honeypot tripped — drop silently
+if(form.checkValidity&&!form.checkValidity()){if(form.reportValidity)form.reportValidity();return;}
+var btn=form.querySelector('[type=submit]'),label=btn?btn.textContent:'';
+if(btn){btn.disabled=true;btn.textContent='Sending…';}
+var msg=form.querySelector('.form-msg,.form-err,[role=status]');
+if(msg){msg.hidden=true;msg.className=(msg.className||'').replace(/\berr\b/,'').trim();}
+var action=form.getAttribute('action')||form.getAttribute('data-endpoint')||'';
+var nonceEl=form.querySelector('input[name="_wpnonce"]'),nonce=nonceEl?nonceEl.value:'';
+var headers={'Accept':'application/json'};if(nonce)headers['X-WP-Nonce']=nonce;
+fetch(action,{method:'POST',body:new FormData(form),credentials:'same-origin',headers:headers})
+.then(function(r){return r.json().then(function(j){return{ok:r.ok,j:j};}).catch(function(){return{ok:r.ok,j:null};});})
+.then(function(res){
+if(res.ok&&(!res.j||res.j.ok!==false)){
+var ty=form.getAttribute('data-thankyou')||CFG.thankyou;
+if(ty){window.location.assign(ty);return;}
+var done=form.parentNode&&form.parentNode.querySelector('.form-done,.js-contact-form-done');
+if(done){form.hidden=true;done.hidden=false;if(done.classList)done.classList.remove('hidden');}
+else{var d=document.createElement('div');d.className='form-done';d.setAttribute('role','status');d.textContent=CFG.ok;if(form.parentNode)form.parentNode.replaceChild(d,form);}
+return;
+}
+throw new Error('bad_status');
+}).catch(function(){
+if(btn){btn.disabled=false;btn.textContent=label;}
+if(msg){msg.textContent=CFG.err;msg.hidden=false;msg.className=((msg.className||'')+' err').trim();}
+else{window.alert(CFG.err);}
+});
+});
+}
+function run(){var f=document.querySelectorAll('form[data-aq-lead]');Array.prototype.forEach.call(f,bind);}
+if(document.readyState!=='loading')run();else document.addEventListener('DOMContentLoaded',run);
+})();</script>
+		<?php
+	}
+
+	/**
+	 * Print the admin-only "Fill with test data" button + its behavior, once per
+	 * page, in the footer. Server-gated on manage_options + the Forms `test_button`
+	 * setting, so nothing is emitted for anonymous visitors.
+	 *
+	 * The script finds EVERY lead form on the page — any <form> that posts to the
+	 * engine's contact endpoint, matched by its `action` or `data-endpoint` — and
+	 * prepends a button that fills the form's fields with the configured test data.
+	 * Field matching is by input `name` (with common aliases), so it works on the
+	 * engine's `contact_form` section, any client's bespoke form section, and any
+	 * future form template, with zero per-template markup. Forms that already carry
+	 * their own test-fill button are skipped, so there's never a duplicate.
+	 */
+	public static function print_test_fill(): void {
+		if (is_admin() || !current_user_can(self::CAP)) {
+			return;
+		}
+		$cfg = self::get_settings();
+		if (empty($cfg['test_button'])) {
+			return;
+		}
+		// Mock values: the configured test-fill fields, plus safe defaults for the
+		// address/website fields the engine form asks for. Kept generic so it fills
+		// whatever fields a given form actually has.
+		$name  = trim((string) ($cfg['test_name'] ?? 'Test Tester'));
+		$parts = preg_split('/\s+/', $name, 2);
+		$data  = [
+			'name'      => $name,
+			'firstName' => $parts[0] ?? 'Test',
+			'lastName'  => $parts[1] ?? 'Tester',
+			'email'     => (string) ($cfg['test_email'] ?? 'test@example.com'),
+			'phone'     => (string) ($cfg['test_phone'] ?? '(555) 123-4567'),
+			'business'  => (string) ($cfg['test_business'] ?? 'Test Company'),
+			'website'   => 'https://example.com',
+			'address'   => '123 Test Street',
+			'city'      => 'Woburn',
+			'state'     => 'MA',
+			'zip'       => '01801',
+			'message'   => (string) ($cfg['test_message'] ?? 'TEST submission — please ignore.'),
+		];
+		?>
+<script>(function(){
+var DATA=<?php echo wp_json_encode($data); ?>;
+// name attr -> DATA key, with common aliases across form templates.
+var MAP={
+first_name:'firstName',firstname:'firstName',fname:'firstName',
+last_name:'lastName',lastname:'lastName',lname:'lastName',
+name:'name',fullname:'name',your_name:'name',
+email:'email',email_address:'email',
+phone:'phone',tel:'phone',telephone:'phone',phone_number:'phone',
+company:'business',business:'business',business_name:'business',organization:'business',
+website:'website',url:'website',
+address:'address',street:'address',address_line1:'address','address-line1':'address',
+city:'city',state:'state',region:'state',
+zip:'zip',postal_code:'zip',postalcode:'zip',postcode:'zip',
+message:'message',comments:'message',note:'message',notes:'message',details:'message'
+};
+var HONEYPOT=/^(company_hp|company_url|hp)$/i;
+function norm(n){return (n||'').toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
+function fill(form){
+var radios={},checks={};
+Array.prototype.forEach.call(form.elements,function(el){
+var name=el.name||'';if(!name||HONEYPOT.test(name))return;
+var tag=(el.tagName||'').toLowerCase(),type=(el.type||'').toLowerCase();
+if(type==='hidden'||type==='submit'||type==='button')return;
+if(type==='radio'){(radios[name]=radios[name]||[]).push(el);return;}
+if(type==='checkbox'){(checks[name]=checks[name]||[]).push(el);return;}
+if(tag==='select'){
+if(el.selectedIndex<=0){for(var i=0;i<el.options.length;i++){if(el.options[i].value||i>0){el.selectedIndex=i;break;}}}
+el.dispatchEvent(new Event('change',{bubbles:true}));return;
+}
+// text / email / tel / url / textarea
+var key=MAP[norm(name)];
+var val=key?DATA[key]:'';
+if(!val&&el.required)val=(type==='email')?'test@example.com':(type==='url')?'https://example.com':'Test';
+if(val&&!el.value){el.value=val;el.dispatchEvent(new Event('input',{bubbles:true}));}
+});
+// radios: pick the first option in each group
+Object.keys(radios).forEach(function(k){var g=radios[k];if(!g.some(function(r){return r.checked;})){g[0].checked=true;g[0].dispatchEvent(new Event('change',{bubbles:true}));}});
+// checkboxes: consent-type -> check; other groups -> check the first
+Object.keys(checks).forEach(function(k){var g=checks[k];
+if(/consent|agree|terms|privacy|opt/i.test(k)){g.forEach(function(c){c.checked=true;c.dispatchEvent(new Event('change',{bubbles:true}));});}
+else if(!g.some(function(c){return c.checked;})){g[0].checked=true;g[0].dispatchEvent(new Event('change',{bubbles:true}));}
+});
+}
+function decorate(form){
+if(form.dataset.aqTestfill)return;
+if(form.querySelector('[data-aq-testfill],[data-testfill],.lead-testfill,#contactFormTestFill'))return; // form ships its own button
+form.dataset.aqTestfill='1';
+var btn=document.createElement('button');
+btn.type='button';btn.setAttribute('data-aq-testfill','1');
+btn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Fill with test data (admin only)';
+btn.style.cssText='display:block;width:100%;margin:0 0 16px;padding:9px 14px;background:#0d1014;color:#fff;border:1px dashed #4b5563;border-radius:6px;font:600 13px/1.2 system-ui,-apple-system,sans-serif;cursor:pointer';
+btn.addEventListener('click',function(){fill(form);});
+form.insertBefore(btn,form.firstChild);
+}
+function run(){
+var forms=document.querySelectorAll('form[action*="aqm/v1/contact"],form[data-endpoint*="aqm/v1/contact"]');
+Array.prototype.forEach.call(forms,decorate);
+}
+if(document.readyState!=='loading')run();else document.addEventListener('DOMContentLoaded',run);
+})();</script>
+		<?php
+	}
+
+	/**
 	 * Resolve the captured attribution values for a submission: the JSON cookie
 	 * overlaid with the current request's own $_GET (so a submit on the ad-landing
 	 * page works even before the cookie round-trips). Every value is sanitized and
@@ -166,7 +361,7 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 			'notify_bcc'     => '',
 			'notify_subject' => '',
 			'email_template' => '',
-			'test_recipient' => (string) get_option('admin_email'),
+			'test_recipient' => 'robert@aqmarketing.com, justin@aqmarketing.com',
 			'smtp_host'      => '',
 			'smtp_port'      => 465,
 			'smtp_secure'    => 'ssl',
@@ -746,7 +941,10 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 		$t     = self::email_theme();
 		$font  = $t['font']; $accent = $t['accent']; $ink = $t['ink']; $muted = $t['muted']; $line = $t['line'];
 		$cfg   = self::get_settings();
-		$title = $cfg['notify_subject'] !== '' ? $cfg['notify_subject'] : 'New website form submission';
+		// Merge-tag the body title the same way the subject is (fill_subject_tokens),
+		// so {name}/{city}/{state} etc. resolve in the email H1 too — not just the
+		// subject line. Without this the raw template shows literally in the body.
+		$title = $cfg['notify_subject'] !== '' ? self::fill_subject_tokens($cfg['notify_subject'], $f) : 'New website form submission';
 		$when  = function_exists('wp_date') ? wp_date('F j, Y \a\t g:i a') : date('F j, Y');
 		$site  = self::site_name();
 		$host  = (string) wp_parse_url(home_url(), PHP_URL_HOST);
@@ -932,7 +1130,7 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 	private static function notify(array $f): bool {
 		$cfg     = self::get_settings();
 		$to      = $cfg['notify_to'] !== '' ? $cfg['notify_to'] : (string) get_option('admin_email');
-		$subject = $cfg['notify_subject'] !== '' ? $cfg['notify_subject'] : 'Website form submission';
+		$subject = self::fill_subject_tokens($cfg['notify_subject'] !== '' ? $cfg['notify_subject'] : 'Website form submission', $f);
 		if ($to === '') {
 			return false;
 		}
@@ -965,6 +1163,48 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 			if ($e !== '' && is_email($e)) { $out[] = $e; }
 		}
 		return implode(', ', $out);
+	}
+
+	/**
+	 * Fill {merge_tags} in the notification subject from a submission's fields.
+	 * Supported tags: {name} {first} {last} {email} {phone} {company} {website}
+	 * {address} {city} {state} {zip} {service} {source}. Unknown tags are left
+	 * as-is; empty ones drop out (with dangling separators tidied). The result
+	 * is a single header-safe line (no CR/LF).
+	 *
+	 * @param array<string,mixed> $f Submission fields (already sanitized).
+	 */
+	private static function fill_subject_tokens(string $tpl, array $f): string {
+		if (strpos($tpl, '{') === false) {
+			return $tpl;
+		}
+		$name = trim(((string) ($f['first'] ?? '')) . ' ' . ((string) ($f['last'] ?? '')));
+		if ($name === '') { $name = (string) ($f['name'] ?? ''); }
+		$map = [
+			'name'    => $name,
+			'first'   => (string) ($f['first'] ?? ''),
+			'last'    => (string) ($f['last'] ?? ''),
+			'email'   => (string) ($f['email'] ?? ''),
+			'phone'   => (string) ($f['phone'] ?? ''),
+			'company' => (string) ($f['company'] ?? ''),
+			'website' => (string) ($f['website'] ?? ''),
+			'address' => (string) ($f['address'] ?? ''),
+			'city'    => (string) ($f['city'] ?? ''),
+			'state'   => (string) ($f['state'] ?? ''),
+			'zip'     => (string) ($f['zip'] ?? ''),
+			'service' => (string) ($f['service'] ?? ''),
+			'source'  => (string) ($f['source'] ?? ''),
+		];
+		$out = preg_replace_callback('/\{([a-zA-Z_]+)\}/', static function ($m) use ($map) {
+			$k = strtolower($m[1]);
+			return array_key_exists($k, $map) ? $map[$k] : $m[0];
+		}, $tpl);
+		// Single header line: collapse whitespace, drop separators left dangling
+		// by empty tags (e.g. "Lead: Ada -  ," → "Lead: Ada").
+		$out = preg_replace('/\s+/', ' ', (string) $out);
+		$out = preg_replace('/\s*[-–,:]\s*(?=([-–,:]|$))/u', '', $out);
+		$out = trim((string) $out, " \t-–,:");
+		return $out !== '' ? $out : 'Website form submission';
 	}
 
 	/* ---------------- admin screen ---------------- */
@@ -1025,7 +1265,7 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 				<p class="aq-forms-hint">Every submission is emailed here, in addition to your CRM. Separate multiple addresses with commas.</p>
 				<div class="aq-forms-field"><label>Send to</label><input type="text" name="notify_to" value="<?php echo esc_attr($cfg['notify_to']); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>"></div>
 				<div class="aq-forms-field"><label>BCC</label><input type="text" name="notify_bcc" value="<?php echo esc_attr($cfg['notify_bcc']); ?>"></div>
-				<div class="aq-forms-field" style="margin-bottom:0"><label>Subject</label><input type="text" name="notify_subject" value="<?php echo esc_attr($cfg['notify_subject']); ?>" placeholder="Website form submission"></div>
+				<div class="aq-forms-field" style="margin-bottom:0"><label>Subject</label><input type="text" name="notify_subject" value="<?php echo esc_attr($cfg['notify_subject']); ?>" placeholder="Website form submission"><p class="aq-forms-hint" style="margin:6px 0 0">Insert submitted details with merge tags: <code>{name}</code> <code>{first}</code> <code>{last}</code> <code>{email}</code> <code>{phone}</code> <code>{company}</code> <code>{city}</code> <code>{state}</code> <code>{zip}</code> <code>{service}</code> <code>{source}</code>. Example: <code>New lead: {name} &mdash; {city}, {state}</code>. Empty tags drop out automatically.</p></div>
 			</div>
 
 			<div class="aq-forms-card">
@@ -1158,7 +1398,7 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 			<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
 				<input type="hidden" name="action" value="aq_forms_test">
 				<?php wp_nonce_field('aq_forms_test'); ?>
-				<input type="email" name="test_recipient" value="<?php echo esc_attr($cfg['test_recipient']); ?>" placeholder="you@example.com" required style="width:320px;max-width:100%;padding:8px 11px;border:1px solid #c9cfd6;border-radius:8px;font-size:13px">
+				<input type="text" name="test_recipient" value="<?php echo esc_attr($cfg['test_recipient']); ?>" placeholder="you@example.com, another@example.com" required style="width:420px;max-width:100%;padding:8px 11px;border:1px solid #c9cfd6;border-radius:8px;font-size:13px">
 				<button type="submit" class="button button-secondary">Send test email</button>
 			</form>
 		</div>
@@ -1235,7 +1475,9 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 		if (!current_user_can(self::CAP) || !check_admin_referer('aq_forms_test')) {
 			wp_die('Not allowed.');
 		}
-		$to = sanitize_email(wp_unslash($_POST['test_recipient'] ?? ''));
+		// Accept one or more comma/semicolon-separated addresses.
+		$to = self::clean_emails(wp_unslash($_POST['test_recipient'] ?? ''));
+		if ($to === '') { $to = self::clean_emails(self::get_settings()['test_recipient']); }
 		if ($to === '') { $to = (string) get_option('admin_email'); }
 		$opt = get_option(self::OPTION, []);
 		if (is_array($opt)) { $opt['test_recipient'] = $to; update_option(self::OPTION, $opt, false); }
@@ -1247,7 +1489,7 @@ document.cookie=C.cookie+'='+encodeURIComponent(s)+';path=/;max-age='+C.maxAge+'
 			'address' => '123 Test Street', 'city' => 'Woburn', 'state' => 'MA', 'zip' => '01801',
 			'service' => 'Test service', 'message' => "This is a test of the website-form email design.\nA real submission's Reply-To is the visitor's email.", 'source' => 'Admin test',
 		];
-		$subject = '[TEST] ' . ($cfg['notify_subject'] !== '' ? $cfg['notify_subject'] : 'Website form submission');
+		$subject = '[TEST] ' . self::fill_subject_tokens($cfg['notify_subject'] !== '' ? $cfg['notify_subject'] : 'Website form submission', $mock);
 		$ok = ($to !== '') && self::send_lead_email($mock, true, $to, $subject);
 		wp_safe_redirect(add_query_arg(['page' => self::SLUG, 'tested' => $ok ? '1' : '0'], admin_url('admin.php')));
 		exit;

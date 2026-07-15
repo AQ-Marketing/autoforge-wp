@@ -51,7 +51,7 @@ $consent_text        = (string) ($s['consent_text'] ?? '');
 				</p>
 				<?php endif; ?>
 
-				<form class="js-contact-form space-y-5" data-endpoint="<?php echo $endpoint; ?>" data-thankyou="<?php echo esc_attr($thankyou); ?>" novalidate>
+				<form class="js-contact-form space-y-5" data-aq-lead data-endpoint="<?php echo $endpoint; ?>" data-thankyou="<?php echo esc_attr($thankyou); ?>" novalidate>
 
 					<div class="grid sm:grid-cols-2 gap-4">
 						<div>
@@ -208,71 +208,26 @@ $consent_text        = (string) ($s['consent_text'] ?? '');
 	</div>
 </section>
 <script>
+/* Submission + thank-you redirect are owned fleet-wide by the engine's canonical
+ * lead-form handler (AQ_Lead_Capture::print_lead_form_handler in the footer) via the
+ * data-aq-lead marker. This capture-phase listener only FOLDS the inspection radio +
+ * specialty checkboxes into a single `service` value before the handler builds
+ * FormData — it never submits or redirects itself. */
 (function () {
 	var section = document.currentScript.previousElementSibling;
 	var form = section ? section.querySelector('.js-contact-form') : null;
-	if (!form || form.dataset.bound) { return; }
-	form.dataset.bound = '1';
-
-	var wrap    = form.closest('section');
-	var done    = wrap ? wrap.querySelector('.js-contact-form-done') : null;
-	var errBox  = form.querySelector('.form-err');
-	var btn     = form.querySelector('button[type=submit]');
-	var btnTxt  = btn ? btn.textContent : '';
-
-	function showErr(msg) {
-		if (!errBox) return;
-		errBox.textContent = msg;
-		errBox.hidden = false;
-	}
-
-	form.addEventListener('submit', function (e) {
-		e.preventDefault();
-		if (errBox) errBox.hidden = true;
-		if (!form.checkValidity()) { form.reportValidity(); return; }
-
-		var g = function (n) { var el = form.elements[n]; return el ? el.value.trim() : ''; };
+	if (!form) { return; }
+	form.addEventListener('submit', function () {
+		var g = function (n) { var el = form.elements[n]; return el ? String(el.value || '').trim() : ''; };
 		var specialty = Array.prototype.slice.call(form.querySelectorAll('input[name=specialty]:checked')).map(function (c) { return c.value; });
 		var service = [g('inspectionType')].concat(specialty).filter(Boolean).join(', ');
-
-		var payload = {
-			firstName: g('firstName'),
-			lastName:  g('lastName'),
-			phone:     g('phone'),
-			email:     g('email'),
-			address:   g('address'),
-			city:      g('city'),
-			state:     g('state'),
-			zip:       g('zip'),
-			service:   service,
-			message:   g('message'),
-			company_hp: g('company_hp'),
-			source:    'Website contact form'
+		var set = function (n, v) {
+			var el = form.querySelector('input[name="' + n + '"]');
+			if (!el) { el = document.createElement('input'); el.type = 'hidden'; el.name = n; form.appendChild(el); }
+			el.value = v;
 		};
-
-		if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
-
-		fetch(form.dataset.endpoint, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-			credentials: 'same-origin',
-			body: JSON.stringify(payload)
-		}).then(function (res) {
-			if (res.ok) {
-				var thankyou = form.dataset.thankyou;
-				if (thankyou) {
-					window.location.assign(thankyou);
-					return;
-				}
-				form.hidden = true;
-				if (done) done.classList.remove('hidden');
-				return;
-			}
-			throw new Error('bad_status');
-		}).catch(function () {
-			showErr('Sorry — something went wrong sending your request. Please call us at <?php echo esc_js($phone); ?> and we will help right away.');
-			if (btn) { btn.disabled = false; btn.textContent = btnTxt; }
-		});
-	});
+		set('service', service);
+		if (!form.querySelector('input[name="source"]')) { set('source', 'Website contact form'); }
+	}, true);
 })();
 </script>
