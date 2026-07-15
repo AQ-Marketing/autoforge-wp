@@ -19,6 +19,16 @@ $info      = array_values(array_filter((array) ($s['info'] ?? []), fn($c) => is_
 $consent   = (string) ($s['consent'] ?? 'I agree to receive a one-time audit response at the email and phone I provided. AQ Marketing will never sell or share my info.');
 $submit    = (string) ($s['submit_label'] ?? 'Send my free audit request');
 $success   = (string) ($s['success_msg'] ?? "Got it — we'll be in touch within 2 business days.");
+// Post-submit redirect target: the Forms "thank-you" setting if configured,
+// otherwise the site's /thank-you/ page. Sent to the form as data-thankyou;
+// the submit handler redirects there on success (falls back to an inline
+// message only if this is somehow empty).
+$thankyou  = '';
+if (class_exists('AQ_Lead_Capture')) {
+	$aq_cfg   = AQ_Lead_Capture::get_settings();
+	$thankyou = trim((string) ($aq_cfg['thankyou_url'] ?? ''));
+}
+if ($thankyou === '') { $thankyou = '/thank-you/'; }
 $map_q     = (string) ($s['map_query'] ?? '400 Tradecenter Dr, Woburn, MA 01801');
 $map_label = (string) ($s['map_label'] ?? 'Map showing the AQ Marketing office in Woburn, MA');
 $rest      = esc_url_raw(rest_url('aqm/v1/contact'));
@@ -35,7 +45,7 @@ $offerings = [
 <section>
 	<div class="wrap">
 		<div class="contact-grid">
-			<form class="contact-form" id="contactForm" action="<?php echo esc_url($rest); ?>" method="POST" data-success="<?php echo esc_attr($success); ?>" novalidate>
+			<form class="contact-form" id="contactForm" action="<?php echo esc_url($rest); ?>" method="POST" data-success="<?php echo esc_attr($success); ?>" data-thankyou="<?php echo esc_attr($thankyou); ?>" novalidate>
 				<?php if (current_user_can('manage_options')) : ?>
 				<button type="button" class="cf-testfill" data-aq-testfill="1" id="contactFormTestFill">&#9889; Fill with test data (admin only)</button>
 				<?php endif; ?>
@@ -231,6 +241,11 @@ $offerings = [
 				var fd=new FormData(form);
 				var res=await fetch(form.action,{method:'POST',body:fd,headers:{'Accept':'application/json'}});
 				if(res.ok){
+					// Success — the lead was captured. Send the visitor to the
+					// thank-you page; fall back to the inline message only if no
+					// redirect target is set.
+					var ty=form.getAttribute('data-thankyou');
+					if(ty){window.location.assign(ty);return;}
 					status.className='is-ok';
 					status.textContent=okMsg;
 					form.reset();
@@ -241,10 +256,11 @@ $offerings = [
 				}
 			}catch(err){
 				status.className='is-err';
-				status.innerHTML='Something went wrong. Please <a href="tel:<?php echo esc_attr((string)(aq_site('phoneTel') ?: '+17817306971')); ?>" style="color:inherit;text-decoration:underline">call <?php echo esc_html((string)(aq_site('phone') ?: '(781) 730-6971')); ?></a> or email us at <?php echo esc_html((string)(aq_site('email') ?: 'hello@aqmarketing.com')); ?>.';
+				status.innerHTML='Something went wrong. Please <a href="tel:<?php echo esc_attr((string)(aq_site('phoneTel') ?: '+17817306971')); ?>" style="color:inherit;text-decoration:underline">call <?php echo esc_html((string)(aq_site('phone') ?: '(781) 730-6971')); ?></a>.';
 			}
 		});
 
+		<?php if (current_user_can('manage_options')) : ?>
 		// Admin-only "Fill with test data" button — the button is rendered server-side
 		// only when current_user_can('manage_options'), so this listener no-ops for
 		// everyone else. Fills every field (incl. the first offering chip + consent)
@@ -262,5 +278,6 @@ $offerings = [
 				status.className='';status.textContent='Test data filled — review, then submit.';
 			});
 		}
+		<?php endif; ?>
 	})();
 </script>
