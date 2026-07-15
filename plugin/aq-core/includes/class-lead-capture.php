@@ -409,6 +409,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'smtp_from'      => '',
 			'smtp_from_name' => '',
 			'ghl_location'   => '',
+			'hcaptcha_site_key' => '', // hCaptcha public site key (spam protection on every form)
 			'email_logo'     => '', // logo image URL shown in the notification email header
 			'email_logo_w'   => 0,  // measured display width (px), capped to fit the header
 			'email_logo_h'   => 0,  // measured display height (px)
@@ -537,6 +538,16 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		$rl = self::rate_limit();
 		if ($rl !== true) {
 			return $deny(429, 'rate_limited');
+		}
+		// 4) hCaptcha — enforced for anonymous visitors on EVERY form once keys are
+		//    configured (admins bypass so the test-fill button still works). Dormant
+		//    when unconfigured. Placed after the rate limiter so a flood can't spam
+		//    hCaptcha's verify API.
+		if (class_exists('AQ_HCaptcha')) {
+			$token = self::pick($req, ['h-captcha-response', 'hcaptcha_response', 'g-recaptcha-response']);
+			if (!AQ_HCaptcha::passes($token)) {
+				return $deny(403, 'captcha_failed');
+			}
 		}
 
 		$first   = sanitize_text_field(self::pick($req, ['first_name', 'firstName']));
@@ -1454,6 +1465,38 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 				</div>
 			</div>
 
+			<?php
+			$hc_ready       = class_exists('AQ_HCaptcha') && AQ_HCaptcha::active();
+			$hc_site_locked = class_exists('AQ_HCaptcha') && AQ_HCaptcha::site_key_locked();
+			$hc_sec_locked  = class_exists('AQ_HCaptcha') && AQ_HCaptcha::secret_locked();
+			$hc_sec_saved   = class_exists('AQ_HCaptcha') && AQ_HCaptcha::secret_saved();
+			?>
+			<div class="aq-forms-card">
+				<h2>Spam protection (hCaptcha)</h2>
+				<p class="aq-forms-hint">
+					<?php echo $hc_ready ? '<span class="aq-badge aq-badge--ok">Active — on every form</span>' : '<span class="aq-badge aq-badge--off">Off — add both keys</span>'; ?>
+					&nbsp; When both keys are set, an hCaptcha challenge is added to every lead form automatically and each submission is verified before it reaches your inbox or CRM. Get your keys at <code>dashboard.hcaptcha.com</code>. Logged-in admins skip the challenge, so the test button still works.
+				</p>
+				<div class="aq-forms-field">
+					<label>Site key <span style="font-weight:400;color:#888">(public)</span></label>
+					<?php if ($hc_site_locked) : ?>
+						<p class="aq-forms-hint" style="margin:0"><span class="aq-badge aq-badge--ok">Locked</span> Set by the <code>AQ_HCAPTCHA_SITE_KEY</code> constant in wp-config.php.</p>
+					<?php else : ?>
+						<input type="text" name="hcaptcha_site_key" value="<?php echo esc_attr($cfg['hcaptcha_site_key']); ?>" autocomplete="off" placeholder="e.g. 00000000-0000-0000-0000-000000000000">
+					<?php endif; ?>
+				</div>
+				<div class="aq-forms-field" style="margin-bottom:0">
+					<label>Secret key</label>
+					<?php if ($hc_sec_locked) : ?>
+						<p class="aq-forms-hint" style="margin:0"><span class="aq-badge aq-badge--ok">Locked</span> Set by the <code>AQ_HCAPTCHA_SECRET</code> constant in wp-config.php.</p>
+					<?php else : ?>
+						<input type="password" name="hcaptcha_secret" value="" autocomplete="off" placeholder="<?php echo $hc_sec_saved ? '•••••••••• (saved — leave blank to keep)' : 'Paste the secret key (starts with ES_)'; ?>">
+						<?php if ($hc_sec_saved) : ?><label style="display:flex;align-items:center;gap:7px;font-weight:400;margin-top:8px;font-size:13px"><input type="checkbox" name="hcaptcha_secret_clear" value="1"> Remove the saved secret</label><?php endif; ?>
+						<p class="aq-forms-hint" style="margin:6px 0 0">Stored write-only — never shown again after saving.</p>
+					<?php endif; ?>
+				</div>
+			</div>
+
 			<div class="aq-forms-card">
 				<h2>Email delivery (SMTP)</h2>
 				<p class="aq-forms-hint">
@@ -1603,6 +1646,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'smtp_from'      => sanitize_email($in['smtp_from'] ?? ''),
 			'smtp_from_name' => sanitize_text_field($in['smtp_from_name'] ?? ''),
 			'ghl_location'   => sanitize_text_field($in['ghl_location'] ?? ''),
+			'hcaptcha_site_key' => preg_replace('/[^A-Za-z0-9._\-]/', '', trim((string) ($in['hcaptcha_site_key'] ?? ''))),
 			'email_logo'     => esc_url_raw(trim((string) ($in['email_logo'] ?? ''))),
 			'field_sync_daily' => !empty($in['field_sync_daily']),
 			'email_header_bg'    => self::clean_hex($in['email_header_bg'] ?? ''),
@@ -1639,6 +1683,14 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 				delete_option(self::OPT_SMTP);
 			} elseif (($p = (string) ($in['smtp_pass'] ?? '')) !== '') {
 				update_option(self::OPT_SMTP, $p, false);
+			}
+		}
+		// hCaptcha secret — write-only, same pattern as the SMTP/GHL secrets.
+		if (class_exists('AQ_HCaptcha') && !AQ_HCaptcha::secret_locked()) {
+			if (!empty($in['hcaptcha_secret_clear'])) {
+				AQ_HCaptcha::clear_secret();
+			} elseif (($hc = trim((string) ($in['hcaptcha_secret'] ?? ''))) !== '') {
+				AQ_HCaptcha::update_secret($hc);
 			}
 		}
 
