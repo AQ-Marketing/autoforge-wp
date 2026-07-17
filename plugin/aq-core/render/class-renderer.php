@@ -41,6 +41,13 @@ class AQ_Renderer {
 		// Take over rendering. Priority 50 so it runs after most theme filters.
 		add_filter('template_include', [__CLASS__, 'route'], 50);
 
+		// Site-wide CTA tokens. Buffer the whole front-end page so the `{cta}` (label)
+		// and `{cta_href}` (link) tokens resolve to the "Primary CTA" set on AutoForge →
+		// Navigation, no matter where they appear — page sections OR header/footer/mega-
+		// menu chrome. One global label + link, editable in one place, used by every
+		// "Get your free audit"-style button.
+		add_action('template_redirect', [__CLASS__, 'start_cta_buffer'], 1);
+
 		// Plugin-owned scroll-reveal FAILSAFE. The theme's site.js drives the
 		// entrance animation (adds `.reveal` = opacity:0, then `.reveal-in` when a
 		// section scrolls in), but that theme asset is frozen per-site by the
@@ -72,6 +79,62 @@ window.addEventListener('load',function(){setTimeout(revealAll,200);});
 window.addEventListener('pageshow',function(ev){if(ev.persisted)revealAll();});
 }catch(e){}})();</script>
 		<?php
+	}
+
+	/**
+	 * Begin buffering the front-end page so front-end CTA tokens can be resolved on
+	 * the final HTML (see start()'s note). Skips admin, REST, and feeds. Mirrors the
+	 * route() guard so it only wraps pages this renderer actually serves.
+	 */
+	public static function start_cta_buffer(): void {
+		if (is_admin() || (defined('REST_REQUEST') && REST_REQUEST) || is_feed() || !self::enabled()) {
+			return;
+		}
+		ob_start([__CLASS__, 'resolve_cta_tokens']);
+	}
+
+	/**
+	 * Resolve the site-wide Primary CTA tokens (AutoForge → Navigation) on the final
+	 * page HTML:
+	 *   {cta}      → the CTA button TEXT  (label)
+	 *   {cta_href} → the CTA button LINK  (href)
+	 * so a button written as `<a href="{cta_href}">{cta}</a>` shows the global
+	 * wording AND points at the global link — both editable in one place. Each token
+	 * falls back to the Header CTA's matching field so it never renders literally.
+	 * The `{cta}` and `{cta_href}` strings never overlap (one ends at `}` right after
+	 * `cta`, the other has `_href` first), so replacement order is irrelevant.
+	 * Fast-pathed: does nothing unless a token is present. Runs on the whole page, so
+	 * it covers chrome + sections.
+	 *
+	 * @param string $html Buffered page HTML.
+	 * @return string
+	 */
+	public static function resolve_cta_tokens($html) {
+		if (!is_string($html) || $html === '') {
+			return $html;
+		}
+		$has_label = strpos($html, '{cta}') !== false;
+		$has_href  = strpos($html, '{cta_href}') !== false;
+		if (!$has_label && !$has_href) {
+			return $html;
+		}
+		$primary = function_exists('aq_site') ? aq_site('primaryCta') : null;
+		$header  = function_exists('aq_site') ? aq_site('headerCta') : null;
+		$primary = is_array($primary) ? $primary : [];
+		$header  = is_array($header) ? $header : [];
+
+		if ($has_label) {
+			$label = trim((string) ($primary['label'] ?? ''));
+			if ($label === '') { $label = trim((string) ($header['label'] ?? '')); }
+			$html = str_replace('{cta}', esc_html($label), $html);
+		}
+		if ($has_href) {
+			$href = trim((string) ($primary['href'] ?? ''));
+			if ($href === '') { $href = trim((string) ($header['href'] ?? '')); }
+			if ($href === '') { $href = '/contact/'; }
+			$html = str_replace('{cta_href}', esc_url($href), $html);
+		}
+		return $html;
 	}
 
 	/**

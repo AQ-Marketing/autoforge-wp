@@ -220,6 +220,17 @@ class AQ_Navigation {
 			];
 		}
 
+		// Site-wide Primary CTA. The single source of truth for the recurring
+		// "Get your free audit"-style call to action: the `{cta}` token renders this
+		// label and `{cta_href}` renders this link (both resolved on the final page by
+		// AQ_Renderer::resolve_cta_tokens), so they can be changed here in one place.
+		if (isset($in['primaryCta']) && is_array($in['primaryCta'])) {
+			$patch['primaryCta'] = [
+				'label' => sanitize_text_field((string) ($in['primaryCta']['label'] ?? '')),
+				'href'  => self::url((string) ($in['primaryCta']['href'] ?? '/contact/')),
+			];
+		}
+
 		// Post CTA (blog article footer banner).
 		if (isset($in['postCta']) && is_array($in['postCta'])) {
 			$patch['postCta'] = [
@@ -421,6 +432,15 @@ class AQ_Navigation {
 		echo '<div class="aq-nav-grid">';
 		self::text('headerCta.label', 'Button text', (string) ($hcta['label'] ?? 'Schedule Inspection'));
 		self::text('headerCta.href',  'Button link', (string) ($hcta['href'] ?? '/schedule/'));
+		echo '</div></div>';
+
+		/* ---------------- Primary CTA (site-wide) ---------------- */
+		$pcta = is_array($cfg['primaryCta'] ?? null) ? $cfg['primaryCta'] : [];
+		echo '<div class="aq-panel"><h2>Primary CTA (site-wide)</h2>';
+		echo '<p class="aq-nav-help">The main call to action reused across the site &mdash; e.g. &ldquo;Get your free audit&rdquo;. In your page content, write <code>{cta}</code> where you want the button <strong>text</strong> and <code>{cta_href}</code> for its <strong>link</strong> (for example: <code>&lt;a href="{cta_href}"&gt;{cta}&lt;/a&gt;</code>). Both fields below fill in automatically wherever those appear, so you can change the site-wide call to action&rsquo;s wording and destination from one place.</p>';
+		echo '<div class="aq-nav-grid">';
+		self::text('primaryCta.label', 'Button text', (string) ($pcta['label'] ?? ''));
+		self::text('primaryCta.href',  'Button link', (string) ($pcta['href'] ?? '/contact/'));
 		echo '</div></div>';
 
 		/* ---------------- Post CTA + Blog labels ----------------------- */
