@@ -797,7 +797,7 @@ class AQ_SEO_Agent {
 			<div class="aq-panel">
 				<h2 style="margin-top:0;">What to check</h2>
 				<div class="aq-sa-field">
-					<label class="aq-sa-lbl" for="aq-sa-loc">Your market (region)</label>
+					<label class="aq-sa-lbl" for="aq-sa-loc">Your market (region)<?php echo AQ_Admin_Hub::tip('Search results change by location — this sets the area the agent checks your rankings in.'); ?></label>
 					<input type="text" id="aq-sa-loc" name="location" value="<?php echo esc_attr((string) $o['location']); ?>" placeholder="Massachusetts,United States">
 					<p class="aq-sa-hint">Where your customers search. Use <code>State,United States</code> (e.g. <code>Massachusetts,United States</code>) for local results.</p>
 				</div>
@@ -807,7 +807,7 @@ class AQ_SEO_Agent {
 					<p class="aq-sa-hint">One search phrase per line — the things customers type into Google. Up to <?php echo (int) self::MAX_TRACKED; ?> are checked each run.</p>
 				</div>
 				<label class="aq-sa-check"><input type="checkbox" name="track_serp" value="1" <?php checked(!empty($o['track_serp'])); ?>>
-					<span><strong>Check Google rankings</strong> for those keywords (and whether a map pack / AI Overview appears).</span></label>
+					<span><strong>Check Google rankings</strong><?php echo AQ_Admin_Hub::tip('Map pack = the local map box of businesses; AI Overview = Google’s AI answer above results.'); ?> for those keywords (and whether a map pack / AI Overview appears).</span></label>
 				<label class="aq-sa-check"><input type="checkbox" name="track_ai" value="1" <?php checked(!empty($o['track_ai'])); ?>>
 					<span><strong>Check AI-search visibility</strong> — asks Perplexity a real buyer question and reports whether your business is named.</span></label>
 				<div class="aq-sa-field" style="margin-top:10px;">

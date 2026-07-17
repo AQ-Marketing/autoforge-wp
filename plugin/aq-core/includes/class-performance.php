@@ -487,7 +487,7 @@ class AQ_Performance {
 		</div>
 
 		<div class="aq-panel">
-			<h2>Caching</h2>
+			<h2>Caching <?php echo AQ_Admin_Hub::tip('A saved copy of your pages that loads the site faster. Clear it after making changes.'); ?></h2>
 			<p class="aq-perf-muted" style="margin-top:0;">Clear the page cache and minified assets after publishing content or design changes. You can also clear it from anywhere using the <strong>Clear cache</strong> button in the top admin bar.</p>
 			<div class="aq-perf-actions">
 				<button type="button" class="aq-btn" id="aq-clear-cache">Clear all caches</button>
@@ -496,7 +496,7 @@ class AQ_Performance {
 		</div>
 
 		<div class="aq-panel">
-			<h2>PageSpeed Insights</h2>
+			<h2>PageSpeed Insights <?php echo AQ_Admin_Hub::tip('A free Google key that lets this screen measure how fast your pages load and score them.'); ?></h2>
 			<?php if ($has_psi_key) : ?>
 				<p class="aq-perf-muted" style="margin-top:0;">
 					API key <span class="aq-pill">key set</span> — run a lab test against the home page.

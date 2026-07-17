@@ -279,14 +279,15 @@ class AQ_SEO_Manager {
 				<thead>
 					<tr>
 						<th>Page</th>
-						<th class="aq-seo-cell-title">SEO Title</th>
-						<th class="aq-seo-cell-desc">Meta Description</th>
-						<th class="aq-seo-cell-canon">Canonical</th>
+						<th class="aq-seo-cell-title">SEO Title<?php echo AQ_Admin_Hub::tip('The blue clickable headline this page shows in Google search results. Keep it under ~60 characters.'); ?></th>
+						<th class="aq-seo-cell-desc">Meta Description<?php echo AQ_Admin_Hub::tip('The short summary shown under the title in Google results. Around 150–160 characters works best.'); ?></th>
+						<th class="aq-seo-cell-canon">Canonical<?php echo AQ_Admin_Hub::tip('The “official” web address for this page, so Google doesn’t treat near-duplicate URLs as separate pages.'); ?></th>
 						<th>
 							<label class="aq-seo-noindex" title="Check or uncheck noindex for every shown page (saves each immediately)">
 								<input type="checkbox" id="aq-seo-noindex-all">
 								<span>Noindex</span>
 							</label>
+							<?php echo AQ_Admin_Hub::tip('Hides this page from Google search. Leave off unless you deliberately don’t want it found.'); ?>
 						</th>
 						<th></th>
 					</tr>

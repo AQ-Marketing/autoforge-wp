@@ -356,7 +356,7 @@ class AQ_Legal {
 			</div>
 			<?php endif; ?>
 
-			<label class="aq-legal-field" style="font-weight:600;font-size:12px;color:#5b6471">Embed code or HTML</label>
+			<label class="aq-legal-field" style="font-weight:600;font-size:12px;color:#5b6471">Embed code or HTML <?php echo AQ_Admin_Hub::tip('Paste an embed code from a policy service like Termly, or type your own policy text here.'); ?></label>
 			<textarea name="<?php echo esc_attr($name); ?>[content]" placeholder="Paste your policy embed snippet here…"><?php echo esc_textarea($r['content']); ?></textarea>
 
 			<div class="aq-legal-toggles">

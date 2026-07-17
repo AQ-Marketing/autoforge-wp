@@ -63,11 +63,11 @@ class AQ_Importer {
 				<?php if ($token) : ?>A GitHub token is configured (private repos OK).<?php else : ?>No GitHub token set — works for public repos. For private repos, add a token under <a href="<?php echo esc_url($int_url); ?>">Integrations</a>.<?php endif; ?>
 			</p>
 			<div class="aq-imp-field">
-				<label for="aq-imp-repo">Repository URL</label>
+				<label for="aq-imp-repo">Repository URL <?php echo AQ_Admin_Hub::tip('Web address of the GitHub project holding this site\'s pages, content, and images to build from.'); ?></label>
 				<input type="text" id="aq-imp-repo" name="repo" placeholder="https://github.com/owner/repo" value="<?php echo esc_attr($repo); ?>" autocomplete="off">
 			</div>
 			<div class="aq-imp-field">
-				<label for="aq-imp-branch">Branch</label>
+				<label for="aq-imp-branch">Branch <?php echo AQ_Admin_Hub::tip('Which version of the repo to pull from. Leave as main unless told otherwise.'); ?></label>
 				<input type="text" id="aq-imp-branch" name="branch" placeholder="main" value="<?php echo esc_attr($branch !== '' ? $branch : 'main'); ?>" autocomplete="off">
 			</div>
 			<p>

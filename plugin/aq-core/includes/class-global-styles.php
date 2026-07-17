@@ -49,12 +49,12 @@ class AQ_Global_Styles {
 		// (.btn-primary, .pill-eyebrow, .h2-sub, …) that uses that exact value.
 		return [
 			'colors' => [
-				['key' => 'navy',      'label' => 'Primary dark',          'help' => 'Dark sections, headings, footer, hero overlay.', 'default' => '#0f172a'],
+				['key' => 'navy',      'label' => 'Primary dark',          'help' => 'Dark sections, headings, footer, hero overlay.', 'default' => '#0f172a', 'tip' => 'Dark color for footers, headings, and hero overlays.'],
 				['key' => 'body_navy', 'label' => 'Body text',             'help' => 'Main paragraph text.',                            'default' => '#334155'],
-				['key' => 'tint',      'label' => 'Light background tint',  'help' => 'Soft section backgrounds.',                       'default' => '#f8fafc'],
-				['key' => 'gold',      'label' => 'Primary accent',        'help' => 'Buttons, links and highlights.',                  'default' => '#3b82f6'],
-				['key' => 'amber',     'label' => 'Accent hover',          'help' => 'Hover state for accent elements.',                'default' => '#1d4ed8'],
-				['key' => 'dark_gold', 'label' => 'Accent link',           'help' => 'Accent links on light backgrounds.',              'default' => '#2563eb'],
+				['key' => 'tint',      'label' => 'Light background tint',  'help' => 'Soft section backgrounds.',                       'default' => '#f8fafc', 'tip' => 'Soft background shade for lighter page sections.'],
+				['key' => 'gold',      'label' => 'Primary accent',        'help' => 'Buttons, links and highlights.',                  'default' => '#3b82f6', 'tip' => 'Your main accent color for buttons, links, and highlights.'],
+				['key' => 'amber',     'label' => 'Accent hover',          'help' => 'Hover state for accent elements.',                'default' => '#1d4ed8', 'tip' => 'Color accent buttons and links turn when hovered.'],
+				['key' => 'dark_gold', 'label' => 'Accent link',           'help' => 'Accent links on light backgrounds.',              'default' => '#2563eb', 'tip' => 'Accent color for links on light backgrounds.'],
 			],
 			'fonts' => [
 				['key' => 'serif', 'label' => 'Heading font', 'help' => 'Used for all headings.',     'default' => 'Georgia, Cambria, "Times New Roman", serif'],
@@ -292,7 +292,7 @@ class AQ_Global_Styles {
 								value="<?php echo esc_attr($val); ?>"
 								data-hex="aq-gs-hex-<?php echo esc_attr($c['key']); ?>">
 							<div>
-								<label for="aq-gs-<?php echo esc_attr($c['key']); ?>"><?php echo esc_html($c['label']); ?></label>
+								<label for="aq-gs-<?php echo esc_attr($c['key']); ?>"><?php echo esc_html($c['label']); ?><?php echo AQ_Admin_Hub::tip($c['tip'] ?? ''); ?></label>
 								<p class="aq-gs-help"><?php echo esc_html($c['help']); ?></p>
 								<input type="text" class="aq-gs-hex"
 									id="aq-gs-hex-<?php echo esc_attr($c['key']); ?>"

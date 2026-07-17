@@ -182,7 +182,7 @@ class AQ_Chatbot {
 
 			<div class="aq-panel">
 				<div class="aq-cb-field">
-					<label for="aq-cb-slug">Chatbot</label>
+					<label for="aq-cb-slug">Chatbot <?php echo AQ_Admin_Hub::tip('Which chat assistant appears on your site to answer visitor questions. Choose None to show none.'); ?></label>
 					<select id="aq-cb-slug" name="tenant_slug" <?php disabled(!$fetch['ok']); ?>>
 						<option value="">— None —</option>
 						<?php foreach ($fetch['list'] as $c) : ?>

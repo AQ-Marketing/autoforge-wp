@@ -110,6 +110,17 @@ class AQ_Admin_Hub {
 			.aq-pill { font-size:11px; padding:2px 8px; border-radius:999px; background:#eef1f5; color:#5b6471; font-weight:600; }
 			.aq-soon { text-align:center; padding:60px 20px; color:#5b6471; }
 			.aq-soon__icon { font-size:42px; opacity:.5; }
+			/* Field help tooltip (AQ_Admin_Hub::tip). Pure CSS — reveals on hover or
+			   keyboard focus, no JS. The bubble resets text-transform/letter-spacing/
+			   weight because tips sit inside uppercase, letter-spaced field labels. */
+			.aq-hub .aq-tip { position:relative; display:inline-flex; vertical-align:middle; margin-left:6px; cursor:help; }
+			.aq-hub .aq-tip__icon { display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; border-radius:50%; background:#c9cfd6; color:#fff; font-size:10px; font-weight:700; font-family:Inter,system-ui,sans-serif; line-height:1; }
+			.aq-hub .aq-tip:hover .aq-tip__icon, .aq-hub .aq-tip:focus .aq-tip__icon { background:#c8102e; }
+			.aq-hub .aq-tip:focus { outline:0; }
+			.aq-hub .aq-tip:focus .aq-tip__icon { box-shadow:0 0 0 3px rgba(200,16,46,.25); }
+			.aq-hub .aq-tip__bubble { position:absolute; bottom:calc(100% + 8px); left:50%; transform:translateX(-50%); width:max-content; max-width:260px; background:#0d1014; color:#fff; font-size:12px; font-weight:400; line-height:1.5; text-transform:none; letter-spacing:normal; text-align:left; padding:8px 11px; border-radius:8px; box-shadow:0 4px 14px rgba(13,16,20,.22); opacity:0; visibility:hidden; transition:opacity .12s ease; z-index:9999; pointer-events:none; white-space:normal; }
+			.aq-hub .aq-tip__bubble::after { content:''; position:absolute; top:100%; left:50%; transform:translateX(-50%); border:5px solid transparent; border-top-color:#0d1014; }
+			.aq-hub .aq-tip:hover .aq-tip__bubble, .aq-hub .aq-tip:focus .aq-tip__bubble { opacity:1; visibility:visible; }
 		</style>
 		<?php
 	}
@@ -318,6 +329,33 @@ class AQ_Admin_Hub {
 		self::head($title, $sub);
 		self::tabs($screen);
 		echo '<div class="aq-panel"><div class="aq-soon"><div class="aq-soon__icon dashicons dashicons-hammer"></div><p style="margin-top:10px;font-weight:600;">This screen is being built.</p><p>Tracked in the Phase 2 plan — wiring up next.</p></div></div></div>';
+	}
+
+	/* ---------------- field help tooltip ---------------- */
+
+	/**
+	 * Inline help tooltip for a settings field — a small "?" badge that reveals a
+	 * plain-English explanation on hover or keyboard focus (pure CSS, no JS; styled
+	 * in styles()). Shared by every AutoForge screen so field help reads and behaves
+	 * identically everywhere. Place it right after a field's label text:
+	 *
+	 *   <label>Send to <?php echo AQ_Admin_Hub::tip('Where lead emails go.'); ?></label>
+	 *
+	 * $text is plain text (any HTML is escaped). Returns '' when empty, so callers
+	 * can pass an optional/absent help string without guarding.
+	 *
+	 * @param string $text Short plain-English explanation for a non-technical owner.
+	 * @return string Safe-to-echo markup, or '' if no text.
+	 */
+	public static function tip(string $text): string {
+		$text = trim($text);
+		if ($text === '') {
+			return '';
+		}
+		return '<span class="aq-tip" tabindex="0" role="note" aria-label="' . esc_attr($text) . '">'
+			. '<span class="aq-tip__icon" aria-hidden="true">?</span>'
+			. '<span class="aq-tip__bubble">' . esc_html($text) . '</span>'
+			. '</span>';
 	}
 
 	/* ---------------- card helpers ---------------- */

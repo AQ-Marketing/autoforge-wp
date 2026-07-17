@@ -66,12 +66,12 @@ class AQ_Logo_Settings {
 			<?php wp_nonce_field('aq_logo_save'); ?>
 
 			<?php
-			$field = function (string $key, string $title, string $hint) use ($cur) {
+			$field = function (string $key, string $title, string $hint, string $tip = '') use ($cur) {
 				$id  = (int) $cur[$key];
 				$img = $id ? wp_get_attachment_image($id, 'medium', false, ['class' => '']) : '<em style="color:#888">Not set' . ($key !== 'id' ? ' — falls back to the header logo' : '') . '.</em>';
 				?>
 				<div class="aq-logo-card">
-					<h2><?php echo esc_html($title); ?></h2>
+					<h2><?php echo esc_html($title); ?><?php echo $tip !== '' ? AQ_Admin_Hub::tip($tip) : ''; ?></h2>
 					<?php if ($hint) : ?><p class="aq-logo-hint"><?php echo esc_html($hint); ?></p><?php endif; ?>
 					<div class="aq-logo-row">
 						<div class="aq-logo-prev"><?php echo $img; ?></div>
@@ -85,8 +85,8 @@ class AQ_Logo_Settings {
 				<?php
 			};
 			$field('id', 'Header logo', '');
-			$field('idSticky', 'Sticky-header logo (optional)', 'Swapped in once a visitor scrolls and the header is in its sticky/compact state. Leave unset to keep the header logo everywhere.');
-			$field('idDark', 'Footer logo', 'Shown on the dark footer background. Leave unset to fall back to the header logo.');
+			$field('idSticky', 'Sticky-header logo (optional)', 'Swapped in once a visitor scrolls and the header is in its sticky/compact state. Leave unset to keep the header logo everywhere.', 'A version for when the header turns solid on scroll — often a darker logo.');
+			$field('idDark', 'Footer logo', 'Shown on the dark footer background. Leave unset to fall back to the header logo.', 'Use a light-colored logo here so it stands out on the dark footer.');
 			?>
 
 			<?php submit_button('Save logo settings'); ?>

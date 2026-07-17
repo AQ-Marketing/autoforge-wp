@@ -203,9 +203,9 @@ class AQ_Locations {
 		echo '<p class="aq-loc-help">Name, address &amp; phone — used in the site header/footer, SEO meta and LocalBusiness JSON-LD. Keep this matching the Google Business Profile exactly.</p>';
 		echo '<div class="aq-loc-grid">';
 		self::text('name', 'Legal name', (string) ($nap['name'] ?? ''));
-		self::text('shortName', 'Short / brand name', (string) ($nap['shortName'] ?? ''));
+		self::text('shortName', 'Short / brand name', (string) ($nap['shortName'] ?? ''), '', 'text', 'Your everyday brand name, usually shorter than the legal name. Shown in menus and headings.');
 		self::text('phone', 'Phone (display)', (string) ($nap['phone'] ?? ''), 'e.g. (413) 522-8004');
-		self::text('phoneTel', 'Phone (tel: link)', (string) ($nap['phoneTel'] ?? ''), 'e.g. +14135228004');
+		self::text('phoneTel', 'Phone (tel: link)', (string) ($nap['phoneTel'] ?? ''), 'e.g. +14135228004', 'text', 'The click-to-call version of your number: digits only with country code, no spaces.');
 		self::text('email', 'Email', (string) ($nap['email'] ?? ''), '', 'email');
 		echo '</div>';
 
@@ -222,7 +222,7 @@ class AQ_Locations {
 		echo '<div class="aq-panel"><h2>Service-area towns</h2>';
 		echo '<p class="aq-loc-help"><strong>Heads up:</strong> the site&rsquo;s service-area menus (header/footer) and the JSON-LD <code>areaServed</code> list read these rows. (Adding a town here does not auto-create its pages.)</p>';
 		echo '<table class="aq-table aq-loc-towns"><thead><tr>';
-		echo '<th style="width:34px;">#</th><th>Town name</th><th>Slug</th><th>County</th><th style="width:120px;">Order</th><th style="width:60px;"></th>';
+		echo '<th style="width:34px;">#</th><th>Town name</th><th>Slug' . AQ_Admin_Hub::tip('The web-address version of the town name (lowercase, dashes). Leave blank to auto-fill.') . '</th><th>County</th><th style="width:120px;">Order</th><th style="width:60px;"></th>';
 		echo '</tr></thead><tbody id="aq-loc-town-rows">';
 		if ($towns) {
 			foreach ($towns as $t) {
@@ -283,12 +283,13 @@ class AQ_Locations {
 		return $out;
 	}
 
-	private static function text(string $key, string $label, string $value, string $placeholder = '', string $type = 'text'): void {
+	private static function text(string $key, string $label, string $value, string $placeholder = '', string $type = 'text', string $help = ''): void {
 		$id = 'aq-loc-' . preg_replace('/[^a-z0-9]+/i', '-', $key);
 		printf(
-			'<label class="aq-loc-field"><span class="aq-loc-label">%s</span>'
+			'<label class="aq-loc-field"><span class="aq-loc-label">%s%s</span>'
 			. '<input type="%s" id="%s" class="aq-loc-input" data-key="%s" value="%s" placeholder="%s" /></label>',
 			esc_html($label),
+			$help !== '' ? AQ_Admin_Hub::tip($help) : '',
 			esc_attr($type),
 			esc_attr($id),
 			esc_attr($key),

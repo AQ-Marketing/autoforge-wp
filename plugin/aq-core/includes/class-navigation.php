@@ -430,8 +430,8 @@ class AQ_Navigation {
 		echo '<div class="aq-panel"><h2>Header CTA button</h2>';
 		echo '<p class="aq-nav-help">The primary button at the right end of the header bar.</p>';
 		echo '<div class="aq-nav-grid">';
-		self::text('headerCta.label', 'Button text', (string) ($hcta['label'] ?? 'Schedule Inspection'));
-		self::text('headerCta.href',  'Button link', (string) ($hcta['href'] ?? '/schedule/'));
+		self::text('headerCta.label', 'Button text', (string) ($hcta['label'] ?? 'Schedule Inspection'), 'The words shown on the header button, e.g. "Schedule Inspection".');
+		self::text('headerCta.href',  'Button link', (string) ($hcta['href'] ?? '/schedule/'), 'Where the button sends visitors — a path like /schedule/ or a full web address.');
 		echo '</div></div>';
 
 		/* ---------------- Primary CTA (site-wide) ---------------- */
@@ -439,8 +439,8 @@ class AQ_Navigation {
 		echo '<div class="aq-panel"><h2>Primary CTA (site-wide)</h2>';
 		echo '<p class="aq-nav-help">The main call to action reused across the site &mdash; e.g. &ldquo;Get your free audit&rdquo;. In your page content, write <code>{cta}</code> where you want the button <strong>text</strong> and <code>{cta_href}</code> for its <strong>link</strong> (for example: <code>&lt;a href="{cta_href}"&gt;{cta}&lt;/a&gt;</code>). Both fields below fill in automatically wherever those appear, so you can change the site-wide call to action&rsquo;s wording and destination from one place.</p>';
 		echo '<div class="aq-nav-grid">';
-		self::text('primaryCta.label', 'Button text', (string) ($pcta['label'] ?? ''));
-		self::text('primaryCta.href',  'Button link', (string) ($pcta['href'] ?? '/contact/'));
+		self::text('primaryCta.label', 'Button text', (string) ($pcta['label'] ?? ''), 'The wording for your main call-to-action button, filled in wherever {cta} appears.');
+		self::text('primaryCta.href',  'Button link', (string) ($pcta['href'] ?? '/contact/'), 'Where that button links — a path like /contact/ or a full web address.');
 		echo '</div></div>';
 
 		/* ---------------- Post CTA + Blog labels ----------------------- */
@@ -453,7 +453,7 @@ class AQ_Navigation {
 		self::text('postCta.heading', 'Heading', (string) ($pcta['heading'] ?? ''));
 		self::text('postCta.body',    'Body text', (string) ($pcta['body'] ?? ''));
 		self::text('postCta.label',   'Button text', (string) ($pcta['label'] ?? ''));
-		self::text('postCta.href',    'Button link', (string) ($pcta['href'] ?? ''));
+		self::text('postCta.href',    'Button link', (string) ($pcta['href'] ?? ''), 'Where the banner button links — a path like /contact/ or a full web address.');
 		echo '</div></div>';
 		echo '<div class="aq-panel"><h2>Blog labels</h2>';
 		echo '<p class="aq-nav-help">Text labels shown on the blog index and article pages.</p>';
@@ -461,8 +461,8 @@ class AQ_Navigation {
 		self::text('blog.readMore',       '&ldquo;Read article&rdquo; link',     (string) ($blog['readMore'] ?? 'Read article'));
 		self::text('blog.moreHeading',    '&ldquo;More articles&rdquo; heading', (string) ($blog['moreHeading'] ?? 'More articles'));
 		self::text('blog.relatedHeading', '&ldquo;Keep reading&rdquo; heading',  (string) ($blog['relatedHeading'] ?? 'Keep reading'));
-		self::text('blog.tocLabel',       'Table of contents label', (string) ($blog['tocLabel'] ?? 'In this article'));
-		self::text('blog.featuredLabel',  'Featured post pill',      (string) ($blog['featuredLabel'] ?? 'Latest'));
+		self::text('blog.tocLabel',       'Table of contents label', (string) ($blog['tocLabel'] ?? 'In this article'), 'Heading above the list of links that jump to sections within an article.');
+		self::text('blog.featuredLabel',  'Featured post pill',      (string) ($blog['featuredLabel'] ?? 'Latest'), 'The small badge shown on your highlighted post, e.g. "Latest".');
 		echo '</div></div>';
 		echo '</div>';
 
@@ -471,12 +471,12 @@ class AQ_Navigation {
 		echo '<div class="aq-panel"><h2>Shared labels</h2>';
 		echo '<p class="aq-nav-help">Small text strings reused across the header, footer, and blog. Change these to match your brand language.</p>';
 		echo '<div class="aq-nav-grid">';
-		self::text('labels.licensePrefix',   'License prefix',    (string) ($labels['licensePrefix'] ?? 'License #'));
-		self::text('labels.experienceLabel',  'Experience label',  (string) ($labels['experienceLabel'] ?? 'Years Experience'));
-		self::text('labels.callPrefix',       'Call button prefix', (string) ($labels['callPrefix'] ?? 'Call'));
+		self::text('labels.licensePrefix',   'License prefix',    (string) ($labels['licensePrefix'] ?? 'License #'), 'Text placed just before your license number wherever it appears.');
+		self::text('labels.experienceLabel',  'Experience label',  (string) ($labels['experienceLabel'] ?? 'Years Experience'), 'Wording after your years count, e.g. "15 Years Experience".');
+		self::text('labels.callPrefix',       'Call button prefix', (string) ($labels['callPrefix'] ?? 'Call'), 'Word shown before your phone number on call buttons, e.g. "Call".');
 		self::text('labels.viewAll',          '&ldquo;View all&rdquo; text',   (string) ($labels['viewAll'] ?? 'View all'));
 		self::text('labels.copyright',        'Copyright text',    (string) ($labels['copyright'] ?? 'All rights reserved.'));
-		self::text('labels.countySuffix',     'County suffix',     (string) ($labels['countySuffix'] ?? 'County'));
+		self::text('labels.countySuffix',     'County suffix',     (string) ($labels['countySuffix'] ?? 'County'), 'Word added after a county name, e.g. "Middlesex County".');
 		self::text('labels.homeLabel',        'Breadcrumb &ldquo;Home&rdquo;', (string) ($labels['homeLabel'] ?? 'Home'));
 		echo '</div></div>';
 
@@ -493,10 +493,11 @@ class AQ_Navigation {
 
 	/* ---------------- render helpers ---------------- */
 
-	private static function text(string $key, string $label, string $value): void {
+	private static function text(string $key, string $label, string $value, string $help = ''): void {
 		printf(
-			'<label class="aq-nav-field"><span class="aq-nav-label">%s</span><input type="text" class="aq-nav-input" data-key="%s" value="%s" /></label>',
+			'<label class="aq-nav-field"><span class="aq-nav-label">%s%s</span><input type="text" class="aq-nav-input" data-key="%s" value="%s" /></label>',
 			esc_html($label),
+			$help !== '' ? AQ_Admin_Hub::tip($help) : '',
 			esc_attr($key),
 			esc_attr($value)
 		);

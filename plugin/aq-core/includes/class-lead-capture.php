@@ -1361,7 +1361,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			<?php wp_nonce_field('aq_forms_save'); ?>
 
 			<div class="aq-forms-card">
-				<h2>Thank-you redirect</h2>
+				<h2>Thank-you redirect <?php echo AQ_Admin_Hub::tip('The page visitors land on after they successfully submit a form.'); ?></h2>
 				<p class="aq-forms-hint">After a successful submission, visitors are sent to this page. Use a site path like <code>/thank-you/</code> or a full web address. Leave blank to keep the inline success message.</p>
 				<input type="text" name="thankyou_url" value="<?php echo esc_attr($cfg['thankyou_url']); ?>" placeholder="/thank-you/">
 			</div>
@@ -1369,14 +1369,14 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			<div class="aq-forms-card">
 				<h2>Lead notification email</h2>
 				<p class="aq-forms-hint">Every submission is emailed here, in addition to your CRM. Separate multiple addresses with commas.</p>
-				<div class="aq-forms-field"><label>Send to</label><input type="text" name="notify_to" value="<?php echo esc_attr($cfg['notify_to']); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>"></div>
-				<div class="aq-forms-field"><label>BCC</label><input type="text" name="notify_bcc" value="<?php echo esc_attr($cfg['notify_bcc']); ?>"></div>
-				<div class="aq-forms-field"><label>Subject</label><input type="text" name="notify_subject" value="<?php echo esc_attr($cfg['notify_subject']); ?>" placeholder="Website form submission"><p class="aq-forms-hint" style="margin:6px 0 0">Insert submitted details with merge tags: <code>{name}</code> <code>{first}</code> <code>{last}</code> <code>{email}</code> <code>{phone}</code> <code>{company}</code> <code>{city}</code> <code>{state}</code> <code>{zip}</code> <code>{service}</code> <code>{source}</code>. Example: <code>New lead: {name} &mdash; {city}, {state}</code>. Empty tags drop out automatically.</p></div>
+				<div class="aq-forms-field"><label>Send to <?php echo AQ_Admin_Hub::tip('Where lead notification emails are delivered, in addition to your CRM. Separate multiple addresses with commas.'); ?></label><input type="text" name="notify_to" value="<?php echo esc_attr($cfg['notify_to']); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>"></div>
+				<div class="aq-forms-field"><label>BCC <?php echo AQ_Admin_Hub::tip('Send a hidden copy of each lead email to this address. Other recipients will not see it.'); ?></label><input type="text" name="notify_bcc" value="<?php echo esc_attr($cfg['notify_bcc']); ?>"></div>
+				<div class="aq-forms-field"><label>Subject <?php echo AQ_Admin_Hub::tip('The subject line of the lead email you receive for each submission.'); ?></label><input type="text" name="notify_subject" value="<?php echo esc_attr($cfg['notify_subject']); ?>" placeholder="Website form submission"><p class="aq-forms-hint" style="margin:6px 0 0">Insert submitted details with merge tags: <code>{name}</code> <code>{first}</code> <code>{last}</code> <code>{email}</code> <code>{phone}</code> <code>{company}</code> <code>{city}</code> <code>{state}</code> <code>{zip}</code> <code>{service}</code> <code>{source}</code>. Example: <code>New lead: {name} &mdash; {city}, {state}</code>. Empty tags drop out automatically.</p></div>
 				<div class="aq-forms-field" style="margin-bottom:0"><label>Body <span style="font-weight:400;color:#888">(optional intro text shown above the lead details)</span></label><textarea name="notify_body" rows="3" placeholder="e.g. A new lead came in from the website — details below."><?php echo esc_textarea($cfg['notify_body']); ?></textarea><p class="aq-forms-hint" style="margin:6px 0 0">Same merge tags as Subject work here too.</p></div>
 			</div>
 
 			<div class="aq-forms-card">
-				<h2>Email logo</h2>
+				<h2>Email logo <?php echo AQ_Admin_Hub::tip('A logo image shown at the top of the notification emails you receive.'); ?></h2>
 				<p class="aq-forms-hint">Shown at the top of every admin form-submission email. Leave blank to use the site name as text. A wide PNG or JPG works best &mdash; it&rsquo;s sized automatically to fit the header (up to 200&times;64px).</p>
 				<div class="aq-forms-field" style="margin-bottom:10px"><input type="text" id="aq-email-logo-url" name="email_logo" value="<?php echo esc_attr($cfg['email_logo']); ?>" placeholder="https://&hellip;/logo.png" style="width:100%;max-width:520px"></div>
 				<p style="margin:0 0 12px">
@@ -1410,11 +1410,18 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 						'email_border_color' => 'Border color',
 						'email_bg'           => 'Background',
 					];
+					$aq_email_color_tips = [
+						'email_header_bg'    => 'Background color of the colored band at the top of the email.',
+						'email_header_fg'    => 'Color of the logo or site name shown in that top band.',
+						'email_accent'       => 'Color used for the accent bar and clickable links.',
+						'email_border_color' => 'Color of the thin lines and box borders in the email.',
+						'email_bg'           => 'The overall background color behind the email.',
+					];
 					foreach ($aq_email_colors as $ck => $clabel) :
 						$cv = (string) ($cfg[$ck] ?? '');
 					?>
 					<div class="aq-forms-field" style="margin-bottom:10px">
-						<label><?php echo esc_html($clabel); ?></label>
+						<label><?php echo esc_html($clabel); ?> <?php echo AQ_Admin_Hub::tip($aq_email_color_tips[$ck] ?? ''); ?></label>
 						<span style="display:inline-flex;align-items:center;gap:8px">
 							<input type="color" value="<?php echo esc_attr($cv !== '' ? $cv : '#ffffff'); ?>" data-hex-for="<?php echo esc_attr($ck); ?>" style="width:40px;height:32px;padding:0;border:1px solid #c9cfd6;border-radius:6px;cursor:pointer">
 							<input type="text" name="<?php echo esc_attr($ck); ?>" id="aqf-<?php echo esc_attr($ck); ?>" value="<?php echo esc_attr($cv); ?>" placeholder="brand default" style="width:130px" pattern="#?[0-9A-Fa-f]{3,6}">
@@ -1422,7 +1429,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 					</div>
 					<?php endforeach; ?>
 					<div class="aq-forms-field" style="margin-bottom:10px">
-						<label>Corner radius (px)</label>
+						<label>Corner radius (px) <?php echo AQ_Admin_Hub::tip('How rounded the email corners and boxes appear. Higher numbers look more rounded.'); ?></label>
 						<input type="number" name="email_radius" min="0" max="28" value="<?php echo esc_attr((string) ($cfg['email_radius'] ?? '')); ?>" placeholder="14" style="width:90px">
 					</div>
 				</div>
@@ -1444,9 +1451,9 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 					<?php echo $ghl_ready ? '<span class="aq-badge aq-badge--ok">Connected</span>' : '<span class="aq-badge aq-badge--off">Not connected</span>'; ?>
 					&nbsp; Submissions upsert a contact into GHL and attach the message as a note. Needs a Location ID and a Private Integration Token.
 				</p>
-				<div class="aq-forms-field"><label>Location ID</label><input type="text" name="ghl_location" value="<?php echo esc_attr($cfg['ghl_location']); ?>" placeholder="e.g. Abc123..."></div>
+				<div class="aq-forms-field"><label>Location ID <?php echo AQ_Admin_Hub::tip('Your GoHighLevel location ID — tells the plugin which CRM account to send leads to.'); ?></label><input type="text" name="ghl_location" value="<?php echo esc_attr($cfg['ghl_location']); ?>" placeholder="e.g. Abc123..."></div>
 				<div class="aq-forms-field" style="margin-bottom:0">
-					<label>Private Integration Token (PIT)</label>
+					<label>Private Integration Token (PIT) <?php echo AQ_Admin_Hub::tip('The secret key that lets the site connect to your GoHighLevel location. Create it in GHL under Settings, Private Integrations.'); ?></label>
 					<?php if ($ghl_locked) : ?>
 						<p class="aq-forms-hint" style="margin:0"><span class="aq-badge aq-badge--ok">Locked</span> Set by the <code>AQ_GHL_TOKEN</code> constant in wp-config.php.</p>
 					<?php else : ?>
@@ -1484,7 +1491,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 					&nbsp; When both keys are set, an hCaptcha challenge is added to every lead form automatically and each submission is verified before it reaches your inbox or CRM. Get your keys at <code>dashboard.hcaptcha.com</code>. Logged-in admins skip the challenge, so the test button still works.
 				</p>
 				<div class="aq-forms-field">
-					<label>Site key <span style="font-weight:400;color:#888">(public)</span></label>
+					<label>Site key <span style="font-weight:400;color:#888">(public)</span> <?php echo AQ_Admin_Hub::tip('The public hCaptcha key. Copy the site key from dashboard.hcaptcha.com.'); ?></label>
 					<?php if ($hc_site_locked) : ?>
 						<p class="aq-forms-hint" style="margin:0"><span class="aq-badge aq-badge--ok">Locked</span> Set by the <code>AQ_HCAPTCHA_SITE_KEY</code> constant in wp-config.php.</p>
 					<?php else : ?>
@@ -1492,7 +1499,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 					<?php endif; ?>
 				</div>
 				<div class="aq-forms-field" style="margin-bottom:0">
-					<label>Secret key</label>
+					<label>Secret key <?php echo AQ_Admin_Hub::tip('The private hCaptcha key that verifies each submission. Copy it from dashboard.hcaptcha.com.'); ?></label>
 					<?php if ($hc_sec_locked) : ?>
 						<p class="aq-forms-hint" style="margin:0"><span class="aq-badge aq-badge--ok">Locked</span> Set by the <code>AQ_HCAPTCHA_SECRET</code> constant in wp-config.php.</p>
 					<?php else : ?>
@@ -1510,9 +1517,9 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 					&nbsp; Send site email through an authenticated mailbox for reliable delivery. Leave the login blank to keep default mail.
 				</p>
 				<div class="aq-forms-row">
-					<div class="aq-forms-field" style="flex:1 1 260px"><label>SMTP host</label><input type="text" name="smtp_host" value="<?php echo esc_attr($cfg['smtp_host']); ?>" placeholder="smtp.titan.email" style="width:100%;max-width:none"></div>
-					<div class="aq-forms-field" style="width:90px"><label>Port</label><input type="number" name="smtp_port" value="<?php echo (int) $cfg['smtp_port']; ?>" style="width:100%"></div>
-					<div class="aq-forms-field" style="width:130px"><label>Encryption</label>
+					<div class="aq-forms-field" style="flex:1 1 260px"><label>SMTP host <?php echo AQ_Admin_Hub::tip('SMTP is the mail service that sends your email. Enter your provider outgoing server, e.g. smtp.titan.email.'); ?></label><input type="text" name="smtp_host" value="<?php echo esc_attr($cfg['smtp_host']); ?>" placeholder="smtp.titan.email" style="width:100%;max-width:none"></div>
+					<div class="aq-forms-field" style="width:90px"><label>Port <?php echo AQ_Admin_Hub::tip('The outgoing mail server port — usually 465 for SSL or 587 for TLS.'); ?></label><input type="number" name="smtp_port" value="<?php echo (int) $cfg['smtp_port']; ?>" style="width:100%"></div>
+					<div class="aq-forms-field" style="width:130px"><label>Encryption <?php echo AQ_Admin_Hub::tip('How the connection is secured. Match your mail provider, usually SSL (465) or TLS (587).'); ?></label>
 						<select name="smtp_secure" style="width:100%">
 							<option value="ssl" <?php selected($cfg['smtp_secure'], 'ssl'); ?>>SSL (465)</option>
 							<option value="tls" <?php selected($cfg['smtp_secure'], 'tls'); ?>>TLS (587)</option>
@@ -1520,13 +1527,13 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 						</select>
 					</div>
 				</div>
-				<div class="aq-forms-field"><label>Mailbox login (username &amp; default From)</label><input type="email" name="smtp_user" value="<?php echo esc_attr($cfg['smtp_user']); ?>" placeholder="website@example.com"></div>
+				<div class="aq-forms-field"><label>Mailbox login (username &amp; default From) <?php echo AQ_Admin_Hub::tip('The email address used to log in and send from your mailbox.'); ?></label><input type="email" name="smtp_user" value="<?php echo esc_attr($cfg['smtp_user']); ?>" placeholder="website@example.com"></div>
 				<div class="aq-forms-row">
-					<div class="aq-forms-field" style="flex:1 1 200px"><label>From address <span style="font-weight:400;color:#888">(optional)</span></label><input type="email" name="smtp_from" value="<?php echo esc_attr($cfg['smtp_from']); ?>" placeholder="(same as login)" style="width:100%;max-width:none"></div>
-					<div class="aq-forms-field" style="flex:1 1 200px"><label>From name</label><input type="text" name="smtp_from_name" value="<?php echo esc_attr($cfg['smtp_from_name']); ?>" placeholder="<?php echo esc_attr(self::site_name()); ?>" style="width:100%;max-width:none"></div>
+					<div class="aq-forms-field" style="flex:1 1 200px"><label>From address <span style="font-weight:400;color:#888">(optional)</span> <?php echo AQ_Admin_Hub::tip('The address your emails appear to come from. Leave blank to use the mailbox login.'); ?></label><input type="email" name="smtp_from" value="<?php echo esc_attr($cfg['smtp_from']); ?>" placeholder="(same as login)" style="width:100%;max-width:none"></div>
+					<div class="aq-forms-field" style="flex:1 1 200px"><label>From name <?php echo AQ_Admin_Hub::tip('The sender name recipients see, e.g. your business name.'); ?></label><input type="text" name="smtp_from_name" value="<?php echo esc_attr($cfg['smtp_from_name']); ?>" placeholder="<?php echo esc_attr(self::site_name()); ?>" style="width:100%;max-width:none"></div>
 				</div>
 				<div class="aq-forms-field" style="margin-bottom:0">
-					<label>Mailbox password</label>
+					<label>Mailbox password <?php echo AQ_Admin_Hub::tip('The password for the sending mailbox above. Stored securely and never shown again.'); ?></label>
 					<?php if ($smtp_locked) : ?>
 						<p class="aq-forms-hint" style="margin:0"><span class="aq-badge aq-badge--ok">Locked</span> Set by the <code>AQ_SMTP_PASS</code> constant in wp-config.php.</p>
 					<?php else : ?>

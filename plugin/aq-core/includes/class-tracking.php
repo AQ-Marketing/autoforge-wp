@@ -189,31 +189,31 @@ class AQ_Tracking {
 				<p class="aq-trk-hint" style="margin:4px 0 16px;">Paste just the ID or token — AutoForge generates the full, correct tag.</p>
 
 				<div class="aq-trk-field">
-					<label for="aq-trk-ga4">Google Analytics 4 — Measurement ID <span class="aq-trk-where">head</span></label>
+					<label for="aq-trk-ga4">Google Analytics 4 — Measurement ID<?php echo AQ_Admin_Hub::tip('Lets you see how many people visit your site and what they look at.'); ?> <span class="aq-trk-where">head</span></label>
 					<input type="text" id="aq-trk-ga4" name="ga4" value="<?php echo esc_attr($t['ga4']); ?>" placeholder="G-XXXXXXXXXX">
 					<p class="aq-trk-hint">From GA4 → Admin → Data Streams. Starts with <code>G-</code>.</p>
 				</div>
 
 				<div class="aq-trk-field">
-					<label for="aq-trk-gtm">Google Tag Manager — Container ID <span class="aq-trk-where">head + body</span></label>
+					<label for="aq-trk-gtm">Google Tag Manager — Container ID<?php echo AQ_Admin_Hub::tip('One place to manage all your tracking tags without editing the site.'); ?> <span class="aq-trk-where">head + body</span></label>
 					<input type="text" id="aq-trk-gtm" name="gtm" value="<?php echo esc_attr($t['gtm']); ?>" placeholder="GTM-XXXXXXX">
 					<p class="aq-trk-hint">If you manage GA4 inside GTM, set this and leave GA4 above blank. Starts with <code>GTM-</code>.</p>
 				</div>
 
 				<div class="aq-trk-field">
-					<label for="aq-trk-gsc">Google Search Console — verification <span class="aq-trk-where">head · always on</span></label>
+					<label for="aq-trk-gsc">Google Search Console — verification<?php echo AQ_Admin_Hub::tip('Proves to Google you own this site, so you can see your search traffic.'); ?> <span class="aq-trk-where">head · always on</span></label>
 					<input type="text" id="aq-trk-gsc" name="gsc" value="<?php echo esc_attr($t['gsc']); ?>" placeholder="token, or paste the whole <meta> tag">
 					<p class="aq-trk-hint">Paste the token <em>or</em> the entire <code>&lt;meta name="google-site-verification" …&gt;</code> — AutoForge extracts the token.</p>
 				</div>
 
 				<div class="aq-trk-field">
-					<label for="aq-trk-bing">Bing Webmaster — verification <span class="aq-trk-where">head · always on</span></label>
+					<label for="aq-trk-bing">Bing Webmaster — verification<?php echo AQ_Admin_Hub::tip('Same idea as the Google one, but for Microsoft Bing search.'); ?> <span class="aq-trk-where">head · always on</span></label>
 					<input type="text" id="aq-trk-bing" name="bing" value="<?php echo esc_attr($t['bing']); ?>" placeholder="token, or paste the whole <meta> tag">
 					<p class="aq-trk-hint">The <code>msvalidate.01</code> content value (token or full meta tag).</p>
 				</div>
 
 				<div class="aq-trk-field">
-					<label for="aq-trk-pixel">Meta (Facebook) Pixel — ID <span class="aq-trk-where">head + body</span></label>
+					<label for="aq-trk-pixel">Meta (Facebook) Pixel — ID<?php echo AQ_Admin_Hub::tip('Measures results from your Facebook and Instagram ads.'); ?> <span class="aq-trk-where">head + body</span></label>
 					<input type="text" id="aq-trk-pixel" name="pixel" value="<?php echo esc_attr($t['pixel']); ?>" placeholder="123456789012345">
 					<p class="aq-trk-hint">The numeric Pixel ID from Meta Events Manager.</p>
 				</div>

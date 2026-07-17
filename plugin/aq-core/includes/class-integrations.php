@@ -36,22 +36,22 @@ class AQ_Integrations {
 				'label'  => 'Claude (Anthropic)',
 				'desc'   => 'Powers every AI feature: the SEO Agent write-up and the form-email editor.',
 				'fields' => [
-					'anthropic_key' => ['label' => 'API key', 'constant' => 'AQ_ANTHROPIC_KEY', 'hint' => 'Starts with "sk-ant-". Create one at console.anthropic.com.'],
+					'anthropic_key' => ['label' => 'API key', 'constant' => 'AQ_ANTHROPIC_KEY', 'hint' => 'Starts with "sk-ant-". Create one at console.anthropic.com.', 'tip' => 'Secret key that lets the site use Claude for its AI features.'],
 				],
 			],
 			'dataforseo' => [
 				'label'  => 'DataForSEO',
 				'desc'   => 'Keyword & SERP data API (HTTP Basic auth: login + password).',
 				'fields' => [
-					'dataforseo_login'    => ['label' => 'Login (username / email)', 'constant' => 'AQ_DATAFORSEO_LOGIN', 'hint' => 'Your DataForSEO API login (the email/login from your dashboard). Shown here so you can confirm it — use Hide if you prefer.', 'visible' => true],
-					'dataforseo_password' => ['label' => 'Password', 'constant' => 'AQ_DATAFORSEO_PASSWORD', 'hint' => 'Your DataForSEO API password (the API password, not your account password). Kept hidden.'],
+					'dataforseo_login'    => ['label' => 'Login (username / email)', 'constant' => 'AQ_DATAFORSEO_LOGIN', 'hint' => 'Your DataForSEO API login (the email/login from your dashboard). Shown here so you can confirm it — use Hide if you prefer.', 'visible' => true, 'tip' => 'The login or email for your DataForSEO account.'],
+					'dataforseo_password' => ['label' => 'Password', 'constant' => 'AQ_DATAFORSEO_PASSWORD', 'hint' => 'Your DataForSEO API password (the API password, not your account password). Kept hidden.', 'tip' => 'Your DataForSEO API password, not your account password.'],
 				],
 			],
 			'github' => [
 				'label'  => 'GitHub',
 				'desc'   => 'Used by the Import tool to pull a site from a private GitHub repo. Public repos need no token.',
 				'fields' => [
-					'github_token' => ['label' => 'Personal access token', 'constant' => 'AQ_GITHUB_TOKEN', 'hint' => 'A fine-grained or classic PAT with read access to the repo. Leave empty if you only import public repos.'],
+					'github_token' => ['label' => 'Personal access token', 'constant' => 'AQ_GITHUB_TOKEN', 'hint' => 'A fine-grained or classic PAT with read access to the repo. Leave empty if you only import public repos.', 'tip' => 'A GitHub token that lets the Import tool read a private repo.'],
 				],
 			],
 		];
@@ -209,7 +209,7 @@ class AQ_Integrations {
 						$visible = !empty($def['visible']);
 						?>
 						<div class="aq-int-field">
-							<label for="aq-int-<?php echo esc_attr($key); ?>"><?php echo esc_html($def['label']); ?></label>
+							<label for="aq-int-<?php echo esc_attr($key); ?>"><?php echo esc_html($def['label']); ?><?php echo AQ_Admin_Hub::tip($def['tip'] ?? ''); ?></label>
 							<div class="aq-int-row">
 								<?php if ($visible) : // username/email — shown by default, with a Hide/Show toggle ?>
 									<input

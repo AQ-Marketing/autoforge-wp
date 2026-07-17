@@ -139,12 +139,12 @@ class AQ_Redirects_Admin {
 		echo '<input type="hidden" name="action" value="aq_redirects_save">';
 		wp_nonce_field('aq_redirects_save');
 
-		echo '<div class="aq-panel"><h2>Simple redirects</h2>';
+		echo '<div class="aq-panel"><h2>Simple redirects ' . AQ_Admin_Hub::tip('Sends visitors from an old, removed page address to a new one, instead of a not-found error.') . '</h2>';
 		echo '<p class="aq-rd-hint">One old address &rarr; one new address. Use the <strong>On</strong> toggle to pause a rule without deleting it.</p>';
 		self::table('exact', $exact, false);
 		echo '</div>';
 
-		echo '<details class="aq-panel"' . ($pattern ? ' open' : '') . '><summary><strong>Advanced &mdash; pattern rules</strong> (' . count($pattern) . ')</summary>';
+		echo '<details class="aq-panel"' . ($pattern ? ' open' : '') . '><summary><strong>Advanced &mdash; pattern rules</strong> ' . AQ_Admin_Hub::tip('Rules that match many old addresses at once using a pattern, instead of one by one.') . '(' . count($pattern) . ')</summary>';
 		echo '<p class="aq-rd-hint aq-rd-warn">Pattern rules use regular expressions and match many URLs at once. They only fire when a page would otherwise be &ldquo;not found,&rdquo; so they can&rsquo;t break a live page &mdash; but a wrong pattern can send the wrong traffic. Usually loaded via Import.</p>';
 		self::table('pattern', $pattern, true);
 		echo '</details>';

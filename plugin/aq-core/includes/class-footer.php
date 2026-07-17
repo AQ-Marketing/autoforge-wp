@@ -222,13 +222,13 @@ class AQ_Footer {
 		echo '<div class="aq-panel"><h2>Footer CTA button</h2>';
 		echo '<p class="aq-nav-help">The call-to-action in the footer and sticky call bar.</p>';
 		echo '<div class="aq-nav-grid">';
-		self::text('footerCta.label', 'Button text', (string) ($fcta['label'] ?? 'Request a Call Back'));
-		self::text('footerCta.href',  'Button link', (string) ($fcta['href'] ?? '/schedule/'));
+		self::text('footerCta.label', 'Button text', (string) ($fcta['label'] ?? 'Request a Call Back'), 'The words on the footer and sticky-bar button, e.g. "Request a Call Back".');
+		self::text('footerCta.href',  'Button link', (string) ($fcta['href'] ?? '/schedule/'), 'Where the button sends visitors — a path like /schedule/ or a full web address.');
 		echo '</div></div>';
 		echo '<div class="aq-panel"><h2>Sticky call bar</h2>';
 		echo '<p class="aq-nav-help">The bar fixed to the bottom of the screen. Button text and link come from the Footer CTA.</p>';
 		echo '<div class="aq-nav-grid">';
-		self::text('stickyBar.label', 'Prompt text', (string) ($sbar['label'] ?? 'Questions? Call us:'));
+		self::text('stickyBar.label', 'Prompt text', (string) ($sbar['label'] ?? 'Questions? Call us:'), 'Short message shown on the sticky bottom bar, before the call button.');
 		echo '</div></div>';
 		echo '</div>';
 
@@ -250,7 +250,7 @@ class AQ_Footer {
 
 		echo '<div class="aq-panel"><h2>Footer — Legal links</h2>';
 		echo '<p class="aq-nav-help">The small links in the footer&rsquo;s bottom bar.</p>';
-		echo '<table class="aq-table"><thead><tr><th style="width:30px;">#</th><th>Label</th><th>Link</th><th style="width:96px;">Order</th><th style="width:46px;"></th></tr></thead>';
+		echo '<table class="aq-table"><thead><tr><th style="width:30px;">#</th><th>Label</th><th>Link' . AQ_Admin_Hub::tip('Each link\'s destination — a path like /privacy/ or a full web address.') . '</th><th style="width:96px;">Order</th><th style="width:46px;"></th></tr></thead>';
 		echo '<tbody id="aq-nav-legal">';
 		foreach ($legal as $l) {
 			echo self::link_row_html((string) ($l['label'] ?? ''), (string) ($l['href'] ?? ''));
@@ -287,7 +287,7 @@ class AQ_Footer {
 
 	private static function footer_col(string $key, string $title, string $heading, array $links): void {
 		echo '<div class="aq-panel"><h2>' . esc_html($title) . '</h2>';
-		echo '<label class="aq-nav-field"><span class="aq-nav-label">Column heading</span>';
+		echo '<label class="aq-nav-field"><span class="aq-nav-label">Column heading' . AQ_Admin_Hub::tip('The title shown above this group of footer links.') . '</span>';
 		printf('<input type="text" class="aq-nav-input" data-key="footer.%s.heading" value="%s" /></label>', esc_attr($key), esc_attr($heading));
 		echo '<table class="aq-table" style="margin-top:14px;"><thead><tr><th style="width:30px;">#</th><th>Label</th><th>Link</th><th style="width:96px;">Order</th><th style="width:46px;"></th></tr></thead>';
 		printf('<tbody id="aq-nav-%s">', esc_attr($key));
@@ -299,10 +299,11 @@ class AQ_Footer {
 		echo '</div>';
 	}
 
-	private static function text(string $key, string $label, string $value): void {
+	private static function text(string $key, string $label, string $value, string $help = ''): void {
 		printf(
-			'<label class="aq-nav-field"><span class="aq-nav-label">%s</span><input type="text" class="aq-nav-input" data-key="%s" value="%s" /></label>',
+			'<label class="aq-nav-field"><span class="aq-nav-label">%s%s</span><input type="text" class="aq-nav-input" data-key="%s" value="%s" /></label>',
 			esc_html($label),
+			$help !== '' ? AQ_Admin_Hub::tip($help) : '',
 			esc_attr($key),
 			esc_attr($value)
 		);
