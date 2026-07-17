@@ -117,7 +117,10 @@ class AQ_Editor {
 			'schema'    => self::field_schema(),
 			'labels'    => self::layout_labels(),
 			'icons'     => self::icon_library(),
-			'assistant' => false,
+			// SEO review gate (AQ_Editor_Review): agency admins bypass it (direct
+			// Save); everyone else must Review & Publish. Drives the builder's buttons.
+			'canBypass'     => !class_exists('AQ_Editor_Review') || AQ_Editor_Review::can_bypass(),
+			'reviewEnabled' => class_exists('AQ_Editor_Review') && AQ_Editor_Review::is_enabled(),
 		]);
 
 		echo '<div id="aq-builder-root" data-page-id="' . (int) $page_id . '">'
@@ -191,6 +194,12 @@ class AQ_Editor {
 		}
 		if (!current_user_can('edit_post', $id)) {
 			return new WP_Error('aq_forbidden', 'You cannot edit this page.', ['status' => 403]);
+		}
+		// SEO review gate: non-agency editors cannot write directly. Their edits must
+		// go through /editor/review → /editor/commit so the AI guardian vets them
+		// first — this is what makes the gate impossible to POST around.
+		if (class_exists('AQ_Editor_Review') && AQ_Editor_Review::should_gate()) {
+			return new WP_Error('aq_review_required', 'Changes to this page must be reviewed before publishing. Use “Review & Publish”.', ['status' => 403]);
 		}
 		if (!class_exists('AQ_Content_Sync')) {
 			return new WP_Error('aq_no_sync', 'Content sync unavailable.', ['status' => 500]);

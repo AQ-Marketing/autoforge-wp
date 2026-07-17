@@ -14,11 +14,14 @@
 	var CFG = window.AQ_EDITOR;
 	if (!CFG) { return; }
 	var ORIGIN = window.location.origin;
+	// GATED = the SEO review gate applies to this user (review feature on AND not an
+	// agency admin). Gated users get "Review & Publish"; bypass users keep "Save".
+	var GATED = !!CFG.reviewEnabled && !CFG.canBypass;
 
-	var state = { sections: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {} };
+	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, review: null, decisions: {}, confirmed: {} };
 	var uid = 0;
 	var els = {};
-	var asstBusy = false;
+	function clone(x) { return JSON.parse(JSON.stringify(x)); }
 
 	/* ---------------- helpers ---------------- */
 	function ce(tag, cls, text) {
@@ -40,7 +43,11 @@
 	function labelFor(type) { return (CFG.labels && CFG.labels[type]) || type; }
 	function setDirty(v) {
 		state.dirty = v;
-		if (els.save) { els.save.disabled = !v; els.save.textContent = v ? 'Save changes' : 'Saved'; }
+		if (els.save) {
+			els.save.disabled = !v;
+			els.save.textContent = GATED ? 'Review & Publish' : (v ? 'Save changes' : 'Saved');
+		}
+		if (els.reviewBtn) { els.reviewBtn.disabled = !v; }
 		if (els.dirty) { els.dirty.style.display = v ? 'inline' : 'none'; }
 	}
 
@@ -73,15 +80,22 @@
 		els.dev = mid;
 
 		var right = ce('div', 'aqb-topbar__r');
-		els.asstBtn = ce('button', 'aqb-btn aqb-btn--ghost', '✨ Assistant');
-		els.asstBtn.addEventListener('click', function () { toggleAssistant(); });
-		right.appendChild(els.asstBtn);
 		var view = ce('a', 'aqb-btn aqb-btn--ghost', 'View live ↗');
 		view.href = CFG.permalink; view.target = '_blank'; view.rel = 'noopener';
-		els.save = ce('button', 'aqb-btn aqb-btn--primary', 'Saved');
-		els.save.disabled = true;
-		els.save.addEventListener('click', save);
 		right.appendChild(view);
+		// Agency admins (bypass) keep a direct Save, plus an OPTIONAL "Review" button
+		// for a second opinion. Gated users get only "Review & Publish" — their sole
+		// write path (the direct /save endpoint 403s them server-side).
+		if (!GATED && CFG.reviewEnabled) {
+			els.reviewBtn = ce('button', 'aqb-btn aqb-btn--ghost', 'Review');
+			els.reviewBtn.title = 'Check these changes for SEO / brand issues (optional)';
+			els.reviewBtn.disabled = true;
+			els.reviewBtn.addEventListener('click', startReview);
+			right.appendChild(els.reviewBtn);
+		}
+		els.save = ce('button', 'aqb-btn aqb-btn--primary', GATED ? 'Review & Publish' : 'Saved');
+		els.save.disabled = true;
+		els.save.addEventListener('click', GATED ? startReview : save);
 		right.appendChild(els.save);
 
 		bar.appendChild(left); bar.appendChild(mid); bar.appendChild(right);
@@ -104,99 +118,202 @@
 		root.appendChild(bar);
 		root.appendChild(body);
 
-		els.assistant = ce('div', 'aqb-asst');
-		els.assistant.style.display = 'none';
-		root.appendChild(els.assistant);
+		els.reviewPanel = ce('div', 'aqb-review');
+		els.reviewPanel.style.display = 'none';
+		root.appendChild(els.reviewPanel);
 	}
 
-	/* ---------------- AI assistant ---------------- */
-	function toggleAssistant(force) {
-		if (!els.assistant) { return; }
-		var open = typeof force === 'boolean' ? force : els.assistant.style.display === 'none';
-		if (open && !els.asstLog) { buildAssistant(); }
-		els.assistant.style.display = open ? 'flex' : 'none';
-		if (els.asstBtn) { els.asstBtn.classList.toggle('is-active', open); }
-		if (open && els.asstInput) { els.asstInput.focus(); }
-	}
-	function buildAssistant() {
-		var p = els.assistant;
-		p.innerHTML = '';
-		var head = ce('div', 'aqb-asst__head');
-		head.appendChild(ce('span', 'aqb-asst__title', '✨ AI Assistant'));
-		var close = ce('button', 'aqb-icon', '✕'); close.title = 'Close';
-		close.addEventListener('click', function () { toggleAssistant(false); });
-		head.appendChild(close);
-		p.appendChild(head);
+	/* ---------------- SEO review gate ---------------- */
 
-		if (!CFG.assistant) {
-			var setup = ce('div', 'aqb-asst__log');
-			setup.appendChild(ce('div', 'aqb-asst__hint', 'The assistant needs a Claude API key. Add one under AutoForge → Integrations, then reopen this editor.'));
-			p.appendChild(setup);
-			return;
-		}
-
-		els.asstLog = ce('div', 'aqb-asst__log');
-		els.asstLog.appendChild(ce('div', 'aqb-asst__hint',
-			'Describe a change in plain English — e.g. "change the hero heading to …", "add an FAQ about radon", "remove the testimonials section". I\'ll propose edits for you to review, then Save.'));
-		p.appendChild(els.asstLog);
-
-		var form = ce('div', 'aqb-asst__form');
-		els.asstInput = ce('textarea', 'aqb-input aqb-asst__input'); els.asstInput.rows = 2;
-		els.asstInput.placeholder = 'Ask the assistant to edit this page… (Ctrl/⌘+Enter to send)';
-		els.asstInput.addEventListener('keydown', function (e) {
-			if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); sendAssistant(); }
+	// Strip transient client keys but KEEP _uid — the server matches before↔after
+	// sections by _uid to build an accurate change list.
+	function reviewPayload(list) {
+		return list.map(function (s) {
+			var c = {};
+			for (var k in s) { if (k === '_uid' || k.charAt(0) !== '_') { c[k] = s[k]; } }
+			return c;
 		});
-		form.appendChild(els.asstInput);
-		els.asstSend = ce('button', 'aqb-btn aqb-btn--primary', 'Send');
-		els.asstSend.addEventListener('click', sendAssistant);
-		form.appendChild(els.asstSend);
-		p.appendChild(form);
 	}
-	function asstAppend(role, text) {
-		var m = ce('div', 'aqb-asst__msg aqb-asst__msg--' + role);
-		m.appendChild(ce('div', 'aqb-asst__who', role === 'user' ? 'You' : 'Assistant'));
-		m.appendChild(ce('div', 'aqb-asst__text', text));
-		els.asstLog.appendChild(m);
-		els.asstLog.scrollTop = els.asstLog.scrollHeight;
-		return m;
+
+	function openReview() { if (els.reviewPanel) { els.reviewPanel.style.display = 'flex'; } }
+	function closeReview() { if (els.reviewPanel) { els.reviewPanel.style.display = 'none'; } }
+
+	function reviewHead(title) {
+		var head = ce('div', 'aqb-review__head');
+		head.appendChild(ce('span', 'aqb-review__title', title || 'Review changes'));
+		var x = ce('button', 'aqb-icon', '✕'); x.title = 'Close';
+		x.addEventListener('click', closeReview);
+		head.appendChild(x);
+		return head;
 	}
-	function sendAssistant() {
-		if (asstBusy) { return; }
-		var text = (els.asstInput.value || '').trim();
-		if (!text) { return; }
-		asstAppend('user', text);
-		els.asstInput.value = '';
-		asstBusy = true; els.asstSend.disabled = true; els.asstSend.textContent = 'Thinking…';
-		var payload = state.sections.map(function (s) { var c = {}; for (var k in s) { if (k.charAt(0) !== '_') { c[k] = s[k]; } } return c; });
-		api('/assistant', { method: 'POST', body: { id: CFG.pageId, message: text, sections: payload } })
+	function reviewMessage(msg, isErr) {
+		var p = els.reviewPanel; p.innerHTML = '';
+		p.appendChild(reviewHead('Review'));
+		p.appendChild(ce('div', 'aqb-review__msg' + (isErr ? ' is-error' : ''), msg));
+	}
+	function reviewLoading() {
+		var p = els.reviewPanel; p.innerHTML = '';
+		p.appendChild(reviewHead('Review changes'));
+		p.appendChild(ce('div', 'aqb-review__loading', 'Checking your changes for SEO & brand issues…'));
+	}
+	function sevLabel(s) { return s === 'high' ? 'High-risk' : (s === 'caution' ? 'Caution' : 'OK'); }
+	function pill(sev, text) { return ce('span', 'aqb-sev aqb-sev--' + sev, text); }
+
+	// Run the AI review of the pending edit (base → current). Writes nothing.
+	function startReview() {
+		if (!state.dirty) { return; }
+		openReview();
+		reviewLoading();
+		api('/review', { method: 'POST', body: { id: CFG.pageId, base: reviewPayload(state.base), proposed: reviewPayload(state.sections) } })
 			.then(function (d) {
-				asstBusy = false; els.asstSend.disabled = false; els.asstSend.textContent = 'Send';
 				if (!d || d.ok === false) {
-					asstAppend('bot', 'Sorry — ' + ((d && (d.message || d.code)) || 'something went wrong.'));
+					reviewMessage((d && (d.message || d.code)) || 'Review failed. Please try again.', true);
 					return;
 				}
-				var m = asstAppend('bot', d.reply || 'Here is a proposed change.');
-				if (d.proposal && d.proposal.length) {
-					var apply = ce('button', 'aqb-btn aqb-btn--primary aqb-asst__apply', 'Apply change (' + d.proposal.length + ' sections)');
-					apply.addEventListener('click', function () {
-						applyProposal(d.proposal);
-						apply.disabled = true; apply.textContent = 'Applied — review & Save';
-					});
-					m.appendChild(apply);
+				if (d.empty) { reviewMessage('No changes to review yet.'); return; }
+				state.review = d;
+				state.decisions = {};
+				state.confirmed = {};
+				// Sensible defaults: safe changes pre-allowed, high-risk pre-denied.
+				d.changes.forEach(function (c) { state.decisions[c.id] = (c.severity === 'high') ? 'deny' : 'allow'; });
+				renderReview(d);
+			})
+			.catch(function (e) { reviewMessage('Review failed: ' + e.message, true); });
+	}
+
+	function renderReview(d) {
+		var p = els.reviewPanel; p.innerHTML = '';
+		p.appendChild(reviewHead('Review changes'));
+
+		var sum = ce('div', 'aqb-review__summary');
+		var counts = d.counts || { ok: 0, caution: 0, high: 0 };
+		var row = ce('div', 'aqb-review__counts');
+		row.appendChild(pill('ok', counts.ok + ' OK'));
+		row.appendChild(pill('caution', counts.caution + ' Caution'));
+		row.appendChild(pill('high', counts.high + ' High-risk'));
+		sum.appendChild(row);
+		if (d.overall && d.overall.summary) { sum.appendChild(ce('p', 'aqb-review__overall', d.overall.summary)); }
+		if (!d.usedAi) { sum.appendChild(ce('p', 'aqb-review__ainote', 'No AI key set — using built-in SEO checks. Add a Claude key under AutoForge → Integrations for smarter reviews.')); }
+		p.appendChild(sum);
+
+		var list = ce('div', 'aqb-review__list');
+		d.changes.forEach(function (c) { list.appendChild(reviewCard(c)); });
+		p.appendChild(list);
+
+		var foot = ce('div', 'aqb-review__foot');
+		var keep = ce('button', 'aqb-btn aqb-btn--ghost', 'Keep editing');
+		keep.addEventListener('click', closeReview);
+		var safe = ce('button', 'aqb-btn aqb-btn--ghost', 'Allow all safe');
+		safe.addEventListener('click', function () {
+			d.changes.forEach(function (c) { if (c.severity !== 'high') { state.decisions[c.id] = 'allow'; } });
+			renderReview(d);
+		});
+		els.publish = ce('button', 'aqb-btn aqb-btn--primary', 'Publish allowed changes');
+		els.publish.addEventListener('click', commitReview);
+		foot.appendChild(keep); foot.appendChild(safe); foot.appendChild(els.publish);
+		p.appendChild(foot);
+	}
+
+	function reviewCard(c) {
+		var card = ce('div', 'aqb-rev aqb-rev--' + c.severity);
+		var top = ce('div', 'aqb-rev__top');
+		top.appendChild(pill(c.severity, sevLabel(c.severity)));
+		top.appendChild(ce('span', 'aqb-rev__title', c.title || c.label));
+		card.appendChild(top);
+		if (c.reason) { card.appendChild(ce('p', 'aqb-rev__reason', c.reason)); }
+
+		if (c.before || c.after) {
+			var ba = ce('div', 'aqb-rev__ba');
+			if (c.before) {
+				var b = ce('div', 'aqb-rev__side aqb-rev__side--before');
+				b.appendChild(ce('span', 'aqb-rev__lbl', 'Before'));
+				b.appendChild(ce('span', 'aqb-rev__txt', c.before));
+				ba.appendChild(b);
+			}
+			if (c.after) {
+				var a = ce('div', 'aqb-rev__side aqb-rev__side--after');
+				a.appendChild(ce('span', 'aqb-rev__lbl', 'After'));
+				a.appendChild(ce('span', 'aqb-rev__txt', c.after));
+				ba.appendChild(a);
+			}
+			card.appendChild(ba);
+		}
+		if (c.suggestion) { card.appendChild(ce('p', 'aqb-rev__sug', '💡 ' + c.suggestion)); }
+
+		var confirmWrap = null;
+		var ctrl = ce('div', 'aqb-rev__ctrl');
+		var allowBtn = ce('button', 'aqb-choice aqb-choice--allow', 'Allow');
+		var denyBtn = ce('button', 'aqb-choice aqb-choice--deny', 'Deny');
+		function paint() {
+			var dec = state.decisions[c.id];
+			allowBtn.classList.toggle('is-on', dec === 'allow');
+			denyBtn.classList.toggle('is-on', dec === 'deny');
+			if (confirmWrap) { confirmWrap.style.display = (dec === 'allow') ? 'flex' : 'none'; }
+		}
+		allowBtn.addEventListener('click', function () { state.decisions[c.id] = 'allow'; paint(); });
+		denyBtn.addEventListener('click', function () { state.decisions[c.id] = 'deny'; paint(); });
+		ctrl.appendChild(allowBtn); ctrl.appendChild(denyBtn);
+		card.appendChild(ctrl);
+
+		if (c.severity === 'high') {
+			confirmWrap = ce('label', 'aqb-rev__confirm');
+			var cb = ce('input'); cb.type = 'checkbox'; cb.checked = !!state.confirmed[c.id];
+			cb.addEventListener('change', function () { state.confirmed[c.id] = cb.checked; });
+			confirmWrap.appendChild(cb);
+			confirmWrap.appendChild(ce('span', null, 'I understand this may hurt SEO'));
+			card.appendChild(confirmWrap);
+		}
+		paint();
+		return card;
+	}
+
+	// Apply the user's allow/deny decisions: the server rebuilds the final set and
+	// writes it. High-risk allows must be confirmed (also re-checked server-side).
+	function commitReview() {
+		var d = state.review;
+		if (!d) { return; }
+		var missing = d.changes.filter(function (c) {
+			return c.severity === 'high' && state.decisions[c.id] === 'allow' && !state.confirmed[c.id];
+		});
+		if (missing.length) {
+			window.alert('Please tick “I understand this may hurt SEO” for the high-risk change(s) you want to allow — ' + missing.length + ' still unconfirmed.');
+			return;
+		}
+		var confirmedHighRisk = d.changes.filter(function (c) {
+			return c.severity === 'high' && state.decisions[c.id] === 'allow';
+		}).map(function (c) { return c.id; });
+
+		if (els.publish) { els.publish.disabled = true; els.publish.textContent = 'Publishing…'; }
+		api('/commit', { method: 'POST', body: { id: CFG.pageId, reviewId: d.reviewId, decisions: state.decisions, confirmedHighRisk: confirmedHighRisk } })
+			.then(function (r) {
+				if (r && r.ok) {
+					closeReview();
+					reloadFromServer(r.sections);
+					setDirty(false);
+					state.rehighlight = state.selected;
+					els.iframe.src = CFG.canvasUrl; // reload to show the true render
+					return;
 				}
+				if (els.publish) { els.publish.disabled = false; els.publish.textContent = 'Publish allowed changes'; }
+				if (r && (r.stale || r.expired)) { reviewMessage((r.message || 'Please run the review again.'), true); }
+				else if (r && r.needConfirm) { window.alert('Please confirm the high-risk changes before publishing.'); }
+				else { window.alert('Publish failed: ' + ((r && (r.message || r.code)) || 'unknown error')); }
 			})
 			.catch(function (e) {
-				asstBusy = false; els.asstSend.disabled = false; els.asstSend.textContent = 'Send';
-				asstAppend('bot', 'Request failed: ' + e.message);
+				if (els.publish) { els.publish.disabled = false; els.publish.textContent = 'Publish allowed changes'; }
+				window.alert('Publish failed: ' + e.message);
 			});
 	}
-	function applyProposal(sections) {
-		state.sections = sections.map(function (s) { s._uid = ++uid; return s; });
-		state.selected = -1;
-		setDirty(true);
+
+	// After a commit, adopt the server's committed sections as the new working set
+	// + base, so denied changes visibly revert and the next review diffs correctly.
+	function reloadFromServer(sections) {
+		state.sections = (sections || []).map(function (s) { s._uid = ++uid; return s; });
+		state.base = clone(state.sections);
+		state.review = null; state.decisions = {}; state.confirmed = {};
+		if (state.selected >= state.sections.length) { state.selected = -1; }
 		renderStructure();
 		renderInspector();
-		asstAppend('bot', 'Loaded the changes into the editor. Review on the left/center, then click Save to publish.');
 	}
 
 	function setDevice(d) {
@@ -537,6 +654,7 @@
 			.then(function (d) {
 				if (d && d.ok) {
 					setDirty(false);
+					state.base = clone(state.sections); // committed → next (optional) review diffs from here
 					state.rehighlight = state.selected;
 					els.iframe.src = CFG.canvasUrl; // reload to show the true render
 				} else {
@@ -610,6 +728,7 @@
 		api('/page/' + CFG.pageId).then(function (d) {
 			state.images = (d && d.images) ? d.images : {};
 			state.sections = (d && d.sections ? d.sections : []).map(function (s) { s._uid = ++uid; return s; });
+			state.base = clone(state.sections); // snapshot the loaded page to diff against at review time
 			renderStructure();
 			renderInspector();
 			setDirty(false);
