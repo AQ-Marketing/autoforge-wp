@@ -43,6 +43,26 @@ $logo_html = function ($swappable = false) use ($logo_url, $sticky_logo_url, $si
 <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
 <button class="to-top" id="toTop" aria-label="Back to top"><i class="fa-solid fa-arrow-up"></i></button>
 
+<style id="aq-mega-layout">
+/* Mega-menu layout. Lives here (not the compiled main.css) so it survives a CSS
+   rebuild — see the per-client Tailwind-build lag note. */
+/* The feature / CTA card always sits in the far-right column of every dropdown. */
+.mega-cols .mega-feature{grid-column:-2 / -1;}
+/* A single-group panel (e.g. Portfolio = one group + feature): let the group use
+   the freed width and lay its links out two-across instead of one narrow stack.
+   Keys off the feature being the 2nd child, i.e. exactly one group precedes it. */
+.mega-cols:has(> .mega-feature:nth-child(2)) > .mega-col:first-child{
+  grid-column:1 / -2;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  column-gap:24px;
+  row-gap:2px;
+  align-content:start;
+}
+.mega-cols:has(> .mega-feature:nth-child(2)) > .mega-col:first-child .mega-label{
+  grid-column:1 / -1;
+}
+</style>
 <nav class="top">
   <div class="wrap row">
     <?php $logo_html(true); ?>
