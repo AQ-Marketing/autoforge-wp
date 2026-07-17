@@ -144,6 +144,7 @@ class AQ_Admin_Hub {
 			'aq-tracking'   => 'Tracking',
 			'aq-integrations'=> 'Integrations',
 			'aq-import'     => 'Import',
+			'aq-help'       => 'Help',
 		];
 		echo '<div class="aq-hub__tabs">';
 		foreach ($tabs as $slug => $label) {
