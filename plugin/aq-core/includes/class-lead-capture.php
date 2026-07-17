@@ -400,6 +400,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'notify_to'      => '',
 			'notify_bcc'     => '',
 			'notify_subject' => '',
+			'notify_body'    => '',
 			'email_template' => '',
 			'test_recipient' => 'robert@aqmarketing.com, justin@aqmarketing.com',
 			'smtp_host'      => '',
@@ -1008,7 +1009,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 	/**
 	 * Placeholder values injected into the email template. Every value is already
 	 * escaped/safe; the template is admin-authored HTML. Tokens: {{site}} {{host}}
-	 * {{when}} {{title}} {{accent}} {{ink}} {{muted}} {{line}} {{soft}}
+	 * {{when}} {{title}} {{intro}} {{accent}} {{ink}} {{muted}} {{line}} {{soft}}
 	 * {{header_bg}} {{header_fg}} {{font}} {{phone}} {{home_url}} {{rows}}
 	 * {{banner}} {{foot}}.
 	 */
@@ -1020,6 +1021,10 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		// so {name}/{city}/{state} etc. resolve in the email H1 too — not just the
 		// subject line. Without this the raw template shows literally in the body.
 		$title = $cfg['notify_subject'] !== '' ? self::fill_subject_tokens($cfg['notify_subject'], $f) : 'New website form submission';
+		// Optional admin-authored intro paragraph, same merge tags as the subject.
+		$intro = trim((string) ($cfg['notify_body'] ?? '')) !== ''
+			? '<p style="margin:0 0 18px;color:' . $ink . ';font-size:14px;line-height:1.6;font-family:' . $font . ';">' . nl2br(esc_html(self::fill_subject_tokens($cfg['notify_body'], $f))) . '</p>'
+			: '';
 		$when  = function_exists('wp_date') ? wp_date('F j, Y \a\t g:i a') : date('F j, Y');
 		$site  = self::site_name();
 		$host  = (string) wp_parse_url(home_url(), PHP_URL_HOST);
@@ -1087,7 +1092,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 
 		return [
 			'site' => esc_html($site), 'host' => esc_html($host), 'when' => esc_html($when),
-			'title' => esc_html($title), 'phone' => esc_html($phone), 'home_url' => esc_url(home_url('/')),
+			'title' => esc_html($title), 'intro' => $intro, 'phone' => esc_html($phone), 'home_url' => esc_url(home_url('/')),
 			'accent' => $accent, 'ink' => $ink, 'muted' => $muted, 'line' => $line, 'soft' => $t['soft'],
 			'header_bg' => $t['header_bg'], 'header_fg' => $t['header_fg'], 'font' => $font,
 			'radius' => (int) ($t['radius'] ?? 14),
@@ -1106,7 +1111,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			. '<tr><td style="padding:26px 30px 6px;">{{banner}}'
 			. '<p style="margin:0 0 4px;color:{{accent}};font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-family:{{font}};">New website enquiry</p>'
 			. '<h1 style="margin:0 0 6px;color:{{ink}};font-size:22px;font-weight:800;font-family:{{font}};">{{title}}</h1>'
-			. '<p style="margin:0 0 16px;color:{{muted}};font-size:13px;font-family:{{font}};">Submitted from {{host}} on {{when}}.</p></td></tr>'
+			. '<p style="margin:0 0 16px;color:{{muted}};font-size:13px;font-family:{{font}};">Submitted from {{host}} on {{when}}.</p>{{intro}}</td></tr>'
 			. '<tr><td style="padding:0 30px 26px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">{{rows}}</table></td></tr>'
 			. '<tr><td align="center" style="background:{{soft}};padding:18px 30px;border-top:1px solid {{line}};"><p style="margin:0;color:{{muted}};font-size:12px;font-family:{{font}};">{{foot}}</p></td></tr>'
 			. '</table></td></tr></table></body></html>';
@@ -1366,7 +1371,8 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 				<p class="aq-forms-hint">Every submission is emailed here, in addition to your CRM. Separate multiple addresses with commas.</p>
 				<div class="aq-forms-field"><label>Send to</label><input type="text" name="notify_to" value="<?php echo esc_attr($cfg['notify_to']); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>"></div>
 				<div class="aq-forms-field"><label>BCC</label><input type="text" name="notify_bcc" value="<?php echo esc_attr($cfg['notify_bcc']); ?>"></div>
-				<div class="aq-forms-field" style="margin-bottom:0"><label>Subject</label><input type="text" name="notify_subject" value="<?php echo esc_attr($cfg['notify_subject']); ?>" placeholder="Website form submission"><p class="aq-forms-hint" style="margin:6px 0 0">Insert submitted details with merge tags: <code>{name}</code> <code>{first}</code> <code>{last}</code> <code>{email}</code> <code>{phone}</code> <code>{company}</code> <code>{city}</code> <code>{state}</code> <code>{zip}</code> <code>{service}</code> <code>{source}</code>. Example: <code>New lead: {name} &mdash; {city}, {state}</code>. Empty tags drop out automatically.</p></div>
+				<div class="aq-forms-field"><label>Subject</label><input type="text" name="notify_subject" value="<?php echo esc_attr($cfg['notify_subject']); ?>" placeholder="Website form submission"><p class="aq-forms-hint" style="margin:6px 0 0">Insert submitted details with merge tags: <code>{name}</code> <code>{first}</code> <code>{last}</code> <code>{email}</code> <code>{phone}</code> <code>{company}</code> <code>{city}</code> <code>{state}</code> <code>{zip}</code> <code>{service}</code> <code>{source}</code>. Example: <code>New lead: {name} &mdash; {city}, {state}</code>. Empty tags drop out automatically.</p></div>
+				<div class="aq-forms-field" style="margin-bottom:0"><label>Body <span style="font-weight:400;color:#888">(optional intro text shown above the lead details)</span></label><textarea name="notify_body" rows="3" placeholder="e.g. A new lead came in from the website — details below."><?php echo esc_textarea($cfg['notify_body']); ?></textarea><p class="aq-forms-hint" style="margin:6px 0 0">Same merge tags as Subject work here too.</p></div>
 			</div>
 
 			<div class="aq-forms-card">
@@ -1639,6 +1645,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'notify_to'      => self::clean_emails($in['notify_to'] ?? ''),
 			'notify_bcc'     => self::clean_emails($in['notify_bcc'] ?? ''),
 			'notify_subject' => sanitize_text_field($in['notify_subject'] ?? ''),
+			'notify_body'    => sanitize_textarea_field($in['notify_body'] ?? ''),
 			'smtp_host'      => sanitize_text_field($in['smtp_host'] ?? ''),
 			'smtp_port'      => $port,
 			'smtp_secure'    => $secure,
