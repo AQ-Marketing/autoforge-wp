@@ -15,7 +15,18 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.3.24');
+define('AQ_CORE_VERSION', '0.3.25');
+
+/**
+ * Agency email domain whose ADMINS bypass the visual-editor SEO review gate
+ * (AQ_Editor_Review). Everyone else (client admins/editors) is gated: their
+ * edits are AI-reviewed for SEO/brand risk and require allow/deny approval
+ * before publishing. Define in wp-config.php to point the engine at a different
+ * agency, or use the `aq_editor_bypass_review` filter for finer control.
+ */
+if (!defined('AQ_AGENCY_EMAIL_DOMAIN')) {
+	define('AQ_AGENCY_EMAIL_DOMAIN', 'aqmarketing.com');
+}
 
 /**
  * Site-wide noindex posture, mirroring the Astro PUBLIC_NOINDEX behavior.
@@ -87,6 +98,7 @@ require_once AQ_CORE_DIR . 'includes/class-locations.php';
 require_once AQ_CORE_DIR . 'includes/class-performance.php';
 require_once AQ_CORE_DIR . 'includes/class-editor.php';
 require_once AQ_CORE_DIR . 'includes/class-claude.php';
+require_once AQ_CORE_DIR . 'includes/class-editor-review.php';
 require_once AQ_CORE_DIR . 'includes/class-integrations.php';
 require_once AQ_CORE_DIR . 'includes/class-importer.php';
 require_once AQ_CORE_DIR . 'includes/class-global-styles.php';
@@ -136,6 +148,7 @@ AQ_SEO_Manager::register();
 AQ_Locations::register();
 AQ_Performance::register();
 AQ_Editor::register();
+AQ_Editor_Review::register();
 AQ_Integrations::register();
 AQ_Importer::register();
 AQ_Global_Styles::register();

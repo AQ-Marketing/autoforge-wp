@@ -64,6 +64,10 @@ class AQ_SEO_Agent {
 			'track_serp' => true,                       // per-keyword Google position
 			'track_ai'   => true,                        // AI-assistant (Perplexity) visibility
 			'ai_prompt'  => self::default_ai_prompt(),
+			// Visual-editor SEO review gate (AQ_Editor_Review) — shares this option store.
+			'review_enabled' => true,                    // gate non-agency editors' builder saves
+			'review_model'   => '',                      // '' = engine default (Sonnet, fast)
+			'review_brief'   => '',                      // extra brand/SEO context for the guardian
 		];
 	}
 
@@ -817,6 +821,28 @@ class AQ_SEO_Agent {
 				</div>
 			</div>
 
+			<div class="aq-panel">
+				<h2 style="margin-top:0;">Editor review (SEO guard)</h2>
+				<p class="aq-sa-hint" style="margin-top:0;">When on, edits made in the visual builder are checked by AI for SEO &amp; brand risk and need allow/deny approval before they publish. Administrators with an <code><?php echo esc_html('@' . AQ_AGENCY_EMAIL_DOMAIN); ?></code> email bypass the gate and save directly.</p>
+				<label class="aq-sa-check"><input type="checkbox" name="review_enabled" value="1" <?php checked(!empty($o['review_enabled'])); ?>>
+					<span><strong>Review edits before publishing</strong><?php echo AQ_Admin_Hub::tip('Off = every editor saves directly with no AI review (not recommended).'); ?></span></label>
+				<div class="aq-sa-field" style="margin-top:12px;">
+					<label class="aq-sa-lbl" for="aq-sa-rmodel">Review AI model<?php echo AQ_Admin_Hub::tip('Which Claude model reviews edits. Sonnet is fast and low-cost — a good default for on-save checks.'); ?></label>
+					<select name="review_model" id="aq-sa-rmodel">
+						<option value="" <?php selected((string) ($o['review_model'] ?? ''), ''); ?>>Engine default (Sonnet — fast)</option>
+						<?php foreach ((class_exists('AQ_Claude') ? AQ_Claude::models() : []) as $mid => $mlabel) : ?>
+							<option value="<?php echo esc_attr((string) $mid); ?>" <?php selected((string) ($o['review_model'] ?? ''), (string) $mid); ?>><?php echo esc_html((string) $mlabel); ?></option>
+						<?php endforeach; ?>
+					</select>
+					<p class="aq-sa-hint">Needs a Claude key under <a href="<?php echo esc_url($int_url); ?>">Integrations</a>. With no key, edits are still checked by built-in rules.</p>
+				</div>
+				<div class="aq-sa-field">
+					<label class="aq-sa-lbl" for="aq-sa-rbrief">Brand &amp; SEO brief for the reviewer<?php echo AQ_Admin_Hub::tip('Optional notes the AI enforces — brand voice, must-keep phrases, priority keywords, things never to change.'); ?></label>
+					<textarea id="aq-sa-rbrief" name="review_brief" spellcheck="true" style="font-family:inherit;font-size:13px;min-height:90px;"><?php echo esc_textarea((string) ($o['review_brief'] ?? '')); ?></textarea>
+					<p class="aq-sa-hint">Optional. Extra context the guardian uses when judging edits — e.g. “Always keep ‘licensed &amp; insured’ in the hero. Priority keywords: mold inspection Woburn, radon testing.”</p>
+				</div>
+			</div>
+
 			<p>
 				<?php submit_button('Save settings', 'primary', 'submit', false); ?>
 				<button type="button" class="button" id="aq-sa-run" style="margin-left:8px;" <?php disabled(!$dfs); ?>>Send a report now</button>
@@ -898,6 +924,12 @@ class AQ_SEO_Agent {
 		$kw  = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', $raw)));
 		$kw  = array_map('sanitize_text_field', array_values(array_unique($kw)));
 		$o['keywords'] = array_slice($kw, 0, self::MAX_TRACKED) ?: self::default_keywords();
+
+		// Visual-editor SEO review gate settings.
+		$o['review_enabled'] = !empty($_POST['review_enabled']);
+		$rmodel              = isset($_POST['review_model']) ? sanitize_text_field((string) wp_unslash($_POST['review_model'])) : '';
+		$o['review_model']   = (class_exists('AQ_Claude') && array_key_exists($rmodel, AQ_Claude::models())) ? $rmodel : '';
+		$o['review_brief']   = isset($_POST['review_brief']) ? sanitize_textarea_field((string) wp_unslash($_POST['review_brief'])) : '';
 
 		update_option(self::OPTION, $o, false);
 		// Re-align the cron schedule with the saved settings.
