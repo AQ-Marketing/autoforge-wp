@@ -581,6 +581,13 @@ $layouts['contact_form'] = [
 // content intact across plugin updates.
 $layouts = apply_filters('aq_section_layouts', $layouts);
 
+// Expose the resolved layout schema (incl. theme-added layouts) so the visual
+// builder can auto-surface each section's design controls (background, spacing,
+// columns, alignment…) using their real ACF choices + defaults. Read via
+// $GLOBALS in AQ_Editor::merge_acf_design(). Set here, on acf/init, so it is
+// always populated before the editor screen / REST routes run.
+$GLOBALS['aq_core_section_layouts'] = $layouts;
+
 acf_add_local_field_group([
 	'key' => 'group_aq_sections',
 	'title' => 'Page Sections',

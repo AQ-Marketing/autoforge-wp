@@ -700,7 +700,128 @@ class AQ_Editor {
 		 * A theme adds: $schema['my_layout'] = ['fields' => [ ['name'=>..,'label'=>..,'type'=>..], ]].
 		 */
 		$schema = (array) apply_filters('aq_editor_field_schema', $schema);
+		// Auto-surface any remaining design controls straight from the ACF schema
+		// (background, spacing, columns, alignment…) so every section is fully
+		// adjustable — using each field's real choices + default, so nothing shifts
+		// until an editor deliberately picks another value (pixel parity preserved).
+		$schema = self::merge_acf_design($schema);
 		return $schema;
+	}
+
+	/* ---------------- design controls (auto-surfaced from the ACF schema) ---------------- */
+
+	/**
+	 * For every section, expose any ACF select / true_false / number field the
+	 * curated schema above hasn't already surfaced, as a Design-group control.
+	 * Reads the resolved layout schema stashed by includes/fields/sections.php.
+	 */
+	private static function merge_acf_design(array $schema): array {
+		$layouts = isset($GLOBALS['aq_core_section_layouts']) && is_array($GLOBALS['aq_core_section_layouts'])
+			? $GLOBALS['aq_core_section_layouts'] : [];
+		if (!$layouts) {
+			return $schema;
+		}
+		foreach ($schema as $type => &$def) {
+			$layout = $layouts[$type] ?? null;
+			if (!is_array($layout) || empty($layout['sub_fields']) || empty($def['fields'])) {
+				continue;
+			}
+			$have = [];
+			foreach ($def['fields'] as $f) {
+				if (!empty($f['name'])) { $have[$f['name']] = true; }
+			}
+			foreach ($layout['sub_fields'] as $sf) {
+				$name  = (string) ($sf['name'] ?? '');
+				$ftype = (string) ($sf['type'] ?? '');
+				if ($name === '' || isset($have[$name])) {
+					continue;
+				}
+				if (!in_array($ftype, ['select', 'true_false', 'number'], true)) {
+					continue; // repeaters, images, and text/richtext stay content-only
+				}
+				$field = self::design_field_from_acf($sf);
+				if ($field) {
+					$def['fields'][] = $field;
+					$have[$name]     = true;
+				}
+			}
+		}
+		unset($def);
+		return $schema;
+	}
+
+	/** Convert one ACF sub-field definition into an inspector Design field. */
+	private static function design_field_from_acf(array $sf): ?array {
+		$name  = (string) $sf['name'];
+		$label = self::design_label($name, (string) ($sf['label'] ?? ''));
+		$type  = (string) $sf['type'];
+		if ($type === 'true_false') {
+			return ['name' => $name, 'label' => $label, 'type' => 'toggle', 'group' => 'design'];
+		}
+		if ($type === 'number') {
+			return ['name' => $name, 'label' => $label, 'type' => 'text', 'group' => 'design'];
+		}
+		$choices = is_array($sf['choices'] ?? null) ? $sf['choices'] : [];
+		if (!$choices) {
+			return null;
+		}
+		return [
+			'name'    => $name,
+			'label'   => $label,
+			'type'    => 'select',
+			'options' => self::design_options($choices, (string) ($sf['default_value'] ?? '')),
+			'group'   => 'design',
+		];
+	}
+
+	/** Plain-English label for a design field (ACF names are terse, e.g. "bg"). */
+	private static function design_label(string $name, string $acfLabel): string {
+		$map = [
+			'bg' => 'Background', 'pad' => 'Section spacing', 'cols' => 'Columns', 'columns' => 'Columns',
+			'align' => 'Alignment', 'gap' => 'Gap', 'max_width' => 'Max width', 'h2_mt' => 'Heading spacing',
+			'header_mb' => 'Header spacing', 'intro_max' => 'Intro width', 'variant' => 'Style', 'style' => 'Style',
+			'size' => 'Size', 'width' => 'Width', 'spacing' => 'Spacing', 'level' => 'Heading level',
+			'aspect' => 'Aspect ratio', 'margin_top' => 'Top spacing', 'first_open' => 'Open first item',
+			'grayscale' => 'Grayscale', 'compact' => 'Compact cards', 'line_clamp' => 'Clamp text to 3 lines',
+			'accent' => 'Accent color', 'rounded' => 'Rounded corners', 'shadow' => 'Drop shadow',
+			'divider' => 'Show divider', 'card_heading_size' => 'Card heading size', 'sub_style' => 'Second line style',
+			'image_side' => 'Image position', 'allow_fullscreen' => 'Allow fullscreen',
+		];
+		if (isset($map[$name])) {
+			return $map[$name];
+		}
+		$lbl = trim((string) preg_replace('/\s*\(.*?\)\s*/', ' ', $acfLabel)); // drop "(home default)" notes
+		$lbl = ltrim($lbl, '!');
+		return $lbl !== '' ? $lbl : ucwords(str_replace('_', ' ', $name));
+	}
+
+	/** Friendly option labels for a design select, with the ACF default listed first. */
+	private static function design_options(array $choices, string $default): array {
+		$friendly = [
+			'white' => 'White', 'brand-50' => 'Light tint', 'brand-900' => 'Dark (navy)',
+			'mt-0' => 'Tight', 'mt-4' => 'Spaced', 'normal' => 'Normal', 'compact' => 'Compact', 'spacious' => 'Spacious',
+			'left' => 'Left', 'center' => 'Center', 'right' => 'Right', 'start' => 'Top', 'stretch' => 'Stretch',
+			'sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large', 'xl' => 'Extra large', 'full' => 'Full width',
+			'1' => '1 column', '2' => '2 columns', '3' => '3 columns', '4' => '4 columns',
+			'solid' => 'Solid', 'dashed' => 'Dashed',
+		];
+		$keys = array_map('strval', array_keys($choices));
+		if ($default !== '' && in_array($default, $keys, true)) {
+			$keys = array_merge([$default], array_values(array_filter($keys, function ($k) use ($default) { return $k !== $default; })));
+		}
+		$out = [];
+		foreach ($keys as $v) {
+			if (isset($friendly[$v])) {
+				$out[$v] = $friendly[$v];
+				continue;
+			}
+			$lbl = (string) $choices[$v];
+			$lbl = trim((string) preg_replace('/\s*\(.*?\)\s*/', ' ', $lbl));
+			$lbl = ltrim($lbl, '!');
+			$lbl = (string) preg_replace('/^bg-/', '', $lbl);
+			$out[$v] = $lbl !== '' ? $lbl : $v;
+		}
+		return $out;
 	}
 
 	/**
