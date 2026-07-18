@@ -45,16 +45,32 @@ class AQ_Updater {
 	const DEFAULT_REPO = 'AQ-Marketing/autoforge-wp';
 
 	/**
-	 * Per-client theme assets that a theme UPDATE must never overwrite. These are
-	 * the compiled files a client delivers into the active companion theme (via the
-	 * content importer / SFTP), NOT part of the shared product release. The release
-	 * theme zip ships only the neutral stub, so a naive theme update would clobber a
-	 * live site's real compiled CSS/JS with the stub — see theme_assets_stash().
+	 * Per-client theme asset subtrees a theme UPDATE must never lose. These hold the
+	 * compiled files a client delivers into the companion theme (via the content
+	 * importer / SFTP) — NOT part of the shared product release. The release theme zip
+	 * ships only a neutral stub, so a naive theme update clobbers a live site's real
+	 * compiled CSS/JS. We stash these before the update and restore them after — see
+	 * theme_assets_stash() / theme_assets_restore().
+	 *
+	 * We preserve the WHOLE css/js trees (main.css, site.js, home.js, and any per-site
+	 * extras like aq-redesign.css, local-seo.css, fontawesome.min.css, src/…), because
+	 * the old 2-file allow-list silently dropped every other per-client asset. Only the
+	 * engine-shipped vendor libraries are excluded, so library/security updates in a
+	 * release still land.
 	 */
-	const PROTECTED_THEME_ASSETS = ['assets/css/main.css', 'assets/js/site.js'];
+	const STASH_SUBDIRS = ['assets/css', 'assets/js'];
+	const STASH_EXCLUDE = ['assets/js/vendor'];
 
-	/** Transient holding stashed per-client assets across a theme update. */
-	const ASSET_STASH_KEY = 'aq_updater_theme_asset_stash';
+	/** On-disk folder (under wp-content) holding the stashed assets across an update. */
+	const STASH_DIRNAME = 'aq-asset-stash';
+
+	/** A restore that hasn't completed leaves the stash on disk longer than this many
+	 *  seconds; the self-heal then finishes it. Kept above a normal update's duration
+	 *  so an in-progress update is never raced. */
+	const STASH_STALE_SECONDS = 120;
+
+	/** Option flag set when a restore had to be completed out-of-band (surfaces a notice). */
+	const RESTORE_FLAG_OPTION = 'aq_asset_restore_recovered';
 
 	public static function register(): void {
 		add_filter('pre_set_site_transient_update_plugins', [__CLASS__, 'check_update']);
@@ -71,74 +87,212 @@ class AQ_Updater {
 		// the live per-client build). Stash before, restore after.
 		add_filter('upgrader_pre_install', [__CLASS__, 'theme_assets_stash'], 10, 2);
 		add_filter('upgrader_post_install', [__CLASS__, 'theme_assets_restore'], 10, 3);
-	}
-
-	/** True when this upgrader run is updating our companion stub theme. */
-	private static function is_theme_update($hook_extra): bool {
-		return is_array($hook_extra)
-			&& (($hook_extra['type'] ?? '') === 'theme')
-			&& (($hook_extra['theme'] ?? '') === self::THEME_SLUG);
+		// Self-heal: if a restore never completed (interrupted update, hook that
+		// didn't fire, bulk-update quirk), a stash is left on disk. Finish it on the
+		// next admin load and flag it, so a broken theme can't linger unnoticed.
+		add_action('admin_init', [__CLASS__, 'maybe_complete_pending_restore']);
+		add_action('admin_notices', [__CLASS__, 'restore_recovered_notice']);
 	}
 
 	/**
-	 * upgrader_pre_install: read the CURRENTLY-installed per-client theme assets and
-	 * stash them in a transient, so theme_assets_restore() can put them back after
-	 * WordPress replaces the whole theme folder with the release's neutral stub.
-	 * Intentional asset changes are delivered by the content importer, never by a
-	 * theme update — so preserving whatever the site currently serves is correct.
+	 * True when this upgrader run touches our companion stub theme. Handles BOTH the
+	 * singular `theme` key (single-theme install/upgrade) AND the plural `themes` array
+	 * (Dashboard → Updates bulk run), so a bulk update can't slip past the safeguard.
+	 */
+	private static function is_theme_update($hook_extra): bool {
+		if (!is_array($hook_extra) || ($hook_extra['type'] ?? '') !== 'theme') {
+			return false;
+		}
+		if (($hook_extra['theme'] ?? '') === self::THEME_SLUG) {
+			return true;
+		}
+		return in_array(self::THEME_SLUG, (array) ($hook_extra['themes'] ?? []), true);
+	}
+
+	/** Absolute path to the on-disk stash folder (trailing slash). */
+	private static function stash_dir(): string {
+		return trailingslashit(WP_CONTENT_DIR . '/' . self::STASH_DIRNAME);
+	}
+
+	/** True if $rel (relative to the theme root) is under an excluded subtree. */
+	private static function is_excluded(string $rel): bool {
+		$rel = ltrim(str_replace('\\', '/', $rel), '/');
+		foreach (self::STASH_EXCLUDE as $ex) {
+			if ($rel === $ex || strpos($rel, trailingslashit($ex)) === 0) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Recursively copy every file under $src into $dst, preserving structure and
+	 * skipping the excluded subtrees. Best-effort (an unreadable file is skipped, not
+	 * fatal). Returns the number of files copied.
+	 */
+	private static function copy_tree(string $src, string $dst, string $rel_base = ''): int {
+		if (!is_dir($src)) {
+			return 0;
+		}
+		$copied = 0;
+		$items  = @scandir($src);
+		if (!is_array($items)) {
+			return 0;
+		}
+		foreach ($items as $item) {
+			if ($item === '.' || $item === '..') {
+				continue;
+			}
+			$rel = ($rel_base === '' ? $item : $rel_base . '/' . $item);
+			if (self::is_excluded($rel)) {
+				continue;
+			}
+			$s = $src . '/' . $item;
+			$d = $dst . '/' . $item;
+			if (is_dir($s)) {
+				$copied += self::copy_tree($s, $d, $rel);
+			} elseif (is_file($s)) {
+				wp_mkdir_p(dirname($d));
+				if (@copy($s, $d)) {
+					$copied++;
+				}
+			}
+		}
+		return $copied;
+	}
+
+	/**
+	 * upgrader_pre_install: copy the CURRENTLY-installed per-client asset trees to an
+	 * on-disk stash (NOT a transient — object-cache eviction during the upgrade was a
+	 * failure mode), so theme_assets_restore() can put them back after WordPress
+	 * replaces the whole theme folder with the release's neutral stub. Intentional
+	 * asset changes are delivered by the content importer, never by a theme update, so
+	 * preserving whatever the site currently serves is correct.
 	 */
 	public static function theme_assets_stash($response, $hook_extra) {
 		if (is_wp_error($response) || !self::is_theme_update($hook_extra)) {
 			return $response;
 		}
-		$dir    = trailingslashit(get_theme_root(self::THEME_SLUG) . '/' . self::THEME_SLUG);
-		$stash  = [];
-		foreach (self::PROTECTED_THEME_ASSETS as $rel) {
-			$path = $dir . $rel;
-			if (is_readable($path)) {
-				$contents = @file_get_contents($path);
-				if ($contents !== false && $contents !== '') {
-					$stash[$rel] = $contents;
-				}
-			}
+		$theme = trailingslashit(get_theme_root(self::THEME_SLUG) . '/' . self::THEME_SLUG);
+		$stash = self::stash_dir();
+		self::rmdir_recursive($stash);          // clear any leftover from a prior run
+		wp_mkdir_p($stash);
+		$total = 0;
+		foreach (self::STASH_SUBDIRS as $sub) {
+			$total += self::copy_tree($theme . $sub, $stash . $sub, $sub);
 		}
-		if ($stash) {
-			set_transient(self::ASSET_STASH_KEY, $stash, 10 * MINUTE_IN_SECONDS);
-		} else {
-			delete_transient(self::ASSET_STASH_KEY);
+		if ($total === 0) {
+			self::rmdir_recursive($stash); // nothing to protect (site never had a build)
 		}
 		return $response;
 	}
 
 	/**
-	 * upgrader_post_install: write the stashed per-client assets back into the freshly
-	 * installed theme, overwriting the stub the release shipped. No-op if nothing was
-	 * stashed (e.g. a site that never had a compiled build).
+	 * upgrader_post_install: copy the stashed per-client assets back over the freshly
+	 * installed stub, then clear the stash. The presence of the stash folder is the
+	 * "restore still pending" marker the self-heal watches — so we only remove it once
+	 * the copy has actually run.
 	 */
 	public static function theme_assets_restore($response, $hook_extra, $result) {
 		if (is_wp_error($response) || !self::is_theme_update($hook_extra)) {
 			return $response;
 		}
-		$stash = get_transient(self::ASSET_STASH_KEY);
-		delete_transient(self::ASSET_STASH_KEY);
-		if (!is_array($stash) || !$stash) {
-			return $response;
-		}
 		$dest = isset($result['destination']) ? trailingslashit((string) $result['destination']) : '';
 		if ($dest === '' || !is_dir($dest)) {
+			// Can't locate the freshly installed theme dir — leave the stash on disk so
+			// the admin_init self-heal completes the restore against the active theme.
 			return $response;
 		}
-		foreach ($stash as $rel => $contents) {
-			// Only restore our allowlisted relative paths (defence-in-depth vs. a
-			// tampered transient); never traverse outside the theme dir.
-			if (!in_array($rel, self::PROTECTED_THEME_ASSETS, true)) {
-				continue;
-			}
-			$path = $dest . $rel;
-			wp_mkdir_p(dirname($path));
-			@file_put_contents($path, $contents);
-		}
+		self::restore_from_stash($dest);
 		return $response;
+	}
+
+	/**
+	 * Copy the stashed asset trees back into the theme dir at $theme_dir (trailing
+	 * slash), then delete the stash. Verifies the marquee file (main.css) matches the
+	 * stashed copy; if it doesn't, the stash is kept and a recovery flag is set so the
+	 * mismatch surfaces instead of silently shipping a stub. Returns true on success.
+	 */
+	private static function restore_from_stash(string $theme_dir): bool {
+		$stash = self::stash_dir();
+		if (!is_dir($stash)) {
+			return false; // nothing pending
+		}
+		foreach (self::STASH_SUBDIRS as $sub) {
+			self::copy_tree($stash . $sub, $theme_dir . $sub, $sub);
+		}
+		// Verify the compiled stylesheet round-tripped (the file the 2026-07-18 incident
+		// lost). If the stash had one and the theme's copy now differs, keep the stash
+		// and flag it rather than leave a broken site unnoticed.
+		$stashed_css = $stash . 'assets/css/main.css';
+		$live_css    = $theme_dir . 'assets/css/main.css';
+		if (is_file($stashed_css) && (!is_file($live_css) || @filesize($stashed_css) !== @filesize($live_css))) {
+			update_option(self::RESTORE_FLAG_OPTION, ['at' => time(), 'status' => 'mismatch'], false);
+			return false;
+		}
+		self::rmdir_recursive($stash);
+		return true;
+	}
+
+	/**
+	 * admin_init self-heal. A stash folder that outlives an update (interrupted run, a
+	 * hook that didn't fire, a destination we couldn't resolve) means a restore never
+	 * completed. Once it is older than STASH_STALE_SECONDS — so an in-progress update is
+	 * never raced — finish the restore against the ACTIVE theme and flag it.
+	 */
+	public static function maybe_complete_pending_restore(): void {
+		$stash = self::stash_dir();
+		if (!is_dir($stash)) {
+			return;
+		}
+		$age = time() - (int) @filemtime($stash);
+		if ($age < self::STASH_STALE_SECONDS) {
+			return; // an update may still be running; don't race it
+		}
+		$theme = trailingslashit(get_theme_root(self::THEME_SLUG) . '/' . self::THEME_SLUG);
+		if (!is_dir($theme)) {
+			return;
+		}
+		foreach (self::STASH_SUBDIRS as $sub) {
+			self::copy_tree($stash . $sub, $theme . $sub, $sub);
+		}
+		self::rmdir_recursive($stash);
+		update_option(self::RESTORE_FLAG_OPTION, ['at' => time(), 'status' => 'self-healed'], false);
+	}
+
+	/** Admin notice after a self-heal / mismatch, so a near-miss never passes silently. */
+	public static function restore_recovered_notice(): void {
+		$flag = get_option(self::RESTORE_FLAG_OPTION);
+		if (!$flag || !current_user_can('manage_options')) {
+			return;
+		}
+		delete_option(self::RESTORE_FLAG_OPTION);
+		$msg = ($flag['status'] ?? '') === 'mismatch'
+			? 'AutoForge: a theme update did not cleanly restore this site\'s compiled styles. The backup copy has been kept — please verify the site and re-run the content import if needed.'
+			: 'AutoForge: this site\'s compiled theme assets were automatically recovered after a theme update. Please give the site a quick visual check.';
+		echo '<div class="notice notice-warning"><p>' . esc_html($msg) . '</p></div>';
+	}
+
+	/** Recursively delete a directory (best-effort). */
+	private static function rmdir_recursive(string $dir): void {
+		if (!is_dir($dir)) {
+			return;
+		}
+		$items = @scandir($dir);
+		if (is_array($items)) {
+			foreach ($items as $item) {
+				if ($item === '.' || $item === '..') {
+					continue;
+				}
+				$p = $dir . '/' . $item;
+				if (is_dir($p)) {
+					self::rmdir_recursive($p);
+				} else {
+					@unlink($p);
+				}
+			}
+		}
+		@rmdir($dir);
 	}
 
 	/** "owner/name" of the product repo; defaults to self::DEFAULT_REPO. */
