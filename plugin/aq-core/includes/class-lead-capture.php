@@ -365,6 +365,11 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			if (strpos($key, 'utm_') === 0 || in_array($key, ['gclid', 'fbclid', 'msclkid'], true)) {
 				continue; // tracking handled separately (captured_tracking)
 			}
+			// Spam-protection tokens (hCaptcha / reCAPTCHA responses) are verification
+			// artifacts, not lead data — never surface them in the email or the CRM.
+			if (strpos($key, 'captcha') !== false) {
+				continue;
+			}
 			if (is_array($v)) {
 				$v = implode(', ', array_map('sanitize_text_field', array_map('strval', $v)));
 			} else {
@@ -599,6 +604,10 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			}
 		}
 		$mail_ok = self::notify($f);
+
+		// Durable first-party copy (AQ_Lead_Store) — fires regardless of the email/CRM
+		// outcome so a filtered inbox or a CRM outage can never lose the lead.
+		do_action('aq_lead_captured', $f, $ghl_ok, $mail_ok);
 
 		return ($ghl_ok || $mail_ok) ? $ok() : $deny(502, 'unprocessable');
 	}
@@ -1074,16 +1083,9 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 				. '<td style="padding:11px 0;border-bottom:1px solid ' . $line . ';color:' . $ink . ';font-size:15px;line-height:1.5;vertical-align:top;font-family:' . $font . '">' . nl2br(esc_html($cv)) . '</td>'
 				. '</tr>';
 		}
-		// Ad / campaign attribution (gclid, utm_*, …) captured from the landing URL.
-		$tracking = isset($f['tracking']) && is_array($f['tracking']) ? $f['tracking'] : [];
-		foreach ($tracking as $tk => $tv) {
-			$tv = (string) $tv;
-			if ($tv === '') { continue; }
-			$rows .= '<tr>'
-				. '<td style="padding:11px 16px 11px 0;border-bottom:1px solid ' . $line . ';color:' . $muted . ';font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;vertical-align:top;width:120px;font-family:' . $font . '">' . esc_html($tk) . '</td>'
-				. '<td style="padding:11px 0;border-bottom:1px solid ' . $line . ';color:' . $ink . ';font-size:15px;line-height:1.5;vertical-align:top;word-break:break-all;font-family:' . $font . '">' . esc_html($tv) . '</td>'
-				. '</tr>';
-		}
+		// Ad / campaign attribution (gclid, utm_*, …) is captured on $f['tracking'] and
+		// pushed to the CRM as custom fields — intentionally NOT rendered in the admin
+		// notification email (it's plumbing/attribution, not lead data the recipient acts on).
 		$banner = $is_test
 			? '<div style="background:#fff7e6;color:#7a4e0a;border:1px solid #f4d088;border-radius:8px;padding:10px 14px;margin:0 0 18px;font-size:13px;font-family:' . $font . '"><strong>Test email</strong> &mdash; a design preview of the website form notification. No real customer submitted this.</div>'
 			: '';
@@ -1230,6 +1232,26 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		if ($cfg['notify_bcc'] !== '') {
 			$extra[] = 'Bcc: ' . $cfg['notify_bcc'];
 		}
+		if (($f['email'] ?? '') !== '' && is_email($f['email'])) {
+			$extra[] = 'Reply-To: ' . $f['email'];
+		}
+		return self::send_lead_email($f, false, $to, $subject, $extra);
+	}
+	/**
+	 * Re-send a stored lead's notification email. Used by AQ_Lead_Store's
+	 * “Resend” action. Mirrors notify() but allows an explicit recipient
+	 * override and marks the subject so the copy is recognisable.
+	 */
+	public static function resend(array $f, string $to = ''): bool {
+		$cfg = self::get_settings();
+		if ($to === '') {
+			$to = $cfg['notify_to'] !== '' ? $cfg['notify_to'] : (string) get_option('admin_email');
+		}
+		if ($to === '') {
+			return false;
+		}
+		$subject = '[Resent] ' . self::fill_subject_tokens($cfg['notify_subject'] !== '' ? $cfg['notify_subject'] : 'Website form submission', $f);
+		$extra = [];
 		if (($f['email'] ?? '') !== '' && is_email($f['email'])) {
 			$extra[] = 'Reply-To: ' . $f['email'];
 		}
