@@ -526,6 +526,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 
 		// 1) Honeypot — drop silently (fake success).
 		if (self::pick($req, ['company_hp', 'company_url']) !== '') {
+			do_action('aq_lead_blocked', 'honeypot');
 			return $ok();
 		}
 		// 2) Same-origin: drop a mismatched Origin/Referer; allow a missing one.
@@ -543,6 +544,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		// 3) Rate limit (per-IP interval + window + global ceiling).
 		$rl = self::rate_limit();
 		if ($rl !== true) {
+			do_action('aq_lead_blocked', 'rate');
 			return $deny(429, 'rate_limited');
 		}
 		// 4) hCaptcha — enforced for anonymous visitors on EVERY form once keys are
@@ -552,6 +554,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		if (class_exists('AQ_HCaptcha')) {
 			$token = self::pick($req, ['h-captcha-response', 'hcaptcha_response', 'g-recaptcha-response']);
 			if (!AQ_HCaptcha::passes($token)) {
+				do_action('aq_lead_blocked', 'captcha');
 				return $deny(403, 'captcha_failed');
 			}
 		}
