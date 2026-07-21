@@ -172,21 +172,28 @@ class AQ_Admin_Hub {
 		self::sidebar_script();
 	}
 
-	/** Remember which groups the user manually collapsed/expanded (the active group
-	 *  always opens server-side regardless). Tiny, dependency-free. */
+	/** Single-open accordion: the active item's group is open on load; opening any
+	 *  group collapses the others. The last-opened group is remembered (localStorage)
+	 *  for pages not inside any group. Dependency-free. */
 	private static function sidebar_script(): void {
 		?>
 		<script>
 		(function(){
 			try{
-				var KEY='aqHubNav', nav=document.querySelector('.aq-hub__nav');
+				var KEY='aqHubNavOpen', nav=document.querySelector('.aq-hub__nav');
 				if(!nav) return;
-				var state={}; try{state=JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch(e){}
-				nav.querySelectorAll('details.aq-nav__group').forEach(function(d){
-					var g=d.getAttribute('data-g'), hasActive=!!d.querySelector('.aq-nav__link--active');
-					if(!hasActive && state[g]===true) d.open=true;
-					if(!hasActive && state[g]===false) d.open=false;
-					d.addEventListener('toggle',function(){ state[g]=d.open; try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){} });
+				var groups=[].slice.call(nav.querySelectorAll('details.aq-nav__group'));
+				function closeOthers(except){ groups.forEach(function(d){ if(d!==except && d.open) d.open=false; }); }
+				var active=groups.filter(function(d){ return d.querySelector('.aq-nav__link--active'); })[0];
+				if(active){ active.open=true; closeOthers(active); }
+				else {
+					var remembered=null; try{remembered=localStorage.getItem(KEY);}catch(e){}
+					groups.forEach(function(d){ d.open = (d.getAttribute('data-g')===remembered); });
+				}
+				groups.forEach(function(d){
+					d.addEventListener('toggle', function(){
+						if(d.open){ closeOthers(d); try{localStorage.setItem(KEY, d.getAttribute('data-g'));}catch(e){} }
+					});
 				});
 			}catch(e){}
 		})();
