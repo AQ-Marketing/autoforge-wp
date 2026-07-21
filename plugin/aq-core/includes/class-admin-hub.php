@@ -9,9 +9,10 @@
  *
  * Why an in-page sidebar instead of the WordPress submenu: WP admin submenus are
  * a flat list with no native grouping/accordion. Rather than fight core with
- * fragile JS, the plugin owns its own left-hand nav (see nav()/sidebar()), and
- * the noisy WP submenu is trimmed to just "Overview" (trim_submenu) — the pages
- * all stay reachable by URL, they're just navigated from the accordion now.
+ * fragile JS, the plugin owns its own left-hand nav (see nav()/sidebar()) as the
+ * primary, organized navigation. The WordPress submenu is left intact (removing
+ * items from it also strips WP's capability grant, denying page access), so it
+ * stays as a flat fallback while the accordion is the main way to get around.
  * Gated on manage_options until the dedicated aq_agency cap lands.
  */
 
@@ -23,9 +24,6 @@ class AQ_Admin_Hub {
 	public static function register(): void {
 		add_action('admin_menu', [__CLASS__, 'menu']);
 		add_action('admin_menu', [__CLASS__, 'hide_boost_from_settings'], 999);
-		// Trim the flat WP submenu down to Overview once every submenu item (incl.
-		// the Submissions CPT) has registered; the accordion sidebar replaces it.
-		add_action('admin_menu', [__CLASS__, 'trim_submenu'], 9999);
 		add_action('wp_loaded', [__CLASS__, 'hide_boost_from_admin_bar']);
 		add_action('admin_init', [__CLASS__, 'block_boost_page']);
 	}
@@ -47,23 +45,6 @@ class AQ_Admin_Hub {
 		// and on the Performance screen.
 		// The Editor is rendered inside the Pages screen (aq-pages&page_id=N) so it
 		// is always a properly-authorized admin page — no hidden/removed submenu.
-	}
-
-	/**
-	 * Collapse the flat AutoForge submenu to just Overview. Everything else is
-	 * removed from the WP menu but stays fully reachable by URL (WordPress keeps
-	 * the page hook registered) — navigation happens from the accordion sidebar.
-	 */
-	public static function trim_submenu(): void {
-		global $submenu;
-		if (empty($submenu[self::SLUG]) || !is_array($submenu[self::SLUG])) {
-			return;
-		}
-		foreach ($submenu[self::SLUG] as $key => $item) {
-			if (!isset($item[2]) || $item[2] !== self::SLUG) {
-				unset($submenu[self::SLUG][$key]);
-			}
-		}
 	}
 
 	public static function hide_boost_from_settings(): void {
