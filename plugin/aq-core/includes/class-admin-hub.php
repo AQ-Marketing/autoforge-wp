@@ -26,6 +26,8 @@ class AQ_Admin_Hub {
 		add_action('admin_menu', [__CLASS__, 'hide_boost_from_settings'], 999);
 		add_action('wp_loaded', [__CLASS__, 'hide_boost_from_admin_bar']);
 		add_action('admin_init', [__CLASS__, 'block_boost_page']);
+		// Hide the flat WP submenu (CSS only, keeps page access); the accordion is the nav.
+		add_action('admin_head', [__CLASS__, 'hide_wp_submenu']);
 	}
 
 	public static function menu(): void {
@@ -76,6 +78,16 @@ class AQ_Admin_Hub {
 		}
 	}
 
+	/**
+	 * Hide the flat WordPress submenu under "AutoForge". CSS-ONLY: removing items
+	 * from the $submenu global also strips WP's capability grant (denies page
+	 * access, as a prior version learned); hiding them visually keeps every page
+	 * fully reachable. The top-level "AutoForge" link still opens Overview.
+	 */
+	public static function hide_wp_submenu(): void {
+		echo '<style id="aq-hide-submenu">#toplevel_page_' . esc_attr(self::SLUG) . ' ul.wp-submenu{display:none!important;}</style>';
+	}
+
 	/* ---------------- navigation model ---------------- */
 
 	/**
@@ -95,7 +107,7 @@ class AQ_Admin_Hub {
 				'aq-seo' => 'SEO', 'aq-seo-agent' => 'SEO Agent', 'aq-redirects' => 'Redirects',
 			]],
 			['type' => 'group', 'label' => 'Leads & Forms', 'icon' => 'email-alt', 'items' => [
-				'aq-forms' => 'Forms', 'edit.php?post_type=aq_lead' => 'Submissions',
+				'aq-forms' => 'Forms', 'aq-submissions' => 'Submissions',
 			]],
 			['type' => 'group', 'label' => 'Analytics', 'icon' => 'chart-bar', 'items' => [
 				'aq-form-analytics' => 'Form Analytics',
