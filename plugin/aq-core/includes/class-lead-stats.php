@@ -341,7 +341,7 @@ if(document.readyState!=='loading')ping();else document.addEventListener('DOMCon
 			Submissions/views/spam are counted from the day this feature went live and kept for <?php echo (int) self::RETAIN_DAYS; ?> days. Source/service/page tallies come from stored submissions, so they span only what your Submissions retention setting keeps<?php echo $bd['capped'] ? ' (showing the most recent ' . number_format(3000) . ' in range)' : ''; ?>.
 		</p>
 		<?php
-		if (!class_exists('AQ_Admin_Hub')) { echo '</div>'; }
+		if (class_exists('AQ_Admin_Hub')) { AQ_Admin_Hub::close(); } else { echo '</div>'; }
 	}
 
 	/** Simple dependency-free SVG: submissions bars + a views line, over the range. */

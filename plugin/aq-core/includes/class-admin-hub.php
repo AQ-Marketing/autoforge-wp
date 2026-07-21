@@ -2,11 +2,17 @@
 /**
  * AutoForge — the agency hub in wp-admin.
  *
- * Phase C foundation: registers the top-level "AutoForge" menu + screens.
- * Overview, Pages, and a first-pass Editor (live preview + section list) are
- * live; SEO / Locations / Performance are stubs that fill in next. Server-
- * rendered PHP for now; the React visual editor mounts into the Editor screen
- * in Phase D. Gated on manage_options until the dedicated aq_agency cap lands.
+ * Registers the top-level "AutoForge" menu and the shared screen chrome. Every
+ * sub-screen (SEO, Forms, Analytics, …) renders inside AQ_Admin_Hub::open()/
+ * close(), which now draws a grouped, collapsible ACCORDION SIDEBAR on the left
+ * and the screen content on the right.
+ *
+ * Why an in-page sidebar instead of the WordPress submenu: WP admin submenus are
+ * a flat list with no native grouping/accordion. Rather than fight core with
+ * fragile JS, the plugin owns its own left-hand nav (see nav()/sidebar()), and
+ * the noisy WP submenu is trimmed to just "Overview" (trim_submenu) — the pages
+ * all stay reachable by URL, they're just navigated from the accordion now.
+ * Gated on manage_options until the dedicated aq_agency cap lands.
  */
 
 class AQ_Admin_Hub {
@@ -17,6 +23,9 @@ class AQ_Admin_Hub {
 	public static function register(): void {
 		add_action('admin_menu', [__CLASS__, 'menu']);
 		add_action('admin_menu', [__CLASS__, 'hide_boost_from_settings'], 999);
+		// Trim the flat WP submenu down to Overview once every submenu item (incl.
+		// the Submissions CPT) has registered; the accordion sidebar replaces it.
+		add_action('admin_menu', [__CLASS__, 'trim_submenu'], 9999);
 		add_action('wp_loaded', [__CLASS__, 'hide_boost_from_admin_bar']);
 		add_action('admin_init', [__CLASS__, 'block_boost_page']);
 	}
@@ -38,6 +47,23 @@ class AQ_Admin_Hub {
 		// and on the Performance screen.
 		// The Editor is rendered inside the Pages screen (aq-pages&page_id=N) so it
 		// is always a properly-authorized admin page — no hidden/removed submenu.
+	}
+
+	/**
+	 * Collapse the flat AutoForge submenu to just Overview. Everything else is
+	 * removed from the WP menu but stays fully reachable by URL (WordPress keeps
+	 * the page hook registered) — navigation happens from the accordion sidebar.
+	 */
+	public static function trim_submenu(): void {
+		global $submenu;
+		if (empty($submenu[self::SLUG]) || !is_array($submenu[self::SLUG])) {
+			return;
+		}
+		foreach ($submenu[self::SLUG] as $key => $item) {
+			if (!isset($item[2]) || $item[2] !== self::SLUG) {
+				unset($submenu[self::SLUG][$key]);
+			}
+		}
 	}
 
 	public static function hide_boost_from_settings(): void {
@@ -69,6 +95,112 @@ class AQ_Admin_Hub {
 		}
 	}
 
+	/* ---------------- navigation model ---------------- */
+
+	/**
+	 * The single source of truth for the sidebar. Entries are either a standalone
+	 * 'link' or a collapsible 'group' of items. Item values are a label string, or
+	 * ['label'=>..,'soon'=>true] for a not-yet-built placeholder. Icons are
+	 * dashicon names (without the "dashicons-" prefix).
+	 */
+	private static function nav(): array {
+		return [
+			['type' => 'link', 'slug' => 'aq-dashboard', 'label' => 'Overview', 'icon' => 'dashboard'],
+			['type' => 'group', 'label' => 'Content', 'icon' => 'edit', 'items' => [
+				'aq-pages' => 'Pages', 'aq-styles' => 'Styles', 'aq-navigation' => 'Navigation',
+				'aq-footer' => 'Footer', 'aq-logo' => 'Logo', 'aq-legal' => 'Legal Pages',
+			]],
+			['type' => 'group', 'label' => 'SEO', 'icon' => 'search', 'items' => [
+				'aq-seo' => 'SEO', 'aq-seo-agent' => 'SEO Agent', 'aq-redirects' => 'Redirects',
+			]],
+			['type' => 'group', 'label' => 'Leads & Forms', 'icon' => 'email-alt', 'items' => [
+				'aq-forms' => 'Forms', 'edit.php?post_type=aq_lead' => 'Submissions',
+			]],
+			['type' => 'group', 'label' => 'Analytics', 'icon' => 'chart-bar', 'items' => [
+				'aq-form-analytics' => 'Form Analytics',
+				'site-analytics'    => ['label' => 'Site Analytics', 'soon' => true],
+				'aq-tracking'       => 'Tracking',
+			]],
+			['type' => 'link', 'slug' => 'aq-locations', 'label' => 'Locations', 'icon' => 'location'],
+			['type' => 'link', 'slug' => 'aq-chatbot', 'label' => 'Chatbot', 'icon' => 'format-chat'],
+			['type' => 'group', 'label' => 'Settings', 'icon' => 'admin-generic', 'items' => [
+				'aq-integrations' => 'Integrations', 'aq-import' => 'Import',
+				'aq-performance' => 'Performance', 'aq-help' => 'Help',
+			]],
+		];
+	}
+
+	/** admin.php?page= URL for a nav slug (or a direct .php target like the CPT list). */
+	private static function nav_url(string $slug): string {
+		return strpos($slug, '.php') !== false ? admin_url($slug) : admin_url('admin.php?page=' . $slug);
+	}
+
+	private static function sidebar(string $current): void {
+		echo '<nav class="aq-hub__nav" aria-label="AutoForge sections">';
+		foreach (self::nav() as $entry) {
+			if (($entry['type'] ?? '') === 'link') {
+				$active = $entry['slug'] === $current;
+				printf(
+					'<a class="aq-nav__link%s" href="%s"><span class="dashicons dashicons-%s" aria-hidden="true"></span>%s</a>',
+					$active ? ' aq-nav__link--active' : '',
+					esc_url(self::nav_url($entry['slug'])),
+					esc_attr($entry['icon'] ?? 'marker'),
+					esc_html($entry['label'])
+				);
+				continue;
+			}
+			// group
+			$items = is_array($entry['items'] ?? null) ? $entry['items'] : [];
+			$has_active = array_key_exists($current, $items);
+			$gid = sanitize_key($entry['label']);
+			printf('<details class="aq-nav__group" data-g="%s"%s>', esc_attr($gid), $has_active ? ' open' : '');
+			printf(
+				'<summary class="aq-nav__summary"><span class="dashicons dashicons-%s" aria-hidden="true"></span><span class="aq-nav__glabel">%s</span><span class="aq-nav__chev dashicons dashicons-arrow-down-alt2" aria-hidden="true"></span></summary>',
+				esc_attr($entry['icon'] ?? 'marker'),
+				esc_html($entry['label'])
+			);
+			echo '<div class="aq-nav__sub">';
+			foreach ($items as $slug => $val) {
+				if (is_array($val)) { // placeholder (e.g. "soon")
+					printf('<span class="aq-nav__link aq-nav__sublink aq-nav__link--soon">%s<span class="aq-nav__soon">Soon</span></span>', esc_html($val['label'] ?? $slug));
+					continue;
+				}
+				$active = $slug === $current;
+				printf(
+					'<a class="aq-nav__link aq-nav__sublink%s" href="%s">%s</a>',
+					$active ? ' aq-nav__link--active' : '',
+					esc_url(self::nav_url($slug)),
+					esc_html($val)
+				);
+			}
+			echo '</div></details>';
+		}
+		echo '</nav>';
+		self::sidebar_script();
+	}
+
+	/** Remember which groups the user manually collapsed/expanded (the active group
+	 *  always opens server-side regardless). Tiny, dependency-free. */
+	private static function sidebar_script(): void {
+		?>
+		<script>
+		(function(){
+			try{
+				var KEY='aqHubNav', nav=document.querySelector('.aq-hub__nav');
+				if(!nav) return;
+				var state={}; try{state=JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch(e){}
+				nav.querySelectorAll('details.aq-nav__group').forEach(function(d){
+					var g=d.getAttribute('data-g'), hasActive=!!d.querySelector('.aq-nav__link--active');
+					if(!hasActive && state[g]===true) d.open=true;
+					if(!hasActive && state[g]===false) d.open=false;
+					d.addEventListener('toggle',function(){ state[g]=d.open; try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){} });
+				});
+			}catch(e){}
+		})();
+		</script>
+		<?php
+	}
+
 	/* ---------------- shared chrome ---------------- */
 
 	private static function styles(): void {
@@ -84,9 +216,30 @@ class AQ_Admin_Hub {
 			.aq-hub__head h1 { font-family: Poppins, Inter, system-ui, sans-serif; font-size: 22px; margin: 0 0 2px; color: #fff; }
 			.aq-hub__head p { margin: 0; color: #c9cfd6; font-size: 13px; }
 			.aq-hub__brandtag { display:inline-flex; align-items:center; gap:8px; background:rgba(200,16,46,.18); color:#ff4d68; border:1px solid rgba(255,77,104,.40); padding:6px 12px; border-radius:999px; font-size:12px; font-weight:600; }
-			.aq-hub__tabs { display:flex; gap:6px; margin:18px 0 22px; flex-wrap:wrap; }
-			.aq-hub__tab { text-decoration:none; padding:8px 14px; border-radius:999px; font-size:13px; font-weight:600; color:#5b6471; background:#fff; border:1px solid #e6e8eb; }
-			.aq-hub__tab--active { background:#c8102e; color:#fff; border-color:#c8102e; }
+
+			/* two-column layout: accordion sidebar + main content */
+			.aq-hub__layout { display:flex; gap:22px; align-items:flex-start; margin-top:18px; }
+			.aq-hub__main { flex:1; min-width:0; }
+			.aq-hub__nav { flex:0 0 216px; width:216px; position:sticky; top:46px; background:#fff; border:1px solid #e6e8eb; border-radius:14px; padding:8px; box-shadow:0 1px 2px rgba(13,16,20,.04); }
+			.aq-hub__nav .dashicons { font-size:17px; width:17px; height:17px; line-height:1; flex:0 0 auto; }
+			.aq-nav__link { display:flex; align-items:center; gap:9px; padding:8px 11px; border-radius:9px; color:#3a424d; text-decoration:none; font-size:13px; font-weight:500; line-height:1.25; }
+			.aq-nav__link:hover { background:#f4f6f8; color:#0d1014; }
+			.aq-nav__link:focus { outline:0; box-shadow:0 0 0 2px rgba(200,16,46,.35); }
+			.aq-nav__link--active, .aq-nav__link--active:hover { background:#c8102e; color:#fff; }
+			.aq-nav__group { margin:1px 0; }
+			.aq-nav__summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:9px; padding:8px 11px; border-radius:9px; color:#5b6471; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; user-select:none; }
+			.aq-nav__summary::-webkit-details-marker { display:none; }
+			.aq-nav__summary:hover { background:#f4f6f8; color:#0d1014; }
+			.aq-nav__glabel { flex:1; }
+			.aq-nav__chev { transition:transform .15s ease; color:#9aa2ad; font-size:15px !important; width:15px !important; height:15px !important; }
+			.aq-nav__group[open] > .aq-nav__summary .aq-nav__chev { transform:rotate(180deg); }
+			.aq-nav__sub { padding:2px 0 6px; }
+			.aq-nav__sublink { padding-left:37px; font-size:12.5px; }
+			.aq-nav__link--soon { color:#9aa2ad; cursor:default; justify-content:space-between; }
+			.aq-nav__link--soon:hover { background:transparent; color:#9aa2ad; }
+			.aq-nav__soon { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; background:#eef1f5; color:#8a929c; padding:2px 6px; border-radius:999px; }
+			@media (max-width:960px){ .aq-hub__layout{ flex-direction:column; } .aq-hub__nav{ position:static; width:auto; flex-basis:auto; } }
+
 			.aq-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:16px; }
 			.aq-card { background:#fff; border:1px solid #e6e8eb; border-radius:14px; padding:18px 20px; box-shadow:0 1px 2px rgba(13,16,20,.04); }
 			.aq-card__label { font-size:12px; text-transform:uppercase; letter-spacing:.04em; color:#5b6471; font-weight:600; margin:0 0 8px; }
@@ -95,6 +248,7 @@ class AQ_Admin_Hub {
 			.aq-badge { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; }
 			.aq-badge--ok { background:#eaf0ea; color:#1a8f4f; } .aq-badge--warn { background:#fdf1dd; color:#9a6212; } .aq-badge--off { background:#fbe7e7; color:#a30d25; }
 			.aq-panel { background:#fff; border:1px solid #e6e8eb; border-radius:14px; padding:22px 24px; margin-top:20px; }
+			.aq-hub__main > .aq-panel:first-child { margin-top:0; }
 			.aq-panel h2 { font-family:Poppins, Inter, system-ui, sans-serif; font-size:17px; margin:0 0 14px; color:#0d1014; }
 			.aq-table { width:100%; border-collapse:collapse; font-size:13px; }
 			.aq-table th { text-align:left; color:#5b6471; font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.04em; padding:8px 10px; border-bottom:2px solid #eef1f5; }
@@ -137,56 +291,27 @@ class AQ_Admin_Hub {
 		<?php
 	}
 
-	private static function tabs(string $current): void {
-		$tabs = [
-			'aq-dashboard'  => 'Overview',
-			'aq-pages'      => 'Pages',
-			'aq-styles'     => 'Styles',
-			'aq-seo'        => 'SEO',
-			'aq-seo-agent'  => 'SEO Agent',
-			'aq-locations'  => 'Locations',
-			'aq-navigation' => 'Navigation',
-			'aq-footer'     => 'Footer',
-			'aq-redirects'  => 'Redirects',
-			'aq-logo'       => 'Logo',
-			'aq-performance'=> 'Performance',
-			'aq-forms'      => 'Forms',
-			'aq-legal'      => 'Legal',
-			'aq-tracking'   => 'Tracking',
-			'aq-integrations'=> 'Integrations',
-			'aq-import'     => 'Import',
-			'aq-help'       => 'Help',
-		];
-		echo '<div class="aq-hub__tabs">';
-		foreach ($tabs as $slug => $label) {
-			// Slugs that carry their own .php target (e.g. the Boost settings page)
-			// are linked directly; the rest hang off admin.php?page=.
-			$url = strpos($slug, '.php') !== false ? admin_url($slug) : admin_url('admin.php?page=' . $slug);
-			$cls = 'aq-hub__tab' . ($slug === $current ? ' aq-hub__tab--active' : '');
-			printf('<a class="%s" href="%s">%s</a>', esc_attr($cls), esc_url($url), esc_html($label));
-		}
-		echo '</div>';
-	}
-
 	/**
 	 * Shared screen chrome for sub-screens (SEO, Locations, Performance, …).
-	 * open() prints the wrap + styles + branded head + tab nav; close() ends it.
+	 * open() prints the wrap + styles + branded head, then a two-column layout:
+	 * the accordion sidebar (highlighting $active_tab) and an open <main> that the
+	 * caller fills with content. close() ends main + layout + wrap.
 	 */
 	public static function open(string $title, string $sub, string $active_tab = ''): void {
 		echo '<div class="wrap aq-hub">';
 		self::styles();
 		self::head($title, $sub);
-		if ($active_tab !== '') {
-			self::tabs($active_tab);
-		}
+		echo '<div class="aq-hub__layout">';
+		self::sidebar($active_tab);
+		echo '<div class="aq-hub__main">';
 		// Anchor for WordPress' admin-notice relocation: notices are auto-moved to
-		// just before .wp-header-end, so they land here (below the header + tabs)
-		// instead of being hoisted into the navy banner after its <h1>.
+		// just before .wp-header-end, so they land here (inside the main column,
+		// below the header) instead of being hoisted into the navy banner.
 		echo '<hr class="wp-header-end" style="visibility:hidden;height:0;margin:0;border:0;padding:0;">';
 	}
 
 	public static function close(): void {
-		echo '</div>';
+		echo '</div></div></div>'; // .aq-hub__main, .aq-hub__layout, .wrap.aq-hub
 	}
 
 	/* ---------------- data ---------------- */
@@ -227,10 +352,7 @@ class AQ_Admin_Hub {
 		$conv_pct = $s['total'] ? round($s['structured'] / $s['total'] * 100) : 0;
 		$towns = is_array(aq_site('towns')) ? count(aq_site('towns')) : 0;
 		$boost = defined('WP_ROCKET_VERSION');
-		echo '<div class="wrap aq-hub">';
-		self::styles();
-		self::head('Agency Dashboard', 'Manage content, SEO, locations and performance for the site.');
-		self::tabs('aq-dashboard');
+		self::open('Agency Dashboard', 'Manage content, SEO, locations and performance for the site.', 'aq-dashboard');
 		echo '<div class="aq-cards">';
 		self::card('Published Pages', (string) $s['published'], $s['draft'] . ' draft');
 		self::card('Editable (structured)', $s['structured'] . ' / ' . $s['total'], $conv_pct . '% converted from raw HTML');
@@ -246,7 +368,7 @@ class AQ_Admin_Hub {
 		echo '<a class="aq-btn aq-btn--ghost" href="' . esc_url(admin_url('admin.php?page=aq-performance')) . '">Performance &amp; cache</a></p>';
 		echo '<p style="color:#5b6471;font-size:13px;margin-top:14px;">Next up: the visual page editor (live preview + click-to-edit) and SEO manager.</p>';
 		echo '</div>';
-		echo '</div>';
+		self::close();
 	}
 
 	public static function render_pages(): void {
@@ -257,10 +379,7 @@ class AQ_Admin_Hub {
 		}
 		$pages = get_posts(['post_type' => 'page', 'numberposts' => -1, 'post_status' => ['publish', 'draft'], 'orderby' => 'title', 'order' => 'ASC']);
 		$have_acf = function_exists('get_field');
-		echo '<div class="wrap aq-hub">';
-		self::styles();
-		self::head('Pages', 'Open a page in the editor to manage its content sections.');
-		self::tabs('aq-pages');
+		self::open('Pages', 'Open a page in the editor to manage its content sections.', 'aq-pages');
 		if (class_exists('AQ_Page_Folders')) { AQ_Page_Folders::styles(); }
 		echo '<div class="aq-panel aq-pages-layout">';
 		if (class_exists('AQ_Page_Folders')) { echo AQ_Page_Folders::sidebar_html(); }
@@ -295,7 +414,8 @@ class AQ_Admin_Hub {
 		}
 		echo '</tbody></table>';
 		echo '<p class="aq-search__empty" id="aq-pages-empty" style="display:none;">No pages match your search.</p>';
-		echo '</div></div></div>';
+		echo '</div></div>'; // .aq-pages-main, .aq-panel
+		self::close();
 		if (class_exists('AQ_Page_Folders')) { AQ_Page_Folders::script(); }
 	}
 
@@ -324,11 +444,9 @@ class AQ_Admin_Hub {
 			'aq-locations' => ['Locations', 'Manage service-area towns, counties and business info.'],
 			'aq-performance' => ['Performance', 'PageSpeed scores, Core Web Vitals and cache controls.']];
 		[$title, $sub] = $map[$screen] ?? ['Coming soon', ''];
-		echo '<div class="wrap aq-hub">';
-		self::styles();
-		self::head($title, $sub);
-		self::tabs($screen);
-		echo '<div class="aq-panel"><div class="aq-soon"><div class="aq-soon__icon dashicons dashicons-hammer"></div><p style="margin-top:10px;font-weight:600;">This screen is being built.</p><p>Tracked in the Phase 2 plan — wiring up next.</p></div></div></div>';
+		self::open($title, $sub, $screen);
+		echo '<div class="aq-panel"><div class="aq-soon"><div class="aq-soon__icon dashicons dashicons-hammer"></div><p style="margin-top:10px;font-weight:600;">This screen is being built.</p><p>Tracked in the Phase 2 plan — wiring up next.</p></div></div>';
+		self::close();
 	}
 
 	/* ---------------- field help tooltip ---------------- */
