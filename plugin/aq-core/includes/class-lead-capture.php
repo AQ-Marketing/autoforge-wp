@@ -211,12 +211,17 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 	 * setting, so nothing is emitted for anonymous visitors.
 	 *
 	 * The script finds EVERY lead form on the page — any <form> that posts to the
-	 * engine's contact endpoint, matched by its `action` or `data-endpoint` — and
-	 * prepends a button that fills the form's fields with the configured test data.
-	 * Field matching is by input `name` (with common aliases), so it works on the
-	 * engine's `contact_form` section, any client's bespoke form section, and any
-	 * future form template, with zero per-template markup. Forms that already carry
-	 * their own test-fill button are skipped, so there's never a duplicate.
+	 * engine's contact endpoint (matched by `action`/`data-endpoint`) OR carries the
+	 * `data-aq-form` / `data-aq-lead` marker — and prepends a button that fills the
+	 * form's fields with the configured test data. `data-aq-form` is the universal
+	 * "this is one of our lead forms" hook: put it on ANY form template (including a
+	 * client's bespoke form that self-handles its own submission and therefore can't
+	 * use `data-aq-lead`) and it gets the admin test-fill button for free.
+	 * Field matching is by input `name` (with common aliases + client-prefix
+	 * stripping like `ox_name` → `name`), so it works on the engine's `contact_form`
+	 * section, any client's bespoke form section, and any future form template, with
+	 * zero per-template JS. Forms that already carry their own test-fill button are
+	 * skipped, so there's never a duplicate.
 	 */
 	public static function print_test_fill(): void {
 		if (is_admin() || !current_user_can(self::CAP)) {
@@ -268,6 +273,12 @@ function fill(form){
 var radios={},checks={};
 Array.prototype.forEach.call(form.elements,function(el){
 var name=el.name||'';if(!name||HONEYPOT.test(name))return;
+// Skip honeypots by shape, not just by name: any field a real user can't see
+// or tab to (tabindex=-1, inside an aria-hidden wrapper, or off-screen) is a
+// trap. Filling it trips the server's honeypot guard and silently drops the
+// test submission — the opposite of what this button is for.
+if(el.tabIndex===-1)return;
+if(el.closest&&el.closest('[aria-hidden="true"]'))return;
 var tag=(el.tagName||'').toLowerCase(),type=(el.type||'').toLowerCase();
 if(type==='hidden'||type==='submit'||type==='button')return;
 if(type==='radio'){(radios[name]=radios[name]||[]).push(el);return;}
@@ -277,7 +288,11 @@ if(el.selectedIndex<=0){for(var i=0;i<el.options.length;i++){if(el.options[i].va
 el.dispatchEvent(new Event('change',{bubbles:true}));return;
 }
 // text / email / tel / url / textarea
-var key=MAP[norm(name)];
+var nn=norm(name);
+// Match on the raw normalized name, else retry with a common client field
+// prefix stripped (ox_name, aqm_email, form_phone, contact_message, ...), so
+// a site's bespoke prefixed fields map to the same standard keys.
+var key=MAP[nn]||MAP[nn.replace(/^(ox|oxbow|aq|aqm|form|contact|field|input|lead)_/,'')];
 var val=key?DATA[key]:'';
 if(!val&&el.required)val=(type==='email')?'test@example.com':(type==='url')?'https://example.com':'Test';
 if(val&&!el.value){el.value=val;el.dispatchEvent(new Event('input',{bubbles:true}));}
@@ -302,7 +317,7 @@ btn.addEventListener('click',function(){fill(form);});
 form.insertBefore(btn,form.firstChild);
 }
 function run(){
-var forms=document.querySelectorAll('form[action*="aqm/v1/contact"],form[data-endpoint*="aqm/v1/contact"]');
+var forms=document.querySelectorAll('form[action*="aqm/v1/contact"],form[data-endpoint*="aqm/v1/contact"],form[data-aq-form],form[data-aq-lead]');
 Array.prototype.forEach.call(forms,decorate);
 }
 if(document.readyState!=='loading')run();else document.addEventListener('DOMContentLoaded',run);
