@@ -148,9 +148,9 @@ class AQ_Footer {
 					];
 				}
 			}
-			if (array_key_exists('legal', $in['footer'])) {
-				$f['legal'] = self::links($in['footer']['legal']);
-			}
+			// Footer legal links are owned by the Legal Pages screen (AQ_Legal),
+			// which is the single writer of footer.legal. Do NOT accept/overwrite
+			// them here or the two screens clobber each other.
 			if (isset($in['footer']['social']) && is_array($in['footer']['social'])) {
 				$f['social'] = self::social_links($in['footer']['social']);
 			}
@@ -191,7 +191,6 @@ class AQ_Footer {
 		$footer    = is_array($cfg['footer'] ?? null) ? $cfg['footer'] : [];
 		$company   = is_array($footer['company'] ?? null) ? $footer['company'] : [];
 		$insp      = is_array($footer['inspections'] ?? null) ? $footer['inspections'] : [];
-		$legal     = is_array($footer['legal'] ?? null) ? array_values($footer['legal']) : [];
 		$social    = self::social_rows_for_editing($footer['social'] ?? []);
 		$f_contact = is_array($footer['contact'] ?? null) ? $footer['contact'] : [];
 		$fcta      = is_array($cfg['footerCta'] ?? null) ? $cfg['footerCta'] : [];
@@ -200,7 +199,7 @@ class AQ_Footer {
 		$nonce = wp_create_nonce('wp_rest');
 		$rest  = esc_url_raw(rest_url('aq/v1/site-footer'));
 
-		AQ_Admin_Hub::open('Footer', 'Edit the footer link columns, legal links, social icons, and footer/sticky-bar CTA. Changes go live on every page.', 'aq-footer');
+		AQ_Admin_Hub::open('Footer', 'Edit the footer link columns, social icons, and footer/sticky-bar CTA. Changes go live on every page. (Legal links live on the Legal Pages screen.)', 'aq-footer');
 		self::style();
 
 		echo '<div id="aq-nav-notice" class="aq-nav-notice" style="display:none;"></div>';
@@ -249,14 +248,7 @@ class AQ_Footer {
 		echo '<div class="aq-nav-twocol">';
 
 		echo '<div class="aq-panel"><h2>Footer — Legal links</h2>';
-		echo '<p class="aq-nav-help">The small links in the footer&rsquo;s bottom bar.</p>';
-		echo '<table class="aq-table"><thead><tr><th style="width:30px;">#</th><th>Label</th><th>Link' . AQ_Admin_Hub::tip('Each link\'s destination — a path like /privacy/ or a full web address.') . '</th><th style="width:96px;">Order</th><th style="width:46px;"></th></tr></thead>';
-		echo '<tbody id="aq-nav-legal">';
-		foreach ($legal as $l) {
-			echo self::link_row_html((string) ($l['label'] ?? ''), (string) ($l['href'] ?? ''));
-		}
-		echo '</tbody></table>';
-		echo '<p style="margin-top:12px;"><button type="button" class="aq-btn aq-btn--ghost aq-nav-addlink" data-tbody="aq-nav-legal">+ Add link</button></p>';
+		echo '<p class="aq-nav-help">Legal links (Privacy, Terms, etc.) in the footer&rsquo;s bottom bar are managed on the <a href="' . esc_url(admin_url('admin.php?page=aq-legal')) . '">Legal Pages</a> screen &mdash; tick &ldquo;Show in footer&rdquo; on the ones you want linked. This keeps them and their pages in one place.</p>';
 		echo '</div>';
 
 		echo '<div class="aq-panel"><h2>Footer — Social</h2>';
@@ -467,7 +459,7 @@ class AQ_Footer {
 			}
 
 			function collect() {
-				var p = { footer: { company: { links: rowsFrom('aq-nav-company') }, inspections: { links: rowsFrom('aq-nav-inspections') }, legal: rowsFrom('aq-nav-legal'), social: socialRowsFrom('aq-nav-social') } };
+				var p = { footer: { company: { links: rowsFrom('aq-nav-company') }, inspections: { links: rowsFrom('aq-nav-inspections') }, social: socialRowsFrom('aq-nav-social') } };
 				$all('.aq-nav-input[data-key]').forEach(function (inp) { setDeep(p, inp.getAttribute('data-key'), inp.value.trim()); });
 				return p;
 			}

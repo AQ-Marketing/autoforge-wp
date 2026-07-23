@@ -537,7 +537,9 @@ class AQ_Content_Sync {
 		return $errors;
 	}
 
-	private static function upsert_page(array $data): int {
+	// Public: also called cross-class by AQ_Legal::sync_pages() to publish legal
+	// pages. Was private, which fataled ("Call to private method") on Legal save.
+	public static function upsert_page(array $data): int {
 		// Sanitize: reduce client-supplied JSON to known top-level keys, known
 		// section types, and registered fields only (unknown keys dropped),
 		// using the same canonicalizer the export path uses so import and
