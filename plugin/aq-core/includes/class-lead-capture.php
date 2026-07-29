@@ -442,6 +442,9 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'email_bg'           => '',
 			'email_radius'       => '', // '' = default 14px
 			'field_sync_daily' => true, // auto-check GHL for new custom fields each morning
+			// Spam gates (alongside hCaptcha): region allow-list + link-spam drop.
+			'geo_allowed'     => '', // comma-separated ISO-3166 alpha-2 codes (e.g. "US"). Empty = region gate OFF.
+			'link_spam_block' => true, // drop messages that are 2+ links or essentially link-only
 			// legacy test-fill fields (kept for the admin test button JS)
 			'test_name'      => 'Test Tester',
 			'test_email'     => 'test@example.com',
@@ -556,11 +559,30 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 				}
 			}
 		}
+		// 2b) Region gate — for a business that serves a fixed area, drop submissions
+		//     from outside the allowed countries. Dormant unless countries are configured;
+		//     fails OPEN on an unknown/absent country so a real lead is never lost. Silent
+		//     drop (fake success) so bots don't adapt. Admins bypass.
+		if (!self::admin_bypass() && !self::geo_country_allowed()) {
+			do_action('aq_lead_blocked', 'geo');
+			return $ok();
+		}
 		// 3) Rate limit (per-IP interval + window + global ceiling).
 		$rl = self::rate_limit();
 		if ($rl !== true) {
 			do_action('aq_lead_blocked', 'rate');
 			return $deny(429, 'rate_limited');
+		}
+		// 3b) Link-spam — drop a message that is 2+ links or essentially link-only
+		//     (solicitation spam). On by default; a single link in real sentence text is
+		//     allowed. Silent drop; admins bypass. Runs before hCaptcha (cheap local check).
+		if (!self::admin_bypass()
+			&& apply_filters('aq_lead_block_message_urls', !empty(self::get_settings()['link_spam_block']))) {
+			$msg = (string) self::pick($req, ['message']);
+			if ($msg !== '' && self::is_link_spam($msg)) {
+				do_action('aq_lead_blocked', 'link_spam');
+				return $ok();
+			}
 		}
 		// 4) hCaptcha — enforced for anonymous visitors on EVERY form once keys are
 		//    configured (admins bypass so the test-fill button still works). Dormant
@@ -662,6 +684,57 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		set_transient($cnt_key, $cnt + 1, $win);
 		set_transient($g_key, $g_cnt + 1, $g_win);
 		return true;
+	}
+
+	/** Logged-in admins bypass the spam gates (so the test-fill button always works). */
+	private static function admin_bypass(): bool {
+		return is_user_logged_in() && current_user_can('manage_options');
+	}
+
+	/**
+	 * Region gate. True = allowed through. Dormant (always true) when no countries are
+	 * configured; fails OPEN when the visitor's country is unknown/absent. Countries come
+	 * from the Forms "Allowed countries" setting (comma-separated ISO-2), overridable by
+	 * the `aq_lead_allowed_countries` filter. Country is read from the host's GEOIP header
+	 * ($_SERVER['GEOIP_COUNTRY_CODE'], which Pressable/Atomic provide), filterable via
+	 * `aq_lead_country_code` for other hosts.
+	 */
+	private static function geo_country_allowed(): bool {
+		$raw     = (string) (self::get_settings()['geo_allowed'] ?? '');
+		$allowed = array_values(array_filter(array_map(static function ($c) {
+			return strtoupper(trim((string) $c));
+		}, explode(',', $raw))));
+		$allowed = array_map('strval', (array) apply_filters('aq_lead_allowed_countries', $allowed));
+		if (empty($allowed)) {
+			return true; // not configured → gate off
+		}
+		$cc = isset($_SERVER['GEOIP_COUNTRY_CODE']) ? strtoupper(trim((string) $_SERVER['GEOIP_COUNTRY_CODE'])) : '';
+		$cc = strtoupper(trim((string) apply_filters('aq_lead_country_code', $cc)));
+		if ($cc === '' || 'XX' === $cc || 'ZZ' === $cc || !preg_match('/^[A-Z]{2}$/', $cc)) {
+			return true; // unknown → fail open (never lose a real lead)
+		}
+		return in_array($cc, $allowed, true);
+	}
+
+	/**
+	 * Link-spam heuristic for the message field: true when it contains 2+ URLs, or is
+	 * essentially just a link. A single URL inside real sentence text returns false, so a
+	 * genuine prospect who mentions their own website is never dropped.
+	 */
+	private static function is_link_spam(string $msg): bool {
+		$msg = trim($msg);
+		if ($msg === '') {
+			return false;
+		}
+		$re = '~(?:https?://|www\.)[^\s<>"\']+|(?<![@\w])[a-z0-9][a-z0-9\-]*(?:\.[a-z0-9\-]+)*\.(?:com|net|org|io|co|us|biz|info|xyz|online|site|dev|app|shop|store|link|click|agency|digital|media|pro|tech)\b(?:/[^\s<>"\']*)?~i';
+		if (!preg_match_all($re, $msg, $m)) {
+			return false;
+		}
+		if (count($m[0]) >= 2) {
+			return true; // link lists / portfolios = near-certain spam
+		}
+		$stripped = trim((string) preg_replace($re, '', $msg));
+		return (function_exists('mb_strlen') ? mb_strlen($stripped) : strlen($stripped)) < 15;
 	}
 
 	/* ---------------- GoHighLevel ---------------- */
@@ -1551,6 +1624,20 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			</div>
 
 			<div class="aq-forms-card">
+				<h2>Region &amp; link spam</h2>
+				<p class="aq-forms-hint">Extra filters that run alongside hCaptcha — useful because most contact-form spam is solicitation sent by humans who solve the challenge. Both drop silently and never block a real lead when the signal is uncertain.</p>
+				<div class="aq-forms-field">
+					<label>Allowed countries <?php echo AQ_Admin_Hub::tip('Comma-separated 2-letter country codes (e.g. US, CA). Submissions from outside these countries are dropped. Leave blank to allow all countries. Visitors whose country cannot be detected are always allowed.'); ?></label>
+					<input type="text" name="geo_allowed" value="<?php echo esc_attr($cfg['geo_allowed']); ?>" autocomplete="off" placeholder="e.g. US  (blank = allow all countries)">
+					<p class="aq-forms-hint" style="margin:6px 0 0"><?php echo trim((string) $cfg['geo_allowed']) !== '' ? '<span class="aq-badge aq-badge--ok">On — ' . esc_html($cfg['geo_allowed']) . '</span>' : '<span class="aq-badge aq-badge--off">Off — all countries allowed</span>'; ?> &nbsp;Uses your host visitor-country data; fails open if unavailable.</p>
+				</div>
+				<div class="aq-forms-field" style="margin-bottom:0">
+					<label style="display:flex;align-items:center;gap:8px;font-weight:600"><input type="checkbox" name="link_spam_block" value="1" <?php checked(!empty($cfg['link_spam_block'])); ?>> Drop link-spam messages</label>
+					<p class="aq-forms-hint" style="margin:6px 0 0">Silently drops messages with 2+ links, or that are essentially just a link (typical of SEO / backlink / agency solicitation). A single link inside a real message is allowed.</p>
+				</div>
+			</div>
+
+			<div class="aq-forms-card">
 				<h2>Email delivery (SMTP)</h2>
 				<p class="aq-forms-hint">
 					<?php echo $smtp_ready ? '<span class="aq-badge aq-badge--ok">Active — via ' . esc_html($cfg['smtp_host']) . '</span>' : '<span class="aq-badge aq-badge--off">Not active — using default mail</span>'; ?>
@@ -1703,6 +1790,8 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'hcaptcha_site_key' => preg_replace('/[^A-Za-z0-9._\-]/', '', trim((string) ($in['hcaptcha_site_key'] ?? ''))),
 			'email_logo'     => esc_url_raw(trim((string) ($in['email_logo'] ?? ''))),
 			'field_sync_daily' => !empty($in['field_sync_daily']),
+			'geo_allowed'      => strtoupper(preg_replace('/[^A-Za-z, ]/', '', (string) ($in['geo_allowed'] ?? ''))),
+			'link_spam_block'  => !empty($in['link_spam_block']),
 			'email_header_bg'    => self::clean_hex($in['email_header_bg'] ?? ''),
 			'email_header_fg'    => self::clean_hex($in['email_header_fg'] ?? ''),
 			'email_accent'       => self::clean_hex($in['email_accent'] ?? ''),
