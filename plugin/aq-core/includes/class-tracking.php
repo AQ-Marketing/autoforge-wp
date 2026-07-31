@@ -57,18 +57,11 @@ class AQ_Tracking {
 		], $opt);
 	}
 
-	/**
-	 * Whether tracking output renders. Always true — tracking fires in every
-	 * environment (staging URLs aren't crawlable, so there's no indexing risk and
-	 * pre-launch testing needs the tags live). Indexing posture is separate
-	 * (aq_noindex_active()) and unaffected. A filter allows a site to opt back
-	 * into suppression if it ever needs to.
-	 */
-	private static function tracking_live(): bool {
-		return (bool) apply_filters('aq_tracking_render', true);
-	}
-
-	/* ---------------- front-end output ---------------- */
+	/* ---------------- front-end output ----------------
+	 * Tags & custom snippets ALWAYS render — every environment, no pause. Staging
+	 * URLs aren't crawlable (no indexing risk), pre-launch testing needs the tags
+	 * live, and a pasted custom snippet is an explicit admin action. Indexing
+	 * posture is separate (aq_noindex_active()) and unaffected. */
 
 	public static function print_head(): void {
 		if (is_admin()) {
@@ -82,10 +75,6 @@ class AQ_Tracking {
 		}
 		if ($t['bing'] !== '') {
 			echo '<meta name="msvalidate.01" content="' . esc_attr($t['bing']) . '" />' . "\n";
-		}
-
-		if (!self::tracking_live()) {
-			return; // staging: no analytics, no custom head snippet
 		}
 
 		// Google Tag Manager (head half).
@@ -118,7 +107,7 @@ class AQ_Tracking {
 	}
 
 	public static function print_body_open(): void {
-		if (is_admin() || !self::tracking_live()) {
+		if (is_admin()) {
 			return;
 		}
 		$t = self::get();
@@ -135,7 +124,7 @@ class AQ_Tracking {
 	}
 
 	public static function print_footer(): void {
-		if (is_admin() || !self::tracking_live()) {
+		if (is_admin()) {
 			return;
 		}
 		$t = self::get();
@@ -154,8 +143,7 @@ class AQ_Tracking {
 		if (!current_user_can(self::CAP)) {
 			return;
 		}
-		$t    = self::get();
-		$live = self::tracking_live();
+		$t = self::get();
 		AQ_Admin_Hub::open('Tracking', 'Add analytics & verification codes. AutoForge places each tag correctly and renders them in every environment.', self::SLUG);
 		?>
 		<style>
@@ -174,11 +162,7 @@ class AQ_Tracking {
 			<div class="notice notice-success is-dismissible"><p>Tracking settings saved.</p></div>
 		<?php endif; ?>
 
-		<?php if ($live) : ?>
-			<div class="aq-trk-banner aq-trk-banner--live"><strong>Tracking is active in every environment.</strong> All configured tags &amp; snippets render on the front end on staging and production alike. (Indexing is controlled separately under <a href="<?php echo esc_url(admin_url('admin.php?page=aq-performance')); ?>">Performance</a>.)</div>
-		<?php else : ?>
-			<div class="aq-trk-banner aq-trk-banner--staging"><strong>Tracking output is currently disabled</strong> via the <code>aq_tracking_render</code> filter. Remove that filter to render tags again.</div>
-		<?php endif; ?>
+		<div class="aq-trk-banner aq-trk-banner--live"><strong>Tracking is active in every environment.</strong> All configured tags &amp; snippets render on the front end on staging and production alike. (Indexing is controlled separately under <a href="<?php echo esc_url(admin_url('admin.php?page=aq-performance')); ?>">Performance</a>.)</div>
 
 		<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" autocomplete="off">
 			<input type="hidden" name="action" value="aq_tracking_save">
@@ -221,7 +205,7 @@ class AQ_Tracking {
 
 			<div class="aq-panel">
 				<h2>Custom snippets</h2>
-				<p class="aq-trk-hint" style="margin:4px 0 16px;">For anything not covered above. Pasted exactly as entered — admins only. Paused on staging along with analytics.</p>
+				<p class="aq-trk-hint" style="margin:4px 0 16px;">For anything not covered above. Pasted exactly as entered — admins only. Renders on staging and production alike.</p>
 
 				<div class="aq-trk-field">
 					<label for="aq-trk-head">Head <span class="aq-trk-where">in &lt;head&gt;</span></label>
