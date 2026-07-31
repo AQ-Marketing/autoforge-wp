@@ -421,6 +421,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'notify_bcc'     => '',
 			'notify_subject' => '',
 			'notify_body'    => '',
+			'notify_footer'  => '',
 			'email_template' => '',
 			'test_recipient' => 'robert@aqmarketing.com, justin@aqmarketing.com',
 			'smtp_host'      => '',
@@ -1107,8 +1108,12 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 		$banner = $is_test
 			? '<div style="background:#fff7e6;color:#7a4e0a;border:1px solid #f4d088;border-radius:8px;padding:10px 14px;margin:0 0 18px;font-size:13px;font-family:' . $font . '"><strong>Test email</strong> &mdash; a design preview of the website form notification. No real customer submitted this.</div>'
 			: '';
-		$foot = esc_html($site) . ($phone !== '' ? ' &nbsp;&middot;&nbsp; ' . esc_html($phone) : '')
-			. ' &nbsp;&middot;&nbsp; <a href="' . esc_url(home_url('/')) . '" style="color:' . $accent . ';text-decoration:none;">' . esc_html($host) . '</a>';
+		// Footer: admin-authored (with brand tokens) when set, else the built-in default.
+		$custom_footer = trim((string) ($cfg['notify_footer'] ?? ''));
+		$foot = $custom_footer !== ''
+			? self::render_footer_tokens($custom_footer)
+			: esc_html($site) . ($phone !== '' ? ' &nbsp;&middot;&nbsp; ' . esc_html($phone) : '')
+				. ' &nbsp;&middot;&nbsp; <a href="' . esc_url(home_url('/')) . '" style="color:' . $accent . ';text-decoration:none;">' . esc_html($host) . '</a>';
 
 		return [
 			'site' => esc_html($site), 'host' => esc_html($host), 'when' => esc_html($when),
@@ -1119,6 +1124,46 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'logo' => $logo_html,
 			'rows' => $rows, 'banner' => $banner, 'foot' => $foot,
 		];
+	}
+
+	/**
+	 * Render an admin-authored email FOOTER: escape the literal text, then expand
+	 * brand-level {tokens} into email-safe HTML (some produce links). Distinct from
+	 * fill_subject_tokens() (lead fields, plain text). Newlines become <br>.
+	 *
+	 * Tokens: {site} {domain} (linked to the site) {home_url}/{url} {phone}
+	 * {address} {year} {agency} (agency link) {powered_by} ("Powered by <agency>").
+	 * Agency name/URL are filterable (aq_agency_name / aq_agency_url) for white-label
+	 * resellers; they default to AQ Marketing / https://aqmarketing.com/.
+	 */
+	public static function render_footer_tokens(string $tpl): string {
+		$accent = self::email_theme()['accent'];
+		$site   = self::site_name();
+		$host   = (string) wp_parse_url(home_url(), PHP_URL_HOST);
+		$phone  = (string) (function_exists('aq_site') ? aq_site('phone') : '');
+		$addr   = (string) (function_exists('aq_site') ? aq_site('address') : '');
+		$year   = function_exists('wp_date') ? wp_date('Y') : gmdate('Y');
+		$aname  = (string) apply_filters('aq_agency_name', 'AQ Marketing');
+		$aurl   = (string) apply_filters('aq_agency_url', 'https://aqmarketing.com/');
+
+		$link = static function (string $href, string $text) use ($accent): string {
+			return '<a href="' . esc_url($href) . '" style="color:' . $accent . ';text-decoration:none;">' . esc_html($text) . '</a>';
+		};
+
+		// Escape the admin's literal text first (token braces survive esc_html), then
+		// swap each token for its pre-escaped, email-safe value. Newlines -> <br>.
+		$out = nl2br(esc_html($tpl));
+		return strtr($out, [
+			'{site}'       => esc_html($site),
+			'{domain}'     => $link(home_url('/'), $host),
+			'{home_url}'   => esc_url(home_url('/')),
+			'{url}'        => esc_url(home_url('/')),
+			'{phone}'      => esc_html($phone),
+			'{address}'    => esc_html($addr),
+			'{year}'       => esc_html((string) $year),
+			'{agency}'     => $link($aurl, $aname),
+			'{powered_by}' => 'Powered by ' . $link($aurl, $aname),
+		]);
 	}
 
 	/** The engine's built-in, brand-derived template (used when no custom one is saved). */
@@ -1412,7 +1457,8 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 				<div class="aq-forms-field"><label>Send to <?php echo AQ_Admin_Hub::tip('Where lead notification emails are delivered, in addition to your CRM. Separate multiple addresses with commas.'); ?></label><input type="text" name="notify_to" value="<?php echo esc_attr($cfg['notify_to']); ?>" placeholder="<?php echo esc_attr(get_option('admin_email')); ?>"></div>
 				<div class="aq-forms-field"><label>BCC <?php echo AQ_Admin_Hub::tip('Send a hidden copy of each lead email to this address. Other recipients will not see it.'); ?></label><input type="text" name="notify_bcc" value="<?php echo esc_attr($cfg['notify_bcc']); ?>"></div>
 				<div class="aq-forms-field"><label>Subject <?php echo AQ_Admin_Hub::tip('The subject line of the lead email you receive for each submission.'); ?></label><input type="text" name="notify_subject" value="<?php echo esc_attr($cfg['notify_subject']); ?>" placeholder="Website form submission"><p class="aq-forms-hint" style="margin:6px 0 0">Insert submitted details with merge tags: <code>{name}</code> <code>{first}</code> <code>{last}</code> <code>{email}</code> <code>{phone}</code> <code>{company}</code> <code>{city}</code> <code>{state}</code> <code>{zip}</code> <code>{service}</code> <code>{source}</code>. Example: <code>New lead: {name} &mdash; {city}, {state}</code>. Empty tags drop out automatically.</p></div>
-				<div class="aq-forms-field" style="margin-bottom:0"><label>Body <span style="font-weight:400;color:#888">(optional intro text shown above the lead details)</span></label><textarea name="notify_body" rows="3" placeholder="e.g. A new lead came in from the website — details below."><?php echo esc_textarea($cfg['notify_body']); ?></textarea><p class="aq-forms-hint" style="margin:6px 0 0">Same merge tags as Subject work here too.</p></div>
+				<div class="aq-forms-field"><label>Body <span style="font-weight:400;color:#888">(optional intro text shown above the lead details)</span></label><textarea name="notify_body" rows="3" placeholder="e.g. A new lead came in from the website — details below."><?php echo esc_textarea($cfg['notify_body']); ?></textarea><p class="aq-forms-hint" style="margin:6px 0 0">Same merge tags as Subject work here too.</p></div>
+				<div class="aq-forms-field" style="margin-bottom:0"><label>Email footer <span style="font-weight:400;color:#888">(bottom of the notification email; leave blank for the default)</span></label><textarea name="notify_footer" rows="2" placeholder="{site} &middot; {phone} &middot; {domain} — {powered_by}"><?php echo esc_textarea($cfg['notify_footer']); ?></textarea><p class="aq-forms-hint" style="margin:6px 0 0">Footer tokens: <code>{site}</code> <code>{domain}</code> (links to your site) <code>{phone}</code> <code>{address}</code> <code>{year}</code> <code>{home_url}</code> <code>{agency}</code> (AQ&nbsp;Marketing link) <code>{powered_by}</code> (&ldquo;Powered by AQ&nbsp;Marketing&rdquo;, links to aqmarketing.com).</p></div>
 			</div>
 
 			<div class="aq-forms-card">
@@ -1693,6 +1739,7 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 			'notify_bcc'     => self::clean_emails($in['notify_bcc'] ?? ''),
 			'notify_subject' => sanitize_text_field($in['notify_subject'] ?? ''),
 			'notify_body'    => sanitize_textarea_field($in['notify_body'] ?? ''),
+			'notify_footer'  => sanitize_textarea_field($in['notify_footer'] ?? ''),
 			'smtp_host'      => sanitize_text_field($in['smtp_host'] ?? ''),
 			'smtp_port'      => $port,
 			'smtp_secure'    => $secure,
