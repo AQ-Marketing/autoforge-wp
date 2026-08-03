@@ -3,7 +3,7 @@
  * Plugin Name: AutoForge
  * Plugin URI: https://aqmarketing.com
  * Description: Client-agnostic WordPress platform — one plugin owns front-end rendering (structured sections, header/footer, the visual builder), site config (NAP/license), SEO meta + titles, JSON-LD, ACF section schema, robots, JSON content sync, and the embedded Boost performance module. Every site is driven entirely from its own data; the theme is a near-empty stub.
- * Version: 0.3.34
+ * Version: 0.3.37
  * Requires PHP: 8.0
  * Author: AQ Marketing
  * Text Domain: aq-core
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.3.34');
+define('AQ_CORE_VERSION', '0.3.37');
 
 /**
  * Agency email domain whose ADMINS bypass the visual-editor SEO review gate
@@ -90,6 +90,7 @@ require_once AQ_CORE_DIR . 'includes/class-sitemap.php';
 require_once AQ_CORE_DIR . 'includes/class-llms.php';
 require_once AQ_CORE_DIR . 'includes/class-redirects.php';
 require_once AQ_CORE_DIR . 'includes/class-redirects-admin.php';
+require_once AQ_CORE_DIR . 'includes/class-content-seo-gate.php';
 require_once AQ_CORE_DIR . 'includes/class-content-sync.php';
 require_once AQ_CORE_DIR . 'includes/class-admin-hub.php';
 require_once AQ_CORE_DIR . 'includes/class-help.php';

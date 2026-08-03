@@ -103,15 +103,10 @@ class AQ_Content_Sync {
 	 * Import a JSON file or directory. Returns log lines; throws on failure.
 	 * Shared by the WP-CLI command and the local-dev HTTP trigger.
 	 */
-	public static function import_path(string $target, bool $dry = false): array {
+	public static function import_path(string $target, bool $dry = false, array $exception_ids = []): array {
 		$files = is_dir($target) ? self::find_json($target) : [$target];
 		if (!$files) {
 			throw new \RuntimeException("No JSON files found at {$target}");
-		}
-
-		if (get_option('permalink_structure') !== '/%postname%/') {
-			update_option('permalink_structure', '/%postname%/');
-			flush_rewrite_rules();
 		}
 
 		$log = [];
@@ -121,6 +116,25 @@ class AQ_Content_Sync {
 				$log[] = "SKIP {$file}: invalid JSON or missing \"path\"";
 				continue;
 			}
+			$items[] = ['data' => $data, 'source' => $file];
+		}
+
+		$items = $items ?? [];
+		if (!$items) {
+			return $log;
+		}
+		// Validate the entire release before changing permalinks or writing its
+		// first page. Candidate-to-candidate checks are essential for batch imports.
+		self::assert_seo_gate_batch($items, $exception_ids);
+
+		if (get_option('permalink_structure') !== '/%postname%/') {
+			update_option('permalink_structure', '/%postname%/');
+			flush_rewrite_rules();
+		}
+
+		foreach ($items as $item) {
+			$data = $item['data'];
+			$file = $item['source'];
 			if ($dry) {
 				$log[] = "OK (dry run): {$data['path']}";
 				continue;
@@ -144,6 +158,7 @@ class AQ_Content_Sync {
 				}
 			}
 			$id = self::upsert_page($data);
+			self::persist_content_intent($id, self::intent_for_source((string) $data['path'], $file));
 			$log[] = "Imported {$data['path']} -> post {$id}";
 		}
 		return $log;
@@ -162,7 +177,7 @@ class AQ_Content_Sync {
 	 */
 	public function import(array $args, array $assoc): void {
 		try {
-			$log = self::import_path($args[0], !empty($assoc['dry-run']));
+			$log = self::import_path($args[0], !empty($assoc['dry-run']), self::exception_ids($assoc));
 		} catch (\Throwable $e) {
 			\WP_CLI::error($e->getMessage());
 			return;
@@ -171,6 +186,44 @@ class AQ_Content_Sync {
 			\WP_CLI::log($line);
 		}
 		\WP_CLI::success(count($log) . ' pages processed.');
+	}
+
+	/**
+	 * Audit proposed canonical JSON before an import. This command never writes.
+	 *
+	 * ## OPTIONS
+	 *
+	 * <path>
+	 * : One JSON page/post file or a directory of JSON files.
+	 */
+	public function seo_audit(array $args, array $assoc): void {
+		$target = (string) ($args[0] ?? '');
+		$files  = is_dir($target) ? self::find_json($target) : [$target];
+		if (!$files || !is_file($files[0])) {
+			\WP_CLI::error("No JSON files found at {$target}");
+		}
+		$blocked = [];
+		$items = [];
+		foreach ($files as $file) {
+			$data = json_decode((string) file_get_contents($file), true);
+			if (!is_array($data) || empty($data['path'])) {
+				$blocked[] = "{$file}: invalid JSON or missing path";
+				continue;
+			}
+			$items[] = ['data' => $data, 'source' => $file];
+		}
+		try {
+			self::assert_seo_gate_batch($items, self::exception_ids($assoc));
+			foreach ($items as $item) {
+				\WP_CLI::log("PASS {$item['data']['path']}");
+			}
+		} catch (\Throwable $e) {
+			$blocked[] = $e->getMessage();
+		}
+		if ($blocked) {
+			\WP_CLI::error("SEO gate blocked:\n" . implode("\n", $blocked));
+		}
+		\WP_CLI::success(count($files) . ' content item(s) passed the SEO gate.');
 	}
 
 	/**
@@ -377,6 +430,9 @@ class AQ_Content_Sync {
 	 */
 	public static function rest_import(\WP_REST_Request $req) {
 		$body = $req->get_json_params();
+		$intent_map = is_array($body) && isset($body['seo_intents']) && is_array($body['seo_intents']) ? $body['seo_intents'] : [];
+		$exceptions = is_array($body) && isset($body['seo_exceptions']) && is_array($body['seo_exceptions']) ? $body['seo_exceptions'] : [];
+		$exception_ids = is_array($body) && isset($body['seo_exception_ids']) && is_array($body['seo_exception_ids']) ? $body['seo_exception_ids'] : [];
 		if (is_array($body) && isset($body['items']) && is_array($body['items'])) {
 			$items = $body['items'];
 		} elseif (is_array($body) && isset($body['path'])) {
@@ -389,6 +445,7 @@ class AQ_Content_Sync {
 
 		$log = [];
 		$written = 0;
+		$valid_items = [];
 		foreach ($items as $data) {
 			$errors = self::validate_item($data);
 			if ($errors) {
@@ -396,8 +453,28 @@ class AQ_Content_Sync {
 				$log[] = "REJECT {$label}: " . implode('; ', $errors);
 				continue;
 			}
+			$valid_items[] = $data;
+		}
+		if ($log) {
+			return new \WP_REST_Response(
+				['ok' => false, 'received' => count($items), 'written' => 0, 'log' => $log],
+				422
+			);
+		}
+		try {
+			self::assert_rest_seo_gate_batch($valid_items, $intent_map, $exceptions, $exception_ids);
+		} catch (\Throwable $e) {
+			$log[] = 'FAIL SEO gate: ' . $e->getMessage();
+			return new \WP_REST_Response(
+				['ok' => false, 'received' => count($items), 'written' => 0, 'log' => $log],
+				422
+			);
+		}
+		foreach ($valid_items as $data) {
 			try {
 				$id = self::upsert_page($data);
+				$path = '/' . trim((string) $data['path'], '/') . '/';
+				self::persist_content_intent($id, (array) ($intent_map[$path] ?? []));
 				$written++;
 				$log[] = "OK {$data['path']} -> {$id}";
 			} catch (\Throwable $e) {
@@ -463,6 +540,114 @@ class AQ_Content_Sync {
 			$out[] = array_merge(['type' => $type], $row);
 		}
 		return $out;
+	}
+
+	/** @return array<int,string> */
+	private static function exception_ids(array $assoc): array {
+		$raw = trim((string) ($assoc['seo-exception'] ?? ''));
+		return $raw === '' ? [] : array_values(array_filter(array_map('trim', explode(',', $raw))));
+	}
+
+	/** Stop a complete changed release before its first write when SEO checks fail. */
+	private static function assert_seo_gate_batch(array $items, array $exception_ids = []): void {
+		$candidates = [];
+		$intents = [];
+		$exceptions = [];
+		foreach ($items as $item) {
+			$data = (array) ($item['data'] ?? []);
+			$data = self::with_effective_canonical($data);
+			$manifest = self::seo_manifest((string) ($item['source'] ?? ''));
+			$path = '/' . trim((string) ($data['path'] ?? ''), '/') . '/';
+			$intent = (array) ($manifest['intents'][$path] ?? []);
+			$candidates[] = AQ_Content_SEO_Gate::row_from_content_item($data, $intent);
+			$intents = array_replace($intents, (array) $manifest['intents']);
+			$exceptions = array_merge($exceptions, (array) $manifest['exceptions']);
+		}
+		$result = AQ_Content_SEO_Gate::evaluate($candidates, self::seo_inventory(), $intents, $exceptions, $exception_ids);
+		if (!empty($result['ok'])) {
+			return;
+		}
+		$lines = [];
+		foreach ((array) ($result['findings'] ?? []) as $finding) {
+			$related = !empty($finding['related']) ? ' vs ' . implode(', ', (array) $finding['related']) : '';
+			$lines[] = '[' . ($finding['path'] ?? '(unknown path)') . '] [' . ($finding['code'] ?? 'blocked') . '] ' . ($finding['message'] ?? 'SEO gate blocked') . $related;
+		}
+		throw new \RuntimeException('SEO gate blocked: ' . implode('; ', $lines));
+	}
+
+	/** REST imports carry their manifest in the authenticated request body. */
+	private static function assert_rest_seo_gate_batch(array $items, array $intents, array $exceptions, array $exception_ids): void {
+		$candidates = [];
+		foreach ($items as $data) {
+			$path = '/' . trim((string) ($data['path'] ?? ''), '/') . '/';
+			$data = self::with_effective_canonical($data);
+			$candidates[] = AQ_Content_SEO_Gate::row_from_content_item($data, (array) ($intents[$path] ?? []));
+		}
+		$result = AQ_Content_SEO_Gate::evaluate($candidates, self::seo_inventory(), $intents, $exceptions, array_values(array_map('strval', $exception_ids)));
+		if (!empty($result['ok'])) {
+			return;
+		}
+		$codes = array_map(static fn(array $finding): string => '[' . ($finding['path'] ?? '(unknown path)') . '] ' . (string) ($finding['code'] ?? 'blocked'), (array) ($result['findings'] ?? []));
+		throw new \RuntimeException('SEO gate blocked: ' . implode(', ', $codes));
+	}
+
+	/** @return array{intents:array<string,array<string,mixed>>,exceptions:array<int,array<string,mixed>>} */
+	private static function seo_manifest(string $source): array {
+		$dir = is_dir($source) ? $source : dirname($source);
+		for ($i = 0; $i < 8 && $dir !== dirname($dir); $i++, $dir = dirname($dir)) {
+			$intents = $dir . DIRECTORY_SEPARATOR . 'seo-intents.json';
+			if (is_file($intents)) {
+				$decoded = json_decode((string) file_get_contents($intents), true);
+				$exceptions_file = $dir . DIRECTORY_SEPARATOR . 'seo-exceptions.json';
+				$exceptions = is_file($exceptions_file) ? json_decode((string) file_get_contents($exceptions_file), true) : [];
+				return ['intents' => is_array($decoded) ? $decoded : [], 'exceptions' => is_array($exceptions) ? $exceptions : []];
+			}
+		}
+		return ['intents' => [], 'exceptions' => []];
+	}
+
+	/** @return array<string,mixed> */
+	private static function intent_for_source(string $path, string $source): array {
+		$path = '/' . trim($path, '/') . '/';
+		return (array) (self::seo_manifest($source)['intents'][$path] ?? []);
+	}
+
+	/** @return array<int,array<string,mixed>> */
+	private static function seo_inventory(): array {
+		$inventory = [];
+		$posts = get_posts(['post_type' => ['page', 'post'], 'post_status' => 'publish', 'numberposts' => -1]);
+		foreach ($posts as $post) {
+			if ($post->post_type === 'page') {
+				$data = self::serialize_page($post);
+			} else {
+				$data = ['path' => wp_parse_url(get_permalink($post), PHP_URL_PATH) ?: '/', 'title' => $post->post_title, 'body' => $post->post_content, 'seo' => []];
+			}
+			$canonical = function_exists('get_field') ? (string) get_field('seo_canonical', $post->ID) : '';
+			if ($canonical !== '') {
+				$data['seo']['canonical'] = $canonical;
+			}
+			$data['effective_canonical'] = $canonical !== '' ? $canonical : (string) get_permalink($post);
+			$data['h1'] = $post->post_title;
+			$intent = json_decode((string) get_post_meta($post->ID, '_aq_content_intent', true), true);
+			$inventory[] = AQ_Content_SEO_Gate::row_from_content_item($data, is_array($intent) ? $intent : []);
+		}
+		return $inventory;
+	}
+
+	/** Resolve the same self-canonical WordPress would render when JSON omits it. */
+	private static function with_effective_canonical(array $data): array {
+		$seo = (array) ($data['seo'] ?? []);
+		if (trim((string) ($seo['canonical'] ?? '')) === '') {
+			$path = '/' . trim((string) ($data['path'] ?? ''), '/') . '/';
+			$data['effective_canonical'] = home_url($path === '//' ? '/' : $path);
+		}
+		return $data;
+	}
+
+	private static function persist_content_intent(int $post_id, array $intent): void {
+		if ($intent) {
+			update_post_meta($post_id, '_aq_content_intent', wp_json_encode($intent));
+		}
 	}
 
 	/* ---------------- internals ---------------- */
@@ -538,7 +723,7 @@ class AQ_Content_Sync {
 	}
 
 	// Public: also called cross-class by AQ_Legal::sync_pages() to publish legal
-	// pages. Was private, which fataled ("Call to private method") on Legal save.
+	// pages. Keep this public so the SEO gate does not regress the Legal workflow.
 	public static function upsert_page(array $data): int {
 		// Sanitize: reduce client-supplied JSON to known top-level keys, known
 		// section types, and registered fields only (unknown keys dropped),
