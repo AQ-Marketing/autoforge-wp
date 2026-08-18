@@ -162,8 +162,12 @@ foreach ($map as $k => $var) {
 	position: fixed; z-index: 9998;
 	font-family: inherit; line-height: 1.35;
 	max-width: min(340px, calc(100vw - 1.5rem));
+	transition: opacity .3s ease, transform .3s ease;
 }
 #aq-weather[hidden]{ display: none; }
+/* Lowered: faded + click-through while the footer is in view, so the widget
+   never sits on top of the copyright line at the bottom of the page. */
+#aq-weather.aqw.aqw-lowered{ opacity: 0; transform: translateY(16px); pointer-events: none; }
 #aq-weather.aqw[data-pos="bottom-right"]{ right: max(1rem, env(safe-area-inset-right)); bottom: calc(1rem + env(safe-area-inset-bottom)); }
 #aq-weather.aqw[data-pos="bottom-left"] { left:  max(1rem, env(safe-area-inset-left));  bottom: calc(1rem + env(safe-area-inset-bottom)); }
 #aq-weather.aqw[data-pos="top-right"]   { right: max(1rem, env(safe-area-inset-right)); top: 1rem; }
@@ -424,6 +428,27 @@ foreach ($map as $k => $var) {
 	var startOpen = cfg.startOpen;
 	try{ var s = localStorage.getItem('aqw:open'); if (s !== null) startOpen = (s === '1'); }catch(e){}
 	setOpen(!!startOpen);
+
+	/* Fade out while the footer is on screen so the widget never covers the
+	   copyright line. Prefers watching the footer element; falls back to a
+	   near-bottom scroll calc when there's no <footer>. */
+	(function(){
+		var lower = function(on){ root.classList.toggle('aqw-lowered', !!on); };
+		var footer = document.querySelector('[data-aqw-stop], footer, .site-footer, #colophon');
+		if (footer && 'IntersectionObserver' in window){
+			new IntersectionObserver(function(entries){
+				entries.forEach(function(e){ lower(e.isIntersecting); });
+			}, { threshold: 0 }).observe(footer);
+		} else {
+			var onScroll = function(){
+				var doc = document.documentElement;
+				lower((window.innerHeight + window.scrollY) >= (doc.scrollHeight - 140));
+			};
+			addEventListener('scroll', onScroll, { passive: true });
+			addEventListener('resize', onScroll, { passive: true });
+			onScroll();
+		}
+	})();
 
 	fetchForecast().then(render).catch(function(){ root.hidden = true; });
 })();
