@@ -192,8 +192,10 @@ return [
 		// Optional brand colors for the widget chrome. When set they print as
 		// inline custom properties; when omitted the CSS falls back to common
 		// brand tokens (--accent / --brand-700 / --ink) then a neutral default,
-		// so the widget looks native on any site with zero config.
-		'theme'        => ['accent' => '', 'accentInk' => '', 'panel' => '', 'ink' => ''],
+		// so the widget looks native on any site with zero config. `pulse` is the
+		// colour of the attention ring that breathes around the collapsed pill
+		// (defaults to `accent`); pick a high-contrast brand colour to make it pop.
+		'theme'        => ['accent' => '', 'accentInk' => '', 'panel' => '', 'ink' => '', 'pulse' => ''],
 
 		// Forecast → service "selling rules" (the per-client data layer). The
 		// widget evaluates the next `days`, picks the highest-priority MATCHING

@@ -96,7 +96,7 @@ $data = [
 /* ---- Optional brand colors → inline custom properties (else CSS falls back) ---- */
 $theme      = (array) ($w['theme'] ?? []);
 $style_vars = '';
-$map        = ['accent' => '--aqw-accent', 'accentInk' => '--aqw-accent-ink', 'panel' => '--aqw-panel', 'ink' => '--aqw-ink'];
+$map        = ['accent' => '--aqw-accent', 'accentInk' => '--aqw-accent-ink', 'panel' => '--aqw-panel', 'ink' => '--aqw-ink', 'pulse' => '--aqw-pulse'];
 foreach ($map as $k => $var) {
 	if (!empty($theme[$k])) {
 		$style_vars .= $var . ':' . $theme[$k] . ';';
@@ -158,6 +158,7 @@ foreach ($map as $k => $var) {
 	--aqw-line: rgba(0,0,0,.10);
 	--aqw-radius: 16px;
 	--aqw-shadow: 0 18px 48px -18px rgba(0,0,0,.45);
+	--aqw-pulse: var(--aqw-accent);   /* attention ring on the collapsed pill; override via weather.theme.pulse */
 	position: fixed; z-index: 9998;
 	font-family: inherit; line-height: 1.35;
 	max-width: min(340px, calc(100vw - 1.5rem));
@@ -177,8 +178,15 @@ foreach ($map as $k => $var) {
 	border-radius: 999px; box-shadow: var(--aqw-shadow);
 	font: inherit; font-weight: 600; font-size: .92rem;
 	transition: transform .18s ease, box-shadow .18s ease;
+	animation: aqw-pulse 2.2s cubic-bezier(.4,0,.6,1) infinite;
 }
-.aqw-pill:hover{ transform: translateY(-2px); }
+/* Pulsing attention ring — a colored halo that breathes outward from the pill. */
+@keyframes aqw-pulse{
+	0%   { box-shadow: var(--aqw-shadow), 0 0 0 0   color-mix(in srgb, var(--aqw-pulse) 70%, transparent); }
+	70%  { box-shadow: var(--aqw-shadow), 0 0 0 14px color-mix(in srgb, var(--aqw-pulse) 0%,  transparent); }
+	100% { box-shadow: var(--aqw-shadow), 0 0 0 0   color-mix(in srgb, var(--aqw-pulse) 0%,  transparent); }
+}
+.aqw-pill:hover{ transform: translateY(-2px); animation-play-state: paused; }
 .aqw-pill:focus-visible{ outline: 2px solid var(--aqw-accent); outline-offset: 2px; }
 .aqw-pill-ico{ width: 26px; height: 26px; display: inline-flex; color: var(--aqw-accent); flex: none; }
 .aqw-pill-ico svg{ width: 100%; height: 100%; }
@@ -234,6 +242,7 @@ foreach ($map as $k => $var) {
 
 @media (prefers-reduced-motion: reduce){
 	.aqw-pill, .aqw-sell-cta{ transition: none; }
+	.aqw-pill{ animation: none; }
 }
 </style>
 
