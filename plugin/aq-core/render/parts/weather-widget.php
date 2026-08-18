@@ -44,16 +44,22 @@ if ($label === '') {
 	$label = (string) (aq_site('address.locality') ?: aq_site('shortName') ?: aq_site('name') ?: '');
 }
 
-// Geo-page override: match the current page against townCoords keys (town name),
-// case-insensitively, against its title and slug. First hit wins.
+// Geo-page override: match the current page against the town list (town name),
+// case-insensitively, against its title and slug. First hit wins, so order the
+// list specific-first (e.g. "North Andover" before "Andover"). Accepts both the
+// list form [ ['town'=>'Andover','lat'=>..,'lon'=>..], … ] and the legacy map
+// form [ 'Andover' => ['lat'=>..,'lon'=>..], … ].
 $town_coords = (array) ($w['townCoords'] ?? []);
 if ($town_coords && function_exists('is_singular') && is_singular()) {
 	$obj = get_queried_object();
 	if ($obj instanceof WP_Post) {
 		$hay = strtolower(trim(($obj->post_title ?? '') . ' ' . ($obj->post_name ?? '')));
 		if ($hay !== '') {
-			foreach ($town_coords as $town => $c) {
-				$town = (string) $town;
+			foreach ($town_coords as $key => $c) {
+				if (!is_array($c)) {
+					continue;
+				}
+				$town = isset($c['town']) ? (string) $c['town'] : (string) $key;
 				if ($town === '' || !isset($c['lat'], $c['lon'])) {
 					continue;
 				}

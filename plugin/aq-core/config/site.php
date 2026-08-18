@@ -184,9 +184,10 @@ return [
 		'location'     => ['label' => '', 'lat' => null, 'lon' => null],
 
 		// Per-town coordinates for geo/location pages. The widget matches the
-		// current page (title/slug) against these keys and, on a hit, shows that
-		// town's forecast instead of the service-area default. Key by town name.
-		//   'Danvers' => ['lat' => 42.575, 'lon' => -70.93], …
+		// current page (title/slug) against each town and, on a hit, shows that
+		// town's forecast instead of the service-area default. List form, ordered
+		// specific-first (e.g. "North Andover" before "Andover"):
+		//   ['town' => 'Danvers', 'lat' => 42.575, 'lon' => -70.93], …
 		'townCoords'   => [],
 
 		// Optional brand colors for the widget chrome. When set they print as
