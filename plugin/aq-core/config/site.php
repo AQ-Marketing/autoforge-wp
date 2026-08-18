@@ -158,6 +158,54 @@ return [
 	// Sticky call bar (bottom of viewport).
 	'stickyBar' => ['label' => 'Questions? Call us:'],
 
+	// Weather widget — a sticky, expand/collapse floating panel that pulls a live
+	// forecast (Open-Meteo, keyless) for the client's SERVICE AREA and turns the
+	// coming week's conditions into a reason-to-book CTA (rain → drainage, wind →
+	// tree-limb check, heat → irrigation, snow → winter prep, …). Client-agnostic
+	// mechanism, per-client data. Ships DISABLED fleet-wide (enabled=false) so no
+	// existing site shows it until it opts in via brand.json. Rendered in
+	// body-close.php behind `aq_site('weather.enabled')`; markup + styles +
+	// behavior are all self-contained in render/parts/weather-widget.php.
+	'weather' => [
+		'enabled'      => false,          // fleet-wide gate — unset/false = fully inert
+		'position'     => 'bottom-right', // bottom-right | bottom-left | top-right | top-left
+		                                  // NB: a site with a chat widget (usually bottom-right)
+		                                  // should place this bottom-left to avoid the collision.
+		'units'        => 'fahrenheit',   // fahrenheit | celsius
+		'days'         => 5,              // forecast days to fetch/evaluate (1–7)
+		'refreshHours' => 3,              // client-side localStorage cache TTL
+		'startOpen'    => false,          // expanded on first load (else collapsed pill)
+		'heading'      => 'Your local forecast',
+		'intro'        => '',             // optional line under the panel heading
+
+		// Default location = the service area. lat/lon resolved once at config
+		// time (Open-Meteo geocoding) and stored here; falls back to top-level
+		// `geo` + address.locality when omitted.
+		'location'     => ['label' => '', 'lat' => null, 'lon' => null],
+
+		// Per-town coordinates for geo/location pages. The widget matches the
+		// current page (title/slug) against these keys and, on a hit, shows that
+		// town's forecast instead of the service-area default. Key by town name.
+		//   'Danvers' => ['lat' => 42.575, 'lon' => -70.93], …
+		'townCoords'   => [],
+
+		// Optional brand colors for the widget chrome. When set they print as
+		// inline custom properties; when omitted the CSS falls back to common
+		// brand tokens (--accent / --brand-700 / --ink) then a neutral default,
+		// so the widget looks native on any site with zero config.
+		'theme'        => ['accent' => '', 'accentInk' => '', 'panel' => '', 'ink' => ''],
+
+		// Forecast → service "selling rules" (the per-client data layer). The
+		// widget evaluates the next `days`, picks the highest-priority MATCHING
+		// rule, and shows its message + CTA. `when` is a condition group:
+		//   storm | rain | snow | freeze | heat | wind | clear
+		// Each rule: ['when','priority','title','text','ctaLabel','ctaHref'].
+		'rules'        => [],
+
+		// Shown when no rule matches the forecast (calm/mild week).
+		'fallbackCta'  => ['title' => '', 'text' => '', 'ctaLabel' => '', 'ctaHref' => ''],
+	],
+
 	// Shared UI labels (used across header, footer, blog templates).
 	'labels' => [
 		'licensePrefix'   => 'License #',
