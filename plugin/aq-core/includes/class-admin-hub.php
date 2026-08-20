@@ -116,6 +116,7 @@ class AQ_Admin_Hub {
 			]],
 			['type' => 'link', 'slug' => 'aq-locations', 'label' => 'Locations', 'icon' => 'location'],
 			['type' => 'link', 'slug' => 'aq-chatbot', 'label' => 'Chatbot', 'icon' => 'format-chat'],
+			['type' => 'link', 'slug' => 'aq-weather', 'label' => 'Weather', 'icon' => 'cloud'],
 			['type' => 'group', 'label' => 'Settings', 'icon' => 'admin-generic', 'items' => [
 				'aq-integrations' => 'Integrations', 'aq-import' => 'Import',
 				'aq-performance' => 'Performance', 'aq-help' => 'Help',
