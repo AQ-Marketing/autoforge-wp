@@ -233,7 +233,7 @@ class AQ_Editor {
 
 	/** Human labels for the section types (structure panel + add menu). */
 	public static function layout_labels(): array {
-		return [
+		$labels = [
 			// Heroes
 			'hero'             => 'Hero',
 			'city_hero'        => 'City Hero',
@@ -293,6 +293,14 @@ class AQ_Editor {
 			// Lead capture
 			'contact_form'     => 'Contact Form',
 		];
+		/**
+		 * Let a theme / mu-plugin add friendly names for its OWN bespoke section
+		 * layouts (e.g. gl_contact -> "Contact Form") so the builder's structure
+		 * panel and add-section menu show human labels instead of the raw layout
+		 * slug. Mirrors the aq_editor_field_schema filter. Additive: any layout
+		 * whose key is absent still falls back to its slug in the builder.
+		 */
+		return (array) apply_filters('aq_editor_layout_labels', $labels);
 	}
 
 	/**
