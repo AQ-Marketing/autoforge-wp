@@ -173,7 +173,8 @@ class AQ_Footer {
 
 		if (isset($in['stickyBar']) && is_array($in['stickyBar'])) {
 			$patch['stickyBar'] = [
-				'label' => sanitize_text_field((string) ($in['stickyBar']['label'] ?? '')),
+				'enabled' => !empty($in['stickyBar']['enabled']),
+				'label'   => sanitize_text_field((string) ($in['stickyBar']['label'] ?? '')),
 			];
 		}
 
@@ -225,7 +226,12 @@ class AQ_Footer {
 		self::text('footerCta.href',  'Button link', (string) ($fcta['href'] ?? '/schedule/'), 'Where the button sends visitors — a path like /schedule/ or a full web address.');
 		echo '</div></div>';
 		echo '<div class="aq-panel"><h2>Sticky call bar</h2>';
-		echo '<p class="aq-nav-help">The bar fixed to the bottom of the screen. Button text and link come from the Footer CTA.</p>';
+		echo '<p class="aq-nav-help">A bar fixed to the bottom of the screen with your phone number and a call button. <strong>Off by default</strong> — turn it on for this site below. Button text and link come from the Footer CTA.</p>';
+		$sb_on = !empty($sbar['enabled']);
+		echo '<label class="aq-nav-toggle-row" style="display:flex;align-items:center;gap:10px;margin:2px 0 16px;cursor:pointer;">';
+		echo '<input type="checkbox" class="aq-nav-toggle" data-key="stickyBar.enabled"' . checked($sb_on, true, false) . ' style="width:18px;height:18px;flex:none;cursor:pointer;" />';
+		echo '<span class="aq-nav-label" style="margin:0;">Show the sticky call bar on this site</span>';
+		echo '</label>';
 		echo '<div class="aq-nav-grid">';
 		self::text('stickyBar.label', 'Prompt text', (string) ($sbar['label'] ?? 'Questions? Call us:'), 'Short message shown on the sticky bottom bar, before the call button.');
 		echo '</div></div>';
@@ -461,6 +467,7 @@ class AQ_Footer {
 			function collect() {
 				var p = { footer: { company: { links: rowsFrom('aq-nav-company') }, inspections: { links: rowsFrom('aq-nav-inspections') }, social: socialRowsFrom('aq-nav-social') } };
 				$all('.aq-nav-input[data-key]').forEach(function (inp) { setDeep(p, inp.getAttribute('data-key'), inp.value.trim()); });
+				$all('.aq-nav-toggle[data-key]').forEach(function (inp) { setDeep(p, inp.getAttribute('data-key'), inp.checked); });
 				return p;
 			}
 
