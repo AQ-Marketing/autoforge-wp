@@ -156,7 +156,11 @@ return [
 	'footerCta' => ['label' => 'Request a Call Back', 'href' => '/schedule/'],
 
 	// Sticky call bar (bottom of viewport).
-	'stickyBar' => ['label' => 'Questions? Call us:'],
+	// Sticky call bar — OFF for the whole fleet by default. A site opts in by
+	// setting stickyBar.enabled = true (mirrors weather.enabled). Legacy configs
+	// (stickyBar:false, or a truthy object with no `enabled` key) resolve to OFF,
+	// so nothing shows a bar unless it deliberately turns it on.
+	'stickyBar' => ['enabled' => false, 'label' => 'Questions? Call us:'],
 
 	// Shared UI labels (used across header, footer, blog templates).
 	'labels' => [
