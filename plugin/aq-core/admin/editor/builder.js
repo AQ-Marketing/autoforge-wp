@@ -40,7 +40,68 @@
 		}).then(function (r) { return r.json(); });
 	}
 	function schemaFor(type) { return (CFG.schema && CFG.schema[type]) ? CFG.schema[type].fields : []; }
-	function labelFor(type) { return (CFG.labels && CFG.labels[type]) || type; }
+	function labelFor(type) {
+		if (CFG.labels && CFG.labels[type]) { return CFG.labels[type]; }
+		return humanizeSlug(type, true);
+	}
+	// Turn a machine slug/key into a human label. With stripPrefix, drop a leading
+	// "<prefix>_" segment (pjp_trust_strip -> "Trust Strip") — every bespoke section
+	// type is named <clientPrefix>_<name>, so the structure panel and add-section
+	// menu read cleanly on ANY site with zero per-site config.
+	function humanizeSlug(slug, stripPrefix) {
+		var s = String(slug || '');
+		if (stripPrefix && s.indexOf('_') > -1) { s = s.slice(s.indexOf('_') + 1); }
+		s = s.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+		if (!s) { return String(slug || ''); }
+		return s.replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+	}
+	function looksLikeImage(key, v) {
+		if (v && typeof v === 'object' && !Array.isArray(v) && (v.url || v.id)) { return true; }
+		if (typeof v === 'string' && /\.(jpe?g|png|webp|gif|svg|avif)(\?|#|$)/i.test(v)) { return true; }
+		// Key hint ONLY when the value is empty or a bare attachment id — so layout
+		// keys like image_side / image_position (which hold "left"/"top", not files)
+		// are never mistaken for an image picker.
+		var keyIsImage = key === 'image' || /(^|_)(image|img|photo|logo|thumbnail|avatar|picture)$/i.test(key);
+		if (keyIsImage && (v === null || v === '' || typeof v === 'undefined' || typeof v === 'number')) { return true; }
+		return false;
+	}
+	// Best-effort editable fields for a section the engine has NO schema for
+	// (bespoke <prefix>_* layouts). Inferred from the section's OWN live data, so
+	// images and repeaters are captured — not just text. A section can still ship a
+	// precise schema via the aq_editor_field_schema filter, which overrides this.
+	function inferFields(obj) {
+		var out = [];
+		if (!obj || typeof obj !== 'object') { return out; }
+		var skip = { type: 1, anchor: 1, id: 1, variant: 1, uid: 1, v: 1 };
+		Object.keys(obj).forEach(function (k) {
+			if (skip[k] || k.charAt(0) === '_') { return; }
+			var v = obj[k], label = humanizeSlug(k, false);
+			if (Array.isArray(v)) {
+				var row = v.find(function (r) { return r && typeof r === 'object' && !Array.isArray(r); });
+				// Only object-row arrays become repeaters — they round-trip on the
+				// same keys. Arrays of scalars are skipped rather than rewritten into
+				// objects (which would change the saved shape and could break render).
+				if (row) { out.push({ name: k, label: label, type: 'repeater', subfields: inferFields(row) }); }
+				return;
+			}
+			if (typeof v === 'boolean') {
+				out.push({ name: k, label: label, type: 'toggle' });
+			} else if (looksLikeImage(k, v)) {
+				out.push({ name: k, label: label, type: 'image' });
+			} else if (/(^|_)icon($|_)/.test(k) && typeof v === 'string') {
+				out.push({ name: k, label: label, type: 'icon' });
+			} else if (/(^|_)(href|url)($|_)/.test(k) || /(^|_)link$/.test(k)) {
+				// href/url anywhere, or "link" only as the trailing word (cta_link) —
+				// so link_label / link_text stay text, not a URL box.
+				out.push({ name: k, label: label, type: 'url' });
+			} else if (typeof v === 'string' && (v.length > 90 || v.indexOf('\n') > -1)) {
+				out.push({ name: k, label: label, type: 'textarea' });
+			} else if (v === null || typeof v === 'string' || typeof v === 'number') {
+				out.push({ name: k, label: label, type: 'text' });
+			}
+		});
+		return out;
+	}
 	function setDirty(v) {
 		state.dirty = v;
 		if (els.save) {
@@ -420,9 +481,15 @@
 		var s = state.sections[state.selected];
 		p.appendChild(ce('h3', 'aqb-h', labelFor(s.type)));
 		var fields = schemaFor(s.type);
+		var inferred = false;
+		if (!fields.length) { fields = inferFields(s); inferred = true; }
 		if (!fields.length) {
 			p.appendChild(ce('p', 'aqb-muted', 'This section has no editable fields.'));
 			return;
+		}
+		if (inferred) {
+			var note = ce('p', 'aqb-muted aqb-auto-note', 'Fields detected automatically from this section.');
+			p.appendChild(note);
 		}
 		var content = fields.filter(function (f) { return f.group !== 'design'; });
 		var design = fields.filter(function (f) { return f.group === 'design'; });
