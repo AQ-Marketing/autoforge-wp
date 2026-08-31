@@ -527,7 +527,7 @@
 			return wrap;
 		}
 		if (f.type === 'image') {
-			wrap.appendChild(renderImage(obj, f));
+			wrap.appendChild(renderImage(obj, f, ctx));
 			return wrap;
 		}
 		if (f.type === 'icon') {
@@ -565,7 +565,7 @@
 	function imageBasename(url) {
 		return (url || '').split('?')[0].split('#')[0].split('/').pop();
 	}
-	function renderImage(obj, f) {
+	function renderImage(obj, f, ctx) {
 		var box = ce('div', 'aqb-img');
 		var thumb = ce('div', 'aqb-img__thumb');
 		var choose = ce('button', 'aqb-btn aqb-btn--ghost', 'Choose image');
@@ -587,7 +587,7 @@
 		paint();
 		box.appendChild(thumb);
 		var btns = ce('div', 'aqb-img__btns');
-		choose.addEventListener('click', function () { openMedia(obj, f, paint); });
+		choose.addEventListener('click', function () { openMedia(obj, f, paint, ctx); });
 		btns.appendChild(choose);
 		var clear = ce('button', 'aqb-btn aqb-btn--ghost', 'Remove');
 		clear.type = 'button';
@@ -639,10 +639,15 @@
 		return box;
 	}
 
-	function openMedia(obj, f, paint) {
+	function openMedia(obj, f, paint, ctx) {
 		if (!window.wp || !wp.media) {
 			var fn = window.prompt('Image filename from the media library:', obj[f.name] || '');
-			if (fn != null) { obj[f.name] = fn; setDirty(true); paint(); }
+			if (fn != null) {
+				var oldp = obj[f.name] != null ? String(obj[f.name]) : '';
+				obj[f.name] = fn; setDirty(true); paint();
+				var metap = state.images[fn];
+				postImage(ctx, f.name, oldp, fn, metap && metap.url ? metap.url : '');
+			}
 			return;
 		}
 		var frame = wp.media({ title: 'Select image', button: { text: 'Use image' }, multiple: false, library: { type: 'image' } });
@@ -651,12 +656,27 @@
 			var url = att.url || '';
 			var name = imageBasename(url);
 			var thumbUrl = (att.sizes && att.sizes.thumbnail && att.sizes.thumbnail.url) ? att.sizes.thumbnail.url : url;
+			var old = obj[f.name] != null ? String(obj[f.name]) : '';
 			obj[f.name] = name;
 			state.images[name] = { id: att.id, url: url, thumb: thumbUrl };
 			setDirty(true);
 			paint();
+			postImage(ctx, f.name, old, name, url);
 		});
 		frame.open();
+	}
+	// Live-preview an image swap on the canvas — the sibling of the settext bridge.
+	// The canvas finds the <img> by its data-aq-field marker, or (for unmarked
+	// images like heroes) by matching the OLD filename's stem, so this works on
+	// every site with no per-template changes. The true responsive/<picture>
+	// render returns on Save (which reloads the canvas).
+	function postImage(ctx, field, oldName, name, url) {
+		if (!url) { return; }
+		postCanvas({
+			type: 'setimage', index: state.selected, field: field,
+			repeater: ctx ? ctx.repeater : null, rindex: ctx ? ctx.rindex : null,
+			oldName: oldName, name: name, url: url
+		});
 	}
 
 	function renderRepeater(obj, f) {

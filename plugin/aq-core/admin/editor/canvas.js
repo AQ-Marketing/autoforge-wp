@@ -312,6 +312,49 @@
 		setTimeout(function () { fieldBox.classList.remove('is-flash'); fieldBox.style.display = 'none'; }, 1200);
 	}
 
+	// --- live image swap (no reload) ---
+	// Reduce a URL/filename to a comparable stem: basename, minus extension and
+	// WordPress's "-WxH" size suffix. So "irrigation.webp", "irrigation-1024x683.webp",
+	// and ".../uploads/2026/08/irrigation.webp" all compare equal.
+	function imgStem(u) {
+		u = String(u || '').split('?')[0].split('#')[0];
+		u = u.substring(u.lastIndexOf('/') + 1);
+		u = u.replace(/\.[a-z0-9]+$/i, '');
+		u = u.replace(/-\d+x\d+$/, '');
+		return u.toLowerCase();
+	}
+	function imgInField(sectionEl, field, repeater, rindex) {
+		var fEl = findFieldEl(sectionEl, field, repeater, rindex);
+		if (!fEl) { return null; }
+		return fEl.tagName === 'IMG' ? fEl : fEl.querySelector('img');
+	}
+	function imgByOldName(sectionEl, oldName) {
+		if (!oldName) { return null; }
+		var want = imgStem(oldName), imgs = sectionEl.querySelectorAll('img'), i;
+		for (i = 0; i < imgs.length; i++) { if (imgs[i].getAttribute('data-aq-imgstem') === want) { return imgs[i]; } }
+		for (i = 0; i < imgs.length; i++) {
+			if (imgStem(imgs[i].getAttribute('src') || imgs[i].src) === want) { return imgs[i]; }
+			var ss = imgs[i].getAttribute('srcset') || '';
+			if (ss && ss.toLowerCase().indexOf(want) > -1) { return imgs[i]; }
+		}
+		return null;
+	}
+	function swapImage(sectionEl, m) {
+		var img = imgInField(sectionEl, m.field, m.repeater, m.rindex) || imgByOldName(sectionEl, m.oldName);
+		if (!img) { var all = sectionEl.querySelectorAll('img'); if (all.length === 1) { img = all[0]; } }
+		if (!img || !m.url) { return; }
+		// Neutralize <picture><source> + srcset so the new src wins; the true
+		// responsive render comes back on Save (which reloads the canvas).
+		var p = img.parentNode;
+		while (p && p !== sectionEl && p.tagName !== 'PICTURE') { p = p.parentNode; }
+		if (p && p.tagName === 'PICTURE') { var srcs = p.querySelectorAll('source'); for (var i = 0; i < srcs.length; i++) { srcs[i].removeAttribute('srcset'); } }
+		img.removeAttribute('srcset');
+		img.removeAttribute('sizes');
+		img.setAttribute('src', m.url);
+		img.setAttribute('data-aq-imgstem', imgStem(m.name || m.url)); // so the next swap of this field finds it
+		reposition();
+	}
+
 	// --- messages from the builder ---
 	window.addEventListener('message', function (e) {
 		if (e.origin !== ORIGIN || !e.data || e.data.source !== 'aq-builder') { return; }
@@ -331,6 +374,11 @@
 				applyValue(el, m.value || '', t === 'richtext' ? 'rich' : 'plain');
 				reposition();
 			}
+		}
+		else if (m.type === 'setimage') {
+			// Inspector picked a new image → swap it on the canvas immediately.
+			var isec = elFor(m.index != null ? m.index : selectedIndex);
+			if (isec) { swapImage(isec, m); }
 		}
 		else if (m.type === 'clear') { selectedIndex = -1; selBox.style.display = 'none'; }
 	});
