@@ -79,7 +79,7 @@ class AQ_Content_SEO_Gate {
 				$findings[] = self::finding('invalid_path', '', [], 'A candidate is missing a valid path.');
 				continue;
 			}
-			if (!$row['intent']) {
+			if (!$row['intent'] && !self::is_legal_path($row['path'])) {
 				$findings[] = self::finding('missing_intent', $row['path'], [], 'Changed content requires a content-intent record.');
 			}
 			$candidate_rows[] = $row;
@@ -124,6 +124,21 @@ class AQ_Content_SEO_Gate {
 	}
 
 	/** @return array<string,mixed> */
+	/**
+	 * Legal / utility pages (Privacy, Terms/TOS, Cookies, Accessibility, Disclaimer,
+	 * DMCA/CCPA/GDPR, do-not-sell) are NOT SEO targets, so they are exempt from the
+	 * content-intent requirement — forcing a keyword intent on them would be fake and
+	 * clutter the intents map. Matches the LAST path segment. Folded into the engine
+	 * from the Golini hotfix — see Decision - Legal Pages Exempt from AutoForge Intent Gate.
+	 */
+	public static function is_legal_path(string $path): bool {
+		$slug = strtolower(trim((string) $path, '/'));
+		if ($slug === '') { return false; }
+		$parts = explode('/', $slug);
+		$slug = (string) end($parts);
+		return (bool) preg_match('#^(privacy(-policy)?|terms(-of-(service|use))?|terms-and-conditions|tos|cookies?(-policy)?|legal|disclaimer|accessibility(-statement)?|dmca|ccpa|gdpr|do-not-sell[-a-z]*)$#', $slug);
+	}
+
 	private static function normalize_row(array $row, bool $candidate, array $intents): array {
 		$path = self::normalize_path((string) ($row['path'] ?? ''));
 		$intent = $row['intent'] ?? ($path !== '' ? ($intents[$path] ?? null) : null);
