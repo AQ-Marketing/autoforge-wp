@@ -31,9 +31,12 @@ ob_start(); ?>
 		foreach ($pwi_paras as $i => $p) : ?>
 		<p<?php echo ka_field_attr('paragraphs', $i); ?> class="text-brand-700 <?php echo $i === 0 ? 'mt-6' : 'mt-4'; ?>"><?php echo wp_kses_post($p['html'] ?? ''); ?></p>
 		<?php endforeach; ?>
-		<?php if (!empty($s['checklist'])) : ?>
+		<?php
+		$cl_all = (array) ($s['checklist'] ?? []);
+		if (array_filter($cl_all, fn($it) => is_array($it) && trim((string) ($it['text'] ?? '')) !== '')) : ?>
 		<ul class="mt-6 space-y-3 text-brand-700">
-			<?php foreach ($s['checklist'] as $clIdx => $item) : ?>
+			<?php foreach ($cl_all as $clIdx => $item) :
+				if (!is_array($item) || trim((string) ($item['text'] ?? '')) === '') { continue; } ?>
 			<li<?php echo ka_field_attr('checklist', $clIdx); ?> class="flex items-start gap-3">
 				<span class="mt-1 inline-flex items-center justify-center w-5 h-5 rounded-full bg-accent-500 text-white flex-shrink-0">
 					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"></path></svg>
