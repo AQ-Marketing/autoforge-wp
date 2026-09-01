@@ -300,4 +300,271 @@ class AQ_Alt_Text {
 	public static function seconds_until_tomorrow(): int {
 		return max(60, (int) strtotime('tomorrow 00:05 UTC') - time());
 	}
+
+	/* ============================================================
+	 * WordPress layer — context, generation, persistence
+	 * ============================================================ */
+
+	/** Light, client-agnostic context for the prompt (all from site data). */
+	public static function context_for(int $id): array {
+		$file = (string) get_attached_file($id);
+		$stem = preg_replace('/\.[a-z0-9]+$/i', '', basename($file));
+		$stem = preg_replace('/-\d+x\d+$/', '', (string) $stem);              // WP size suffix
+		$stem = preg_replace('/-(scaled|e\d{10,})$/i', '', (string) $stem);   // -scaled / edit hashes
+		$site = function_exists('aq_site');
+		$towns = [];
+		foreach ((array) ($site ? aq_site('towns') : []) as $t) {
+			if (!empty($t['name'])) {
+				$towns[] = (string) $t['name'];
+			}
+			if (count($towns) >= 5) {
+				break;
+			}
+		}
+		$parent = (int) get_post_field('post_parent', $id);
+		return [
+			'business' => $site ? (string) aq_site('name') : '',
+			'industry' => $site ? (string) aq_site('industry') : '',
+			'location' => $site ? trim((string) aq_site('address.locality') . ', ' . (string) aq_site('address.region'), ', ') : '',
+			'towns'    => $towns,
+			'filename' => trim((string) preg_replace('/[-_]+/', ' ', (string) $stem)),
+			'page'     => $parent ? (string) get_the_title($parent) : '',
+		];
+	}
+
+	/**
+	 * Describe one attachment and persist the alt. Never overwrites a non-empty alt.
+	 *
+	 * @return array{ok:bool,status:string,alt?:string,reason?:string}
+	 *   status: written | decorative | skipped | failed | deferred
+	 */
+	public static function generate(int $id): array {
+		$mime = (string) get_post_mime_type($id);
+		if (!self::eligible_mime($mime)) {
+			if ($id > 0 && get_post_type($id) === 'attachment') {
+				update_post_meta($id, '_aq_alt_skip', 'unsupported type');
+			}
+			return ['ok' => false, 'status' => 'skipped', 'reason' => 'unsupported type'];
+		}
+		$alt  = (string) get_post_meta($id, '_wp_attachment_image_alt', true);
+		$deco = (bool) get_post_meta($id, '_aq_alt_decorative', true);
+		if (!self::should_generate($mime, $alt, $deco, true)) {
+			return ['ok' => false, 'status' => 'skipped', 'reason' => $deco ? 'marked decorative' : 'already has alt text'];
+		}
+		if (!self::claude_ready()) {
+			return ['ok' => false, 'status' => 'failed', 'reason' => 'Claude not configured'];
+		}
+		if (self::daily_remaining() <= 0) {
+			return ['ok' => false, 'status' => 'deferred', 'reason' => 'daily cap reached'];
+		}
+
+		$meta   = wp_get_attachment_metadata($id);
+		$file   = (string) get_attached_file($id);
+		$source = self::pick_source(is_array($meta) ? $meta : [], dirname($file), $file);
+		if ($source === null) {
+			update_post_meta($id, '_aq_alt_skip', 'no image file under 5 MB');
+			return ['ok' => false, 'status' => 'skipped', 'reason' => 'no image file under 5 MB'];
+		}
+		$image = AQ_Claude::image_block($source['path'], $source['mime'] !== '' ? $source['mime'] : $mime);
+		if ($image === null) {
+			update_post_meta($id, '_aq_alt_skip', 'unreadable image file');
+			return ['ok' => false, 'status' => 'skipped', 'reason' => 'unreadable image file'];
+		}
+
+		$model = self::model();
+		$res   = AQ_Claude::message([
+			'model'       => $model,
+			'max_tokens'  => 300,
+			'timeout'     => 45,
+			'system'      => self::system_prompt(),
+			'messages'    => [['role' => 'user', 'content' => [$image, ['type' => 'text', 'text' => self::user_text(self::context_for($id))]]]],
+			'tools'       => [self::tool_def()],
+			'tool_choice' => ['type' => 'tool', 'name' => 'set_alt_text'],
+		]);
+		if (is_wp_error($res)) {
+			return ['ok' => false, 'status' => 'failed', 'reason' => $res->get_error_message()];
+		}
+		$parsed = self::parse_result($res['tool_input']);
+		if ($parsed === null) {
+			return ['ok' => false, 'status' => 'failed', 'reason' => 'no usable alt text returned'];
+		}
+		self::daily_bump();
+
+		// A human may have typed an alt while this sat in the queue — re-check right before writing.
+		if (trim((string) get_post_meta($id, '_wp_attachment_image_alt', true)) !== '') {
+			return ['ok' => false, 'status' => 'skipped', 'reason' => 'already has alt text'];
+		}
+		if ($parsed['decorative']) {
+			update_post_meta($id, '_wp_attachment_image_alt', '');
+			update_post_meta($id, '_aq_alt_decorative', 1);
+		} else {
+			update_post_meta($id, '_wp_attachment_image_alt', $parsed['alt']);
+		}
+		update_post_meta($id, '_aq_alt_source', 'ai');
+		update_post_meta($id, '_aq_alt_at', time());
+		update_post_meta($id, '_aq_alt_model', $model);
+		update_post_meta($id, '_aq_alt_confidence', $parsed['confidence']);
+		delete_post_meta($id, '_aq_alt_fail');
+		delete_post_meta($id, '_aq_alt_skip');
+		return ['ok' => true, 'status' => $parsed['decorative'] ? 'decorative' : 'written', 'alt' => $parsed['alt']];
+	}
+
+	/**
+	 * Work the queue: up to $limit items inside $budget seconds. Failures back off
+	 * (3 strikes → _aq_alt_fail + dropped); a daily-cap hit stops the pass.
+	 *
+	 * @return array{processed:int,remaining:int,deferred:bool,results:array}
+	 */
+	public static function process_queue(int $limit, float $budget): array {
+		$start = microtime(true);
+		$q     = self::queue();
+		$out   = ['processed' => 0, 'remaining' => 0, 'deferred' => false, 'results' => []];
+		foreach (self::due_ids($q) as $id) {
+			if ($out['processed'] >= $limit || (microtime(true) - $start) > $budget) {
+				break;
+			}
+			$r = self::generate($id);
+			$out['results'][] = ['id' => $id] + $r;
+			$out['processed']++;
+			if ($r['status'] === 'deferred') {
+				$out['deferred'] = true;
+				break;
+			}
+			if ($r['status'] === 'failed') {
+				$before = isset($q[$id]) ? (int) $q[$id]['attempts'] : 0;
+				$q = self::mark_failure($q, $id);
+				if (!isset($q[$id]) && $before + 1 >= self::MAX_ATTEMPTS) {
+					update_post_meta($id, '_aq_alt_fail', (string) ($r['reason'] ?? 'failed'));
+				}
+			} else {
+				unset($q[$id]);
+			}
+		}
+		self::save_queue($q);
+		$out['remaining'] = count($q);
+		return $out;
+	}
+
+	/** Attachment ids with no alt that are still worth trying (not decorative/failed/skipped). */
+	public static function missing_ids(int $limit): array {
+		$q = new WP_Query([
+			'post_type'      => 'attachment',
+			'post_status'    => 'inherit',
+			'post_mime_type' => self::MIMES,
+			'fields'         => 'ids',
+			'posts_per_page' => max(1, $limit),
+			'orderby'        => 'ID',
+			'order'          => 'ASC',
+			'no_found_rows'  => true,
+			'meta_query'     => [
+				'relation' => 'AND',
+				[
+					'relation' => 'OR',
+					['key' => '_wp_attachment_image_alt', 'compare' => 'NOT EXISTS'],
+					['key' => '_wp_attachment_image_alt', 'value' => '', 'compare' => '='],
+				],
+				['key' => '_aq_alt_decorative', 'compare' => 'NOT EXISTS'],
+				['key' => '_aq_alt_fail', 'compare' => 'NOT EXISTS'],
+				['key' => '_aq_alt_skip', 'compare' => 'NOT EXISTS'],
+			],
+		]);
+		return array_map('intval', (array) $q->posts);
+	}
+
+	/**
+	 * Backfill pass over images missing alt text. In this mode a failure marks the
+	 * attachment (_aq_alt_fail) immediately so the loop can never spin on one bad
+	 * image; "Retry failed" on the Media screen clears those markers.
+	 */
+	public static function process_missing(int $limit, float $budget): array {
+		$start = microtime(true);
+		$out   = ['processed' => 0, 'remaining' => 0, 'deferred' => false, 'results' => []];
+		foreach (self::missing_ids($limit) as $id) {
+			if ((microtime(true) - $start) > $budget) {
+				break;
+			}
+			$r = self::generate($id);
+			$out['results'][] = ['id' => $id] + $r;
+			$out['processed']++;
+			if ($r['status'] === 'deferred') {
+				$out['deferred'] = true;
+				break;
+			}
+			if ($r['status'] === 'failed') {
+				update_post_meta($id, '_aq_alt_fail', (string) ($r['reason'] ?? 'failed'));
+			}
+		}
+		$c = self::counts();
+		$out['remaining'] = max(0, $c['missing'] - $c['failed'] - $c['skipped']);
+		return $out;
+	}
+
+	/** Library counts for the Media screen. */
+	public static function counts(): array {
+		global $wpdb;
+		$in = "'" . implode("','", array_map('esc_sql', self::MIMES)) . "'";
+		$total   = (int) $wpdb->get_var("SELECT COUNT(*) FROM {$wpdb->posts} WHERE post_type='attachment' AND post_mime_type IN ($in)");
+		$missing = (int) $wpdb->get_var(
+			"SELECT COUNT(*) FROM {$wpdb->posts} p
+			 LEFT JOIN {$wpdb->postmeta} a ON a.post_id = p.ID AND a.meta_key = '_wp_attachment_image_alt'
+			 LEFT JOIN {$wpdb->postmeta} d ON d.post_id = p.ID AND d.meta_key = '_aq_alt_decorative'
+			 WHERE p.post_type='attachment' AND p.post_mime_type IN ($in) AND (a.meta_value IS NULL OR a.meta_value='') AND d.post_id IS NULL"
+		);
+		$by_meta = function (string $key) use ($wpdb, $in): int {
+			return (int) $wpdb->get_var($wpdb->prepare(
+				"SELECT COUNT(*) FROM {$wpdb->postmeta} m INNER JOIN {$wpdb->posts} p ON p.ID = m.post_id
+				 WHERE m.meta_key = %s AND p.post_type='attachment' AND p.post_mime_type IN ($in)", $key
+			));
+		};
+		return [
+			'total'      => $total,
+			'missing'    => $missing,
+			'ai'         => $by_meta('_aq_alt_source'),
+			'decorative' => $by_meta('_aq_alt_decorative'),
+			'failed'     => $by_meta('_aq_alt_fail'),
+			'skipped'    => $by_meta('_aq_alt_skip'),
+			'queued'     => count(self::queue()),
+		];
+	}
+
+	/* ============================================================
+	 * Hooks — arrival, cron runner, spawn fallback
+	 * ============================================================ */
+
+	/** wp_generate_attachment_metadata filter: enqueue eligible images; return $metadata untouched. */
+	public static function on_metadata($metadata, $attachment_id, $context = 'create') {
+		$id = (int) $attachment_id;
+		if ($id > 0 && self::enabled()) {
+			$mime = (string) get_post_mime_type($id);
+			$alt  = (string) get_post_meta($id, '_wp_attachment_image_alt', true);
+			$deco = (bool) get_post_meta($id, '_aq_alt_decorative', true);
+			if (self::should_generate($mime, $alt, $deco, true)) {
+				self::enqueue($id);
+			}
+		}
+		return $metadata;
+	}
+
+	/** Cron runner: one bounded pass; reschedules itself while work remains. */
+	public static function run_cron(): void {
+		update_option(self::LAST_RUN, time(), false);
+		$r = self::process_queue(self::CRON_BATCH, self::CRON_BUDGET);
+		if ($r['remaining'] > 0) {
+			self::schedule($r['deferred'] ? self::seconds_until_tomorrow() : 60);
+		}
+	}
+
+	/** admin_init: if the queue is stale (no pass in 90 s), nudge WP-Cron ourselves. */
+	public static function maybe_spawn(): void {
+		if (!self::queue()) {
+			return;
+		}
+		if (time() - (int) get_option(self::LAST_RUN, 0) < 90) {
+			return;
+		}
+		self::schedule(5);
+		if (function_exists('spawn_cron')) {
+			spawn_cron();
+		}
+	}
 }
