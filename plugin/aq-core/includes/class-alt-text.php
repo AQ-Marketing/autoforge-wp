@@ -567,4 +567,90 @@ class AQ_Alt_Text {
 			spawn_cron();
 		}
 	}
+
+	/* ============================================================
+	 * REST (aq/v1) — drives the Media screen button
+	 * ============================================================ */
+
+	public static function rest_routes(): void {
+		$can = function () { return current_user_can(self::CAP); };
+		register_rest_route('aq/v1', '/alt-text/run', [
+			'methods'             => 'POST',
+			'permission_callback' => $can,
+			'callback'            => [__CLASS__, 'rest_run'],
+		]);
+		register_rest_route('aq/v1', '/alt-text/status', [
+			'methods'             => 'GET',
+			'permission_callback' => $can,
+			'callback'            => [__CLASS__, 'rest_status'],
+		]);
+	}
+
+	/**
+	 * POST /alt-text/run  { mode: 'missing'|'queue'|'retry', limit?: 1..10 }
+	 * One bounded batch; the screen's JS loops until remaining = 0 or deferred.
+	 */
+	public static function rest_run(WP_REST_Request $req) {
+		if (!self::claude_ready()) {
+			return new WP_Error('aq_no_key', 'Claude is not configured. Add a key under AutoForge → Integrations.', ['status' => 400]);
+		}
+		@set_time_limit(0);
+		$body  = $req->get_json_params();
+		$mode  = (string) ($body['mode'] ?? 'missing');
+		$limit = min(10, max(1, (int) ($body['limit'] ?? self::REST_BATCH)));
+		if ($mode === 'retry') {
+			delete_metadata('post', 0, '_aq_alt_fail', '', true);
+			$mode = 'missing';
+		}
+		$r = $mode === 'queue' ? self::process_queue($limit, self::REST_BUDGET) : self::process_missing($limit, self::REST_BUDGET);
+		$r['ok']              = true;
+		$r['daily_remaining'] = self::daily_remaining();
+		$r['results']         = array_map([__CLASS__, 'result_row'], $r['results']);
+		return rest_ensure_response($r);
+	}
+
+	public static function rest_status() {
+		return rest_ensure_response([
+			'ok'              => true,
+			'counts'          => self::counts(),
+			'settings'        => self::settings(),
+			'claude_ready'    => self::claude_ready(),
+			'daily_remaining' => self::daily_remaining(),
+		]);
+	}
+
+	/** Enrich a generate() result for display. */
+	public static function result_row(array $row): array {
+		$id = (int) ($row['id'] ?? 0);
+		$row['filename'] = $id ? basename((string) get_attached_file($id)) : '';
+		$row['thumb']    = $id ? (string) wp_get_attachment_image_url($id, 'thumbnail') : '';
+		$row['edit_url'] = $id ? (string) get_edit_post_link($id, 'raw') : '';
+		return $row;
+	}
+
+	/* ============================================================
+	 * WP-CLI:  wp aq alt-text [--missing] [--limit=<n>] [--dry-run]
+	 * ============================================================ */
+
+	public static function cli(array $args, array $assoc): void {
+		$limit   = max(1, (int) ($assoc['limit'] ?? 50));
+		$dry     = !empty($assoc['dry-run']);
+		$missing = !empty($assoc['missing']);
+		if (!self::claude_ready()) {
+			\WP_CLI::error('Claude is not configured (AutoForge → Integrations).');
+		}
+		if ($dry) {
+			$ids = $missing ? self::missing_ids($limit) : self::due_ids(self::queue());
+			foreach ($ids as $id) {
+				\WP_CLI::log($id . "\t" . basename((string) get_attached_file((int) $id)));
+			}
+			\WP_CLI::success(count($ids) . ' candidate(s), nothing written (dry run).');
+			return;
+		}
+		$r = $missing ? self::process_missing($limit, 600) : self::process_queue($limit, 600);
+		foreach ($r['results'] as $row) {
+			\WP_CLI::log(sprintf('%-6d %-10s %s', $row['id'], $row['status'], (string) ($row['alt'] ?? ($row['reason'] ?? ''))));
+		}
+		\WP_CLI::success(sprintf('%d processed, %d remaining%s.', $r['processed'], $r['remaining'], $r['deferred'] ? ' (daily cap reached)' : ''));
+	}
 }
