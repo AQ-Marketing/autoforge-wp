@@ -157,8 +157,8 @@ class AQ_Help {
 					<li><strong>Delivery settings (SMTP)</strong> — an optional way to send that email through your own mailbox for more reliable delivery.</li>
 					<li><strong>Your CRM connection (GoHighLevel/GHL)</strong> — if configured, every submission is also pushed straight into your CRM as a
 					new contact, with the message attached as a note.</li>
-					<li><strong>Spam protection (hCaptcha)</strong> — an invisible-to-most-visitors check that blocks bots from spamming your forms.
-					Add a secret key here to turn it on for every form at once.</li>
+					<li><strong>Spam protection (Cloudflare Turnstile)</strong> — an invisible-to-most-visitors check that blocks bots from spamming your forms.
+					Add the site key and secret key here to turn it on for every form at once.</li>
 					<li>A <strong>"send a test email"</strong> button so you can preview exactly what a real submission looks like, without it touching
 					your CRM or a real visitor being involved.</li>
 				</ul>
