@@ -49,6 +49,18 @@ class AQ_Alt_Text {
 	const REST_BUDGET  = 25;   // seconds per dashboard batch (stays under typical 60 s PHP limits)
 	const ALT_MAX_LEN  = 200;
 
+	public static function register(): void {
+		add_filter('wp_generate_attachment_metadata', [__CLASS__, 'on_metadata'], 20, 3);
+		add_action(self::HOOK, [__CLASS__, 'run_cron']);
+		add_action('admin_init', [__CLASS__, 'maybe_spawn']);
+		add_action('admin_menu', [__CLASS__, 'menu'], 25);
+		add_action('admin_post_aq_alt_text_save', [__CLASS__, 'save']);
+		add_action('rest_api_init', [__CLASS__, 'rest_routes']);
+		if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI')) {
+			\WP_CLI::add_command('aq alt-text', [__CLASS__, 'cli']);
+		}
+	}
+
 	/* ============================================================
 	 * Pure logic — no WordPress calls (unit-tested in tests/alt-text-test.php)
 	 * ============================================================ */
@@ -652,5 +664,203 @@ class AQ_Alt_Text {
 			\WP_CLI::log(sprintf('%-6d %-10s %s', $row['id'], $row['status'], (string) ($row['alt'] ?? ($row['reason'] ?? ''))));
 		}
 		\WP_CLI::success(sprintf('%d processed, %d remaining%s.', $r['processed'], $r['remaining'], $r['deferred'] ? ' (daily cap reached)' : ''));
+	}
+
+	/* ============================================================
+	 * Admin screen — AutoForge → Media
+	 * ============================================================ */
+
+	public static function menu(): void {
+		add_submenu_page('aq-dashboard', 'Media', 'Media', self::CAP, self::SLUG, [__CLASS__, 'render']);
+	}
+
+	public static function render(): void {
+		if (!current_user_can(self::CAP)) {
+			return;
+		}
+		$s      = self::settings();
+		$c      = self::counts();
+		$ready  = self::claude_ready();
+		$models = AQ_Claude::models();
+		$int    = admin_url('admin.php?page=aq-integrations');
+		$eligible_remaining = max(0, $c['missing'] - $c['failed'] - $c['skipped']);
+
+		// Last 25 AI-written alts, newest first.
+		$recent = get_posts([
+			'post_type' => 'attachment', 'post_status' => 'inherit', 'posts_per_page' => 25,
+			'meta_key' => '_aq_alt_at', 'orderby' => 'meta_value_num', 'order' => 'DESC', 'no_found_rows' => true,
+		]);
+
+		AQ_Admin_Hub::open('Media', 'Alt text for your images, written automatically and never over a description a person typed.', self::SLUG);
+		?>
+		<style>
+			.aq-alt-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px}
+			.aq-alt-stat{background:#fff;border:1px solid #e6e8eb;border-radius:12px;padding:14px 16px}
+			.aq-alt-stat b{display:block;font-size:24px;line-height:1.1;color:#0d1014}
+			.aq-alt-stat span{font-size:12px;color:#5b6471}
+			.aq-alt-field{margin-bottom:16px;max-width:520px}
+			.aq-alt-field label{display:block;font-weight:600;color:#0d1014;margin-bottom:6px}
+			.aq-alt-field select,.aq-alt-field input[type=number]{width:100%;padding:9px 12px;border:1px solid #c9cfd6;border-radius:8px;font-size:14px;color:#0d1014}
+			.aq-alt-toggle{display:flex;align-items:center;gap:.5em;font-weight:600;color:#0d1014}
+			.aq-alt-hint{font-size:12px;color:#5b6471;margin:6px 0 0}
+			.aq-alt-banner{border-radius:10px;padding:12px 16px;margin-bottom:18px;font-size:13px}
+			.aq-alt-banner--ok{background:#eaf0ea;color:#1a6f3f;border:1px solid #b9dcc4}
+			.aq-alt-banner--warn{background:#fdf1dd;color:#7a4e0a;border:1px solid #f4d088}
+			.aq-alt-progress{height:8px;background:#e6e8eb;border-radius:4px;overflow:hidden;margin:10px 0;max-width:520px}
+			.aq-alt-progress i{display:block;height:100%;width:0;background:#1a6f3f;transition:width .3s}
+			.aq-alt-results{list-style:none;margin:8px 0 0;padding:0;max-width:720px;font-size:13px}
+			.aq-alt-results li{display:flex;gap:10px;align-items:center;padding:6px 0;border-bottom:1px solid #eef1f5}
+			.aq-alt-results img{width:40px;height:40px;object-fit:cover;border-radius:6px;background:#eef1f5}
+			.aq-alt-results .st{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#5b6471;min-width:72px}
+			table.aq-alt-table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #e6e8eb;border-radius:12px;overflow:hidden}
+			table.aq-alt-table th,table.aq-alt-table td{text-align:left;padding:8px 12px;border-bottom:1px solid #eef1f5;vertical-align:middle}
+			table.aq-alt-table img{width:44px;height:44px;object-fit:cover;border-radius:6px}
+		</style>
+
+		<?php if (isset($_GET['updated'])) : ?>
+			<div class="notice notice-success is-dismissible"><p>Saved.</p></div>
+		<?php endif; ?>
+
+		<?php if (!$ready) : ?>
+			<div class="aq-alt-banner aq-alt-banner--warn">Claude isn't connected, so alt text can't be written yet. Add a Claude key under <a href="<?php echo esc_url($int); ?>">Integrations</a>.</div>
+		<?php elseif (!empty($s['enabled'])) : ?>
+			<div class="aq-alt-banner aq-alt-banner--ok"><strong>On.</strong> New images get alt text automatically within about a minute of upload.</div>
+		<?php endif; ?>
+
+		<div class="aq-alt-grid">
+			<div class="aq-alt-stat"><b><?php echo (int) $c['total']; ?></b><span>images in library</span></div>
+			<div class="aq-alt-stat"><b id="aq-alt-missing"><?php echo (int) $c['missing']; ?></b><span>missing alt text</span></div>
+			<div class="aq-alt-stat"><b id="aq-alt-ai"><?php echo (int) $c['ai']; ?></b><span>written by AutoForge</span></div>
+			<div class="aq-alt-stat"><b><?php echo (int) $c['decorative']; ?></b><span>marked decorative</span></div>
+			<?php if ($c['failed'] || $c['queued']) : ?>
+				<div class="aq-alt-stat"><b><?php echo (int) $c['failed']; ?></b><span>failed · <?php echo (int) $c['queued']; ?> queued</span></div>
+			<?php endif; ?>
+		</div>
+
+		<div class="aq-panel">
+			<h2 style="margin-top:0">Fill in missing alt text <?php echo AQ_Admin_Hub::tip('Looks at each image that has no alt text and writes a short, plain description of what is visible. Images that already have alt text are left alone.'); ?></h2>
+			<p class="aq-alt-hint" style="margin:0 0 10px"><?php echo (int) $eligible_remaining; ?> image(s) can be filled in now · <?php echo (int) self::daily_remaining(); ?> left in today's allowance.</p>
+			<p>
+				<button type="button" class="aq-btn" id="aq-alt-run" <?php disabled(!$ready || $eligible_remaining === 0); ?>>Generate missing alt text</button>
+				<?php if ($c['failed']) : ?>
+					<button type="button" class="aq-btn aq-btn--ghost" id="aq-alt-retry" <?php disabled(!$ready); ?>>Retry <?php echo (int) $c['failed']; ?> failed</button>
+				<?php endif; ?>
+				<span id="aq-alt-status" style="margin-left:10px;font-size:13px;color:#5b6471"></span>
+			</p>
+			<div class="aq-alt-progress" id="aq-alt-bar" style="display:none"><i></i></div>
+			<ul class="aq-alt-results" id="aq-alt-results"></ul>
+		</div>
+
+		<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+			<input type="hidden" name="action" value="aq_alt_text_save">
+			<?php wp_nonce_field('aq_alt_text_save'); ?>
+			<div class="aq-panel">
+				<div class="aq-alt-field">
+					<label class="aq-alt-toggle"><input type="checkbox" name="enabled" value="1" <?php checked(!empty($s['enabled'])); ?>> Write alt text for new uploads automatically <?php echo AQ_Admin_Hub::tip('When on, every new image with no alt text is described in the background shortly after it is uploaded or imported.'); ?></label>
+				</div>
+				<div class="aq-alt-field">
+					<label for="aq-alt-model">Model <?php echo AQ_Admin_Hub::tip('Which Claude model writes the descriptions. Opus gives the best descriptions; Haiku is much cheaper and usually fine for alt text.'); ?></label>
+					<select id="aq-alt-model" name="model">
+						<?php foreach ($models as $id => $label) : ?>
+							<option value="<?php echo esc_attr($id); ?>" <?php selected($s['model'], $id); ?>><?php echo esc_html($label); ?></option>
+						<?php endforeach; ?>
+					</select>
+				</div>
+				<div class="aq-alt-field">
+					<label for="aq-alt-cap">Daily allowance <?php echo AQ_Admin_Hub::tip('Maximum number of images described per day. Anything beyond it simply waits for tomorrow — a safety cap on cost.'); ?></label>
+					<input type="number" id="aq-alt-cap" name="daily_cap" min="1" max="5000" value="<?php echo (int) $s['daily_cap']; ?>">
+				</div>
+			</div>
+			<?php submit_button('Save'); ?>
+		</form>
+
+		<?php if ($recent) : ?>
+			<h2>Recently written</h2>
+			<table class="aq-alt-table">
+				<thead><tr><th></th><th>Alt text</th><th>Confidence</th><th>When</th><th></th></tr></thead>
+				<tbody>
+				<?php foreach ($recent as $p) :
+					$alt  = (string) get_post_meta($p->ID, '_wp_attachment_image_alt', true);
+					$deco = (bool) get_post_meta($p->ID, '_aq_alt_decorative', true);
+					$at   = (int) get_post_meta($p->ID, '_aq_alt_at', true); ?>
+					<tr>
+						<td><?php echo wp_get_attachment_image($p->ID, 'thumbnail'); ?></td>
+						<td><?php echo $deco ? '<em>Decorative (empty alt)</em>' : esc_html($alt); ?></td>
+						<td><?php echo esc_html((string) get_post_meta($p->ID, '_aq_alt_confidence', true)); ?></td>
+						<td><?php echo $at ? esc_html(human_time_diff($at) . ' ago') : ''; ?></td>
+						<td><a href="<?php echo esc_url((string) get_edit_post_link($p->ID, 'raw')); ?>">Edit</a></td>
+					</tr>
+				<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+
+		<script>
+		(function () {
+			var url = '<?php echo esc_url_raw(rest_url('aq/v1/alt-text/run')); ?>';
+			var nonce = '<?php echo esc_js(wp_create_nonce('wp_rest')); ?>';
+			var run = document.getElementById('aq-alt-run'), retry = document.getElementById('aq-alt-retry');
+			var st = document.getElementById('aq-alt-status'), bar = document.getElementById('aq-alt-bar'), list = document.getElementById('aq-alt-results');
+			var missingEl = document.getElementById('aq-alt-missing'), aiEl = document.getElementById('aq-alt-ai');
+			if (!run) { return; }
+			function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+			function start(mode) {
+				var total = -1, done = 0, passes = 0;
+				run.disabled = true; if (retry) { retry.disabled = true; }
+				list.innerHTML = ''; bar.style.display = 'block'; bar.firstChild.style.width = '0%';
+				st.style.color = '#5b6471'; st.textContent = 'Writing alt text…';
+				function fail(msg) { run.disabled = false; if (retry) { retry.disabled = false; } st.textContent = '✕ ' + msg; st.style.color = '#d63638'; }
+				function step() {
+					passes++;
+					if (passes > 500) { fail('Stopped after 500 batches — click again to continue.'); return; }
+					fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': nonce, 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: mode, limit: 5 }) })
+						.then(function (r) { return r.json().then(function (d) { return { httpOk: r.ok, d: d || {} }; }); })
+						.then(function (res) {
+							var d = res.d;
+							if (!res.httpOk || d.ok !== true) { fail(d.message || d.code || 'Request failed.'); return; }
+							mode = 'missing'; // a retry pass clears markers once, then continues as a normal backfill
+							(d.results || []).forEach(function (r) {
+								var li = document.createElement('li');
+								li.innerHTML = (r.thumb ? '<img src="' + esc(r.thumb) + '" alt="">' : '<span style="width:40px"></span>')
+									+ '<span class="st">' + esc(r.status) + '</span>'
+									+ '<span>' + esc(r.status === 'written' ? r.alt : (r.status === 'decorative' ? 'Decorative, empty alt' : (r.reason || ''))) + (r.filename ? ' <small style="color:#5b6471">(' + esc(r.filename) + ')</small>' : '') + '</span>';
+								list.insertBefore(li, list.firstChild);
+								if (r.status === 'written' || r.status === 'decorative') { done++; }
+							});
+							if (total < 0) { total = done + (d.remaining || 0); }
+							var pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 100;
+							bar.firstChild.style.width = pct + '%';
+							if (missingEl) { missingEl.textContent = Math.max(0, parseInt(missingEl.textContent, 10) - (d.results || []).filter(function (r) { return r.status === 'written' || r.status === 'decorative'; }).length); }
+							if (aiEl) { aiEl.textContent = parseInt(aiEl.textContent, 10) + (d.results || []).filter(function (r) { return r.status === 'written' || r.status === 'decorative'; }).length; }
+							if (d.deferred) { run.disabled = false; st.textContent = '⏸ Daily allowance reached — ' + done + ' done today; the rest continue tomorrow.'; st.style.color = '#b26a00'; return; }
+							if ((d.remaining || 0) > 0 && (d.processed || 0) > 0) { st.textContent = 'Writing alt text… ' + done + ' done, ' + d.remaining + ' to go'; step(); return; }
+							run.disabled = (d.remaining || 0) === 0; if (retry) { retry.disabled = false; }
+							st.textContent = '✓ Done — ' + done + ' image(s) described.'; st.style.color = '#1a8f4f';
+						})
+						.catch(function (e) { fail('Interrupted (' + e.message + '). Click again to continue — finished work is saved.'); });
+				}
+				step();
+			}
+			run.addEventListener('click', function () { start('missing'); });
+			if (retry) { retry.addEventListener('click', function () { start('retry'); }); }
+		})();
+		</script>
+		<?php
+		AQ_Admin_Hub::close();
+	}
+
+	public static function save(): void {
+		if (!current_user_can(self::CAP) || !check_admin_referer('aq_alt_text_save')) {
+			wp_die('Not allowed.');
+		}
+		$in    = wp_unslash($_POST);
+		$model = (string) ($in['model'] ?? '');
+		update_option(self::OPTION, [
+			'enabled'   => !empty($in['enabled']),
+			'model'     => array_key_exists($model, AQ_Claude::models()) ? $model : 'claude-opus-5',
+			'daily_cap' => min(5000, max(1, (int) ($in['daily_cap'] ?? 300))),
+		], false);
+		wp_safe_redirect(add_query_arg(['page' => self::SLUG, 'updated' => '1'], admin_url('admin.php')));
+		exit;
 	}
 }

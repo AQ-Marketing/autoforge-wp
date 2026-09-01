@@ -95,6 +95,22 @@ class AQ_Help {
 				<p>Use this if you\'ve rebranded, want a different accent color, or want to try a different font pairing.</p>
 			'); ?>
 
+			<?php self::topic('Media', 'Alt text for your images — written automatically, never over what a person typed.', '
+				<p><strong>Alt text</strong> is the short description attached to an image that screen readers read aloud and Google uses to
+				understand the picture. Every image should have one; most uploads don\'t.</p>
+				<ul>
+					<li>When <strong>Write alt text automatically</strong> is on, any new image that arrives without alt text is described in the
+					background within about a minute — whether it was uploaded here, picked in the page editor, or imported with the site.</li>
+					<li><strong>Generate missing alt text</strong> works through images already in your library that have none. It runs in small
+					batches; you can leave the page and come back.</li>
+					<li>AutoForge only ever fills an <em>empty</em> alt. If you (or anyone) typed a description, it is never changed.</li>
+					<li>Purely decorative images (textures, dividers) are marked decorative and deliberately left with an empty alt — that is
+					the correct, accessible choice.</li>
+					<li>To fix a description, open the image (the <strong>Edit</strong> link in "Recently written") and change its alt text there.</li>
+				</ul>
+				<div class="aq-help__tip"><strong>Needs:</strong> a Claude key under Integrations. The daily allowance caps how many images are described per day so cost can never run away.</div>
+			'); ?>
+
 			<div class="aq-help__group">Getting found on Google</div>
 
 			<?php self::topic('SEO', 'The titles and descriptions that show up in Google search results.', '

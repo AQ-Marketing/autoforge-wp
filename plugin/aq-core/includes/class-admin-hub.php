@@ -100,7 +100,7 @@ class AQ_Admin_Hub {
 		return [
 			['type' => 'link', 'slug' => 'aq-dashboard', 'label' => 'Overview', 'icon' => 'dashboard'],
 			['type' => 'group', 'label' => 'Content', 'icon' => 'edit', 'items' => [
-				'aq-pages' => 'Pages', 'aq-styles' => 'Styles', 'aq-navigation' => 'Navigation',
+				'aq-pages' => 'Pages', 'aq-media' => 'Media', 'aq-styles' => 'Styles', 'aq-navigation' => 'Navigation',
 				'aq-footer' => 'Footer', 'aq-logo' => 'Logo', 'aq-legal' => 'Legal Pages',
 			]],
 			['type' => 'group', 'label' => 'SEO', 'icon' => 'search', 'items' => [
