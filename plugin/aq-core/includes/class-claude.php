@@ -13,6 +13,7 @@
  *   - tools:   [{ name, description, input_schema:{type,properties,required} }]
  *   - reply:   content[] blocks — `text` blocks concatenated into text, the
  *              first `tool_use` block exposed as tool_name + tool_input.
+ *              Also returned: raw content[] (for thinking-block replay) and usage counters; stop_reason "refusal" → WP_Error aq_refusal.
  *
  * The API key comes from AutoForge → Integrations (AQ_Integrations::anthropic_key(),
  * or the AQ_ANTHROPIC_KEY wp-config constant). Read server-side only, never sent
@@ -21,7 +22,8 @@
  * KEY PROXY (fleet mode): if AQ_CLAUDE_PROXY_URL + AQ_CLAUDE_PROXY_TOKEN are defined
  * in wp-config, requests go to your proxy with this site's token instead — the real
  * Anthropic key lives only on the proxy and never touches the site. See the
- * aq-claude-proxy Cloudflare Worker for the server side.
+ * aq-claude-proxy Cloudflare Worker for the server side. The anthropic-beta
+ * header (Opus 5 fallbacks) is sent to the proxy too — the proxy must forward it.
  */
 
 if (!defined('ABSPATH')) {
@@ -125,60 +127,127 @@ class AQ_Claude {
 	}
 
 	/**
-	 * Send one Messages API request. Returns a normalized array on success or a
-	 * WP_Error on failure.
+	 * Assemble endpoint + headers + JSON payload for one Messages API call. Pure
+	 * (no HTTP) so the wire format is unit-testable.
 	 *
 	 * @param array $args {
-	 *   @type string $system      System prompt (optional).
-	 *   @type array  $messages    [['role'=>'user','content'=>string], ...] (required).
-	 *   @type array  $tools       Anthropic tool defs (optional).
-	 *   @type array  $tool_choice e.g. ['type'=>'auto'] or ['type'=>'tool','name'=>...] (optional).
-	 *   @type int    $max_tokens  Output cap (default 8000; keep <=16000 to avoid HTTP timeouts).
-	 *   @type string $model       Model id (default self::MODEL).
-	 *   @type int    $timeout     HTTP timeout seconds (default 120).
+	 *   @type string|array $system       System prompt (string, or an array of content blocks).
+	 *   @type bool         $cache_system Wrap a string system prompt in one cached text block
+	 *                                    (cache_control ephemeral) — use for a stable prefix.
+	 *   @type array        $messages     [['role'=>'user','content'=>string|array], ...] (required).
+	 *   @type array        $tools        Anthropic tool defs (optional).
+	 *   @type array        $tool_choice  e.g. ['type'=>'auto'] or ['type'=>'tool','name'=>...] (optional).
+	 *   @type string       $effort       low|medium|high|xhigh|max → output_config.effort (optional).
+	 *   @type array        $thinking     Passed through as-is (optional; omit for the model default).
+	 *   @type int          $max_tokens   Output cap (default 8000; keep <=16000 to avoid HTTP timeouts).
+	 *   @type string       $model        Model id (default self::MODEL).
 	 * }
-	 * @return array{ok:bool,text:string,tool_name:string,tool_input:?array,stop_reason:string}|WP_Error
+	 * @return array{endpoint:string,headers:array,payload:array}
 	 */
-	public static function message(array $args) {
-		// Route through the key proxy when configured, else call Anthropic directly.
+	public static function build_request(array $args): array {
+		$model = self::resolve_model((string) ($args['model'] ?? self::MODEL));
+
 		if (self::using_proxy()) {
 			$endpoint = self::proxy_url() . '/v1/messages';
-			$headers  = [
-				'content-type'  => 'application/json',
-				'authorization' => 'Bearer ' . self::proxy_token(),
-			];
+			$headers  = ['content-type' => 'application/json', 'authorization' => 'Bearer ' . self::proxy_token()];
 		} else {
-			$key = self::api_key();
-			if ($key === '') {
-				return new WP_Error('aq_no_key', 'No Claude API key configured. Add one under AutoForge → Integrations, or point this site at a key proxy.', ['status' => 400]);
-			}
 			$endpoint = self::ENDPOINT;
-			$headers  = [
-				'content-type'      => 'application/json',
-				'x-api-key'         => $key,
-				'anthropic-version' => self::API_VER,
-			];
+			$headers  = ['content-type' => 'application/json', 'x-api-key' => self::api_key(), 'anthropic-version' => self::API_VER];
 		}
 
 		$payload = [
-			'model'      => self::resolve_model((string) ($args['model'] ?? self::MODEL)),
+			'model'      => $model,
 			'max_tokens' => (int) ($args['max_tokens'] ?? 8000),
 			'messages'   => array_values((array) ($args['messages'] ?? [])),
 		];
-		if (!empty($args['system'])) {
-			$payload['system'] = (string) $args['system'];
+
+		$system = $args['system'] ?? '';
+		if (is_array($system) && $system) {
+			$payload['system'] = array_values($system);
+		} elseif (is_string($system) && $system !== '') {
+			$payload['system'] = !empty($args['cache_system'])
+				? [['type' => 'text', 'text' => $system, 'cache_control' => ['type' => 'ephemeral']]]
+				: $system;
 		}
 		if (!empty($args['tools'])) {
-			$payload['tools'] = array_values((array) $args['tools']);
+			$payload['tools']       = array_values((array) $args['tools']);
 			$payload['tool_choice'] = is_array($args['tool_choice'] ?? null) ? $args['tool_choice'] : ['type' => 'auto'];
 		}
+		if (!empty($args['effort']) && in_array((string) $args['effort'], self::EFFORTS, true)) {
+			$payload['output_config'] = ['effort' => (string) $args['effort']];
+		}
+		if (isset($args['thinking']) && is_array($args['thinking'])) {
+			$payload['thinking'] = $args['thinking'];
+		}
+		// Opus 5: let Anthropic re-run a safety-classifier refusal on a fallback
+		// model server-side instead of handing us a bare refusal.
+		if ($model === 'claude-opus-5') {
+			$headers['anthropic-beta'] = self::FALLBACK_BETA;
+			$payload['fallbacks']      = 'default';
+		}
+		return ['endpoint' => $endpoint, 'headers' => $headers, 'payload' => $payload];
+	}
 
-		$resp = wp_remote_post($endpoint, [
+	/**
+	 * Normalize a decoded Messages API response. Concatenates text blocks, exposes
+	 * the FIRST tool_use as tool_name/tool_input, keeps the raw content blocks
+	 * (needed to echo thinking blocks back on a follow-up turn) and the usage
+	 * counters. A `refusal` stop reason is returned as a WP_Error so no caller can
+	 * mistake it for a result.
+	 *
+	 * @return array{ok:bool,text:string,tool_name:string,tool_input:?array,stop_reason:string,content:array,usage:array}|WP_Error
+	 */
+	public static function parse_response(array $data) {
+		$stop = (string) ($data['stop_reason'] ?? '');
+		if ($stop === 'refusal') {
+			return new WP_Error('aq_refusal', 'The AI declined this request, so nothing was changed.', ['status' => 422]);
+		}
+		$text = ''; $tool_name = ''; $tool_input = null; $content = [];
+		foreach ((array) ($data['content'] ?? []) as $block) {
+			if (!is_array($block)) {
+				continue;
+			}
+			$content[] = $block;
+			$type = (string) ($block['type'] ?? '');
+			if ($type === 'text') {
+				$text .= (string) ($block['text'] ?? '');
+			} elseif ($type === 'tool_use' && $tool_input === null) {
+				$tool_name  = (string) ($block['name'] ?? '');
+				$tool_input = is_array($block['input'] ?? null) ? $block['input'] : [];
+			}
+		}
+		$u = is_array($data['usage'] ?? null) ? $data['usage'] : [];
+		return [
+			'ok'          => true,
+			'text'        => trim($text),
+			'tool_name'   => $tool_name,
+			'tool_input'  => $tool_input,
+			'stop_reason' => $stop,
+			'content'     => $content,
+			'usage'       => [
+				'input_tokens'                => (int) ($u['input_tokens'] ?? 0),
+				'output_tokens'               => (int) ($u['output_tokens'] ?? 0),
+				'cache_read_input_tokens'     => (int) ($u['cache_read_input_tokens'] ?? 0),
+				'cache_creation_input_tokens' => (int) ($u['cache_creation_input_tokens'] ?? 0),
+			],
+		];
+	}
+
+	/**
+	 * Send one Messages API request (see build_request() for $args, plus
+	 * `timeout` HTTP seconds, default 120). Returns parse_response()'s array on
+	 * success or a WP_Error.
+	 */
+	public static function message(array $args) {
+		if (!self::using_proxy() && self::api_key() === '') {
+			return new WP_Error('aq_no_key', 'No Claude API key configured. Add one under AutoForge → Integrations, or point this site at a key proxy.', ['status' => 400]);
+		}
+		$req  = self::build_request($args);
+		$resp = wp_remote_post($req['endpoint'], [
 			'timeout' => (int) ($args['timeout'] ?? 120),
-			'headers' => $headers,
-			'body'    => wp_json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+			'headers' => $req['headers'],
+			'body'    => wp_json_encode($req['payload'], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
 		]);
-
 		if (is_wp_error($resp)) {
 			return new WP_Error('aq_http', 'Could not reach the AI service: ' . $resp->get_error_message(), ['status' => 502]);
 		}
@@ -188,31 +257,7 @@ class AQ_Claude {
 			$msg = is_array($data) && isset($data['error']['message']) ? $data['error']['message'] : ('HTTP ' . $code);
 			return new WP_Error('aq_api', 'AI service error: ' . $msg, ['status' => 502]);
 		}
-
-		// Parse content blocks: concatenate text, capture the first tool_use.
-		$text = '';
-		$tool_name = '';
-		$tool_input = null;
-		foreach ((array) ($data['content'] ?? []) as $block) {
-			if (!is_array($block)) {
-				continue;
-			}
-			$type = (string) ($block['type'] ?? '');
-			if ($type === 'text') {
-				$text .= (string) ($block['text'] ?? '');
-			} elseif ($type === 'tool_use' && $tool_input === null) {
-				$tool_name  = (string) ($block['name'] ?? '');
-				$tool_input = is_array($block['input'] ?? null) ? $block['input'] : [];
-			}
-		}
-
-		return [
-			'ok'          => true,
-			'text'        => trim($text),
-			'tool_name'   => $tool_name,
-			'tool_input'  => $tool_input,
-			'stop_reason' => (string) ($data['stop_reason'] ?? ''),
-		];
+		return self::parse_response($data);
 	}
 
 	/** Convenience: build an Anthropic tool definition. */

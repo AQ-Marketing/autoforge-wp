@@ -36,5 +36,43 @@ t('image_block() returns null for missing or oversize files', function () use ($
 	eq(null, AQ_Claude::image_block($big, 'image/jpeg'));
 });
 
+t('build_request(): plain string system, defaults, tools imply tool_choice auto', function () {
+	$r = AQ_Claude::build_request(['system' => 'You are helpful.', 'messages' => [['role' => 'user', 'content' => 'hi']], 'tools' => [['name' => 'x', 'description' => 'd', 'input_schema' => ['type' => 'object', 'properties' => []]]]]);
+	eq(AQ_Claude::ENDPOINT, $r['endpoint']);
+	eq('You are helpful.', $r['payload']['system']);
+	eq(8000, $r['payload']['max_tokens']);
+	eq(['type' => 'auto'], $r['payload']['tool_choice']);
+	eq('2023-06-01', $r['headers']['anthropic-version']);
+});
+t('build_request(): cache_system wraps the system prompt in a cached text block', function () {
+	$r = AQ_Claude::build_request(['system' => 'stable prefix', 'cache_system' => true, 'messages' => []]);
+	eq([['type' => 'text', 'text' => 'stable prefix', 'cache_control' => ['type' => 'ephemeral']]], $r['payload']['system']);
+});
+t('build_request(): effort becomes output_config.effort; invalid values are dropped', function () {
+	eq(['effort' => 'high'], AQ_Claude::build_request(['messages' => [], 'effort' => 'high'])['payload']['output_config']);
+	ok(!isset(AQ_Claude::build_request(['messages' => [], 'effort' => 'turbo'])['payload']['output_config']));
+});
+t('build_request(): Opus 5 gets the fallback beta header + fallbacks:default; other models do not', function () {
+	$o = AQ_Claude::build_request(['messages' => [], 'model' => 'claude-opus-5']);
+	eq(AQ_Claude::FALLBACK_BETA, $o['headers']['anthropic-beta']);
+	eq('default', $o['payload']['fallbacks']);
+	$s = AQ_Claude::build_request(['messages' => [], 'model' => 'claude-sonnet-5']);
+	ok(!isset($s['headers']['anthropic-beta'])); ok(!isset($s['payload']['fallbacks']));
+});
+t('parse_response(): text + first tool_use + usage + raw content', function () {
+	$res = AQ_Claude::parse_response([
+		'stop_reason' => 'tool_use',
+		'content' => [['type' => 'text', 'text' => 'Hello '], ['type' => 'tool_use', 'name' => 'set_alt_text', 'input' => ['alt' => 'x']], ['type' => 'tool_use', 'name' => 'second', 'input' => []]],
+		'usage' => ['input_tokens' => 12, 'output_tokens' => 3, 'cache_read_input_tokens' => 10],
+	]);
+	eq(true, $res['ok']); eq('Hello', $res['text']); eq('set_alt_text', $res['tool_name']); eq(['alt' => 'x'], $res['tool_input']);
+	eq('tool_use', $res['stop_reason']); eq(3, count($res['content']));
+	eq(['input_tokens' => 12, 'output_tokens' => 3, 'cache_read_input_tokens' => 10, 'cache_creation_input_tokens' => 0], $res['usage']);
+});
+t('parse_response(): a refusal is a WP_Error, never a success', function () {
+	$res = AQ_Claude::parse_response(['stop_reason' => 'refusal', 'content' => []]);
+	ok(is_wp_error($res)); eq('aq_refusal', $res->get_error_code());
+});
+
 @unlink($tmp . '/one.png'); @unlink($tmp . '/notes.txt'); @unlink($big); @rmdir($tmp);
 exit(aq_tests_done());
