@@ -788,7 +788,7 @@ class AQ_Alt_Text {
 		}
 		$alt = mb_strtoupper(mb_substr($alt, 0, 1)) . mb_substr($alt, 1);
 		if (mb_strlen($alt) > self::ALT_MAX_LEN) {
-			$alt = rtrim(mb_substr($alt, 0, self::ALT_MAX_LEN));
+			$alt = mb_substr($alt, 0, self::ALT_MAX_LEN); // hard cap (no rtrim: keeps length exactly ≤ 200)
 		}
 		return $alt;
 	}
@@ -824,7 +824,7 @@ class AQ_Alt_Text {
 
 - [ ] **Step 4: Run tests + lint**
 
-Run: `php tests/alt-text-test.php` → Expected: `9 passed, 0 failed`.
+Run: `php tests/alt-text-test.php` → Expected: `8 passed, 0 failed`.
 Run: `npm run lint` → Expected: 0 new errors.
 
 - [ ] **Step 5: Commit**
@@ -1019,7 +1019,7 @@ Run: `php tests/alt-text-test.php` → Expected: 5 new FAILs (`undefined method 
 
 - [ ] **Step 4: Run tests + lint**
 
-Run: `php tests/alt-text-test.php` → Expected: `14 passed, 0 failed`.
+Run: `php tests/alt-text-test.php` → Expected: `13 passed, 0 failed`.
 Run: `npm run lint` → Expected: 0 new errors.
 
 - [ ] **Step 5: Commit**
@@ -1796,7 +1796,7 @@ wp eval-file wp-content/aq-tests/harness-selftest.php
 wp eval-file wp-content/aq-tests/claude-test.php
 wp eval-file wp-content/aq-tests/alt-text-test.php
 ```
-Expected: `5 passed, 0 failed`, `10 passed, 0 failed`, `14 passed, 0 failed`. Then remove the test files:
+Expected: `5 passed, 0 failed`, `10 passed, 0 failed`, `13 passed, 0 failed`. Then remove the test files:
 ```bash
 wp eval 'array_map("unlink", glob(WP_CONTENT_DIR . "/aq-tests/lib/*")); array_map("unlink", glob(WP_CONTENT_DIR . "/aq-tests/*.php")); rmdir(WP_CONTENT_DIR . "/aq-tests/lib"); rmdir(WP_CONTENT_DIR . "/aq-tests");'
 ```
