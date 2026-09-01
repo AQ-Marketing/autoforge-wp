@@ -185,4 +185,119 @@ class AQ_Alt_Text {
 	public static function backoff_for(int $attempts): int {
 		return [1 => 120, 2 => 600][$attempts] ?? 3600;
 	}
+
+	/* ============================================================
+	 * Settings
+	 * ============================================================ */
+
+	public static function defaults(): array {
+		return ['enabled' => true, 'model' => 'claude-opus-5', 'daily_cap' => 300];
+	}
+
+	public static function settings(): array {
+		$o = get_option(self::OPTION, []);
+		return array_merge(self::defaults(), is_array($o) ? $o : []);
+	}
+
+	/** Is a Claude key / key proxy configured? (Backfill works even when auto mode is off.) */
+	public static function claude_ready(): bool {
+		return class_exists('AQ_Claude') && AQ_Claude::is_ready();
+	}
+
+	/** Auto-generate on new uploads? Setting on AND Claude ready. */
+	public static function enabled(): bool {
+		return !empty(self::settings()['enabled']) && self::claude_ready();
+	}
+
+	public static function model(): string {
+		return AQ_Claude::resolve_model((string) self::settings()['model']);
+	}
+
+	/* ============================================================
+	 * Queue (option-backed) + scheduling
+	 * ============================================================ */
+
+	/** @return array<int,array{queued_at:int,attempts:int,next_at:int}> */
+	public static function queue(): array {
+		$q = get_option(self::QUEUE, []);
+		return is_array($q) ? $q : [];
+	}
+
+	private static function save_queue(array $q): void {
+		if ($q) {
+			update_option(self::QUEUE, $q, false);
+		} else {
+			delete_option(self::QUEUE);
+		}
+	}
+
+	public static function enqueue(int $id): void {
+		if ($id <= 0) {
+			return;
+		}
+		$q = self::queue();
+		if (isset($q[$id])) {
+			return;
+		}
+		$q[$id] = ['queued_at' => time(), 'attempts' => 0, 'next_at' => time()];
+		self::save_queue($q);
+		self::schedule(30);
+	}
+
+	/** Schedule the runner once (no-op when already pending). */
+	public static function schedule(int $delay = 30): void {
+		if (!wp_next_scheduled(self::HOOK)) {
+			wp_schedule_single_event(time() + max(5, $delay), self::HOOK);
+		}
+	}
+
+	/** Record one failed attempt for $id; drop the entry after MAX_ATTEMPTS. Pure on the array. */
+	public static function mark_failure(array $q, int $id): array {
+		if (!isset($q[$id])) {
+			return $q;
+		}
+		$q[$id]['attempts'] = (int) ($q[$id]['attempts'] ?? 0) + 1;
+		if ($q[$id]['attempts'] >= self::MAX_ATTEMPTS) {
+			unset($q[$id]);
+		} else {
+			$q[$id]['next_at'] = time() + self::backoff_for((int) $q[$id]['attempts']);
+		}
+		return $q;
+	}
+
+	/** Attachment ids whose retry time has passed, oldest queued first. */
+	public static function due_ids(array $q): array {
+		$due = array_filter($q, function ($e) { return (int) ($e['next_at'] ?? 0) <= time(); });
+		uasort($due, function ($a, $b) { return (int) ($a['queued_at'] ?? 0) <=> (int) ($b['queued_at'] ?? 0); });
+		return array_map('intval', array_keys($due));
+	}
+
+	/* ============================================================
+	 * Daily cap
+	 * ============================================================ */
+
+	/** @return array{day:string,count:int} — resets automatically on a new UTC day. */
+	public static function daily(): array {
+		$d     = get_option(self::DAILY, []);
+		$today = gmdate('Y-m-d');
+		if (!is_array($d) || (string) ($d['day'] ?? '') !== $today) {
+			return ['day' => $today, 'count' => 0];
+		}
+		return ['day' => $today, 'count' => (int) ($d['count'] ?? 0)];
+	}
+
+	public static function daily_remaining(): int {
+		return max(0, (int) self::settings()['daily_cap'] - self::daily()['count']);
+	}
+
+	public static function daily_bump(): void {
+		$d = self::daily();
+		$d['count']++;
+		update_option(self::DAILY, $d, false);
+	}
+
+	/** Seconds until shortly after the next UTC midnight (when the cap resets). */
+	public static function seconds_until_tomorrow(): int {
+		return max(60, (int) strtotime('tomorrow 00:05 UTC') - time());
+	}
 }
