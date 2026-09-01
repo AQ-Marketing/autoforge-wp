@@ -110,6 +110,7 @@ require_once AQ_CORE_DIR . 'includes/class-lead-capture.php';
 require_once AQ_CORE_DIR . 'includes/class-lead-store.php';
 require_once AQ_CORE_DIR . 'includes/class-lead-stats.php';
 require_once AQ_CORE_DIR . 'includes/class-hcaptcha.php';
+require_once AQ_CORE_DIR . 'includes/class-turnstile.php';
 require_once AQ_CORE_DIR . 'includes/class-legal.php';
 require_once AQ_CORE_DIR . 'includes/class-tracking.php';
 require_once AQ_CORE_DIR . 'includes/class-chatbot.php';
@@ -162,7 +163,7 @@ AQ_Logo_Settings::register();
 AQ_Lead_Capture::register();
 AQ_Lead_Store::register();
 AQ_Lead_Stats::register();
-AQ_HCaptcha::register();
+AQ_Turnstile::register(); // Cloudflare Turnstile replaced hCaptcha (2026-08) as the fleet bot-protection layer.
 AQ_Legal::register();
 AQ_Tracking::register();
 AQ_Chatbot::register();
