@@ -126,17 +126,19 @@ class AQ_Content_SEO_Gate {
 	/** @return array<string,mixed> */
 	/**
 	 * Legal / utility pages (Privacy, Terms/TOS, Cookies, Accessibility, Disclaimer,
-	 * DMCA/CCPA/GDPR, do-not-sell) are NOT SEO targets, so they are exempt from the
-	 * content-intent requirement — forcing a keyword intent on them would be fake and
-	 * clutter the intents map. Matches the LAST path segment. Folded into the engine
-	 * from the Golini hotfix — see Decision - Legal Pages Exempt from AutoForge Intent Gate.
+	 * DMCA/CCPA/GDPR, do-not-sell, and the form thank-you page) are NOT SEO targets,
+	 * so they are exempt from the content-intent requirement — forcing a keyword intent
+	 * on them would be fake and clutter the intents map. Every AutoForge site ships a
+	 * thank-you page (the lead-form redirect target), so it is exempt by default.
+	 * Matches the LAST path segment. Folded into the engine from the Golini hotfix —
+	 * see Decision - Legal Pages Exempt from AutoForge Intent Gate.
 	 */
 	public static function is_legal_path(string $path): bool {
 		$slug = strtolower(trim((string) $path, '/'));
 		if ($slug === '') { return false; }
 		$parts = explode('/', $slug);
 		$slug = (string) end($parts);
-		return (bool) preg_match('#^(privacy(-policy)?|terms(-of-(service|use))?|terms-and-conditions|tos|cookies?(-policy)?|legal|disclaimer|accessibility(-statement)?|dmca|ccpa|gdpr|do-not-sell[-a-z]*)$#', $slug);
+		return (bool) preg_match('#^(privacy(-policy)?|terms(-of-(service|use))?|terms-and-conditions|tos|cookies?(-policy)?|legal|disclaimer|accessibility(-statement)?|dmca|ccpa|gdpr|do-not-sell[-a-z]*|thank-?you[-a-z]*|thanks)$#', $slug);
 	}
 
 	private static function normalize_row(array $row, bool $candidate, array $intents): array {
