@@ -86,9 +86,16 @@ entry **persist to the site with zero import changes and zero gate risk**:
 | `secondary_keywords` | string[] | supporting terms that must keep appearing on the page |
 | `entities` | string[] | protected names for this page (brand, towns, services, materials) — exact, never paraphrased out |
 | `internal_links` | string[] (paths) | link targets this page must keep pointing at |
-| `target_words` | int | planned content depth (±10% band) |
-| `intent_type` | `transactional` \| `informational` \| `navigational` | what the searcher wants |
+| `target_words` | int | planned content depth (±10% band). When absent, rules fall back to the `local-seo-content` page-length guidance by `role`: home 600–1000 · service 800–1500 · sub-service 600–1000 · location 700–1200 · service+location 600–1000 · about 500–900 · supporting 400–800 |
+| `intent_type` | `informational` \| `commercial-investigational` \| `transactional` \| `navigational` | the `local-seo-content` four-value intent vocabulary — exactly one per page |
+| `content_angle` | string | one sentence: why this page exists and how it differs from its siblings (the map's "Content angle" column) — quoted verbatim in Blocked explanations |
+| `cannibalization_risk` | `none` \| `low` \| `medium` \| `high` | from the map; on `medium`/`high` pages R7 also flags any *growth* in same-role overlap, not just crossing 20% |
 | `notes` | string | plain-English guidance for the assistant ("Nashua is the growth market; keep it named once in body copy") |
+
+These keys are the `local-seo-content` skill's **keyword-to-page map** (`Slug · Page type ·
+Primary keyword · Secondary keywords · Search intent · Content angle · Internal links ·
+Cannibalization risk`) serialized per page, plus the checklist's depth targets — so a build
+that produced the map already has every value; nothing here is a new research step.
 
 Six-key legacy entries keep working; the assistant simply has less to enforce on those
 pages and says so ("this page has a basic plan row only"). Schema documented in the
@@ -102,7 +109,7 @@ A site-level markdown brief the build writes from the audit report (the `/seo-au
 assistant can rely on:
 
 ```
-## Voice and tone        do / don't list; no em dashes; how they talk about themselves
+## Voice and tone        positioning line; approved phrases / avoided phrases; CTA style; reading level; no em dashes
 ## Grounded facts        the ONLY claims allowed (years, rating/count, licensing, NAP, guarantees)
 ## Strategy              winnable opportunities, deliberately-not-chased topics, competitors, priority markets
 ## Page rules            cross-page rules (town pages stay distinct from service pages; one review per page; etc.)
@@ -148,6 +155,17 @@ it accepts `seo_intents`. `wp aq import --dry-run` reports "brief: found/absent"
   lights are green."
 - Reminder line under "tag every element": text an editor should be able to change must
   carry `ka_field_attr()`; the assistant (like the builder) can only address marked text.
+- **Source of the values:** the extended keys are the `local-seo-content` Phase-2
+  keyword-to-page map (which every build is supposed to produce before writing) and the
+  `redesign` skill's Brand Guidelines / SEO & Content Strategy sections. Research found
+  neither artifact has ever been *persisted* for a client (`reports/redesign-plan.md`, the
+  redesign skill's canonical deliverable, exists for no site) — the knowledge pack is the
+  durable, on-site subset of what those documents should contain.
+- **Housekeeping (outside this release, flag to Justin):** `local-seo-content` lives in
+  `C:\Users\justi\AppData\Local\hermes\skills\` and `redesign` only in a per-session
+  snapshot under `AppData\Roaming\Claude\local-agent-mode-sessions\…` — a cache cleanup
+  would delete the only local copy. Copy both into `~/.claude/skills/` so they version
+  alongside `wordpress`, `page-complete` and `seo-humanize`.
 
 ### 4.5 ACME back-fill (first dataset)
 
@@ -287,7 +305,7 @@ Output: `{ verdict, findings: [{rule, severity: 'ok'|'caution'|'block', message}
 | R2 | A `secondary_keywords` term present anywhere on the page before, absent after | caution |
 | R3 | A plan `entities` item, the brand name, or the phone number present in the field before, absent after (exact, case-insensitive) | **block** |
 | R4 | Links inside `richtext`: fewer links, or a destination changed | **block** (adding links → ok) |
-| R5 | Content depth: a heading-kind field (`heading`, `title`, `eyebrow`, `subheading`, `h1`) emptied → **block**; page word count −10%…−25% → caution; beyond −25% → **block**; growth beyond +25% on a `text` (single-line) field → caution |
+| R5 | Content depth: a heading-kind field (`heading`, `title`, `eyebrow`, `subheading`, `h1`) emptied → **block**; page word count −10%…−25% → caution; beyond −25%, or dropping below the lower bound of `target_words` (or the role default) → **block**; growth beyond +25% on a `text` (single-line) field → caution |
 | R6 | Slop: em dash; banned-phrase list (from `seo-humanize` §2); primary keyword density > 3% of field words | caution (em dash triggers one re-ask first) |
 | R7 | Site gate: `AQ_Content_SEO_Gate::evaluate()` with the proposed page swapped into the inventory (`row_from_content_item()` on the modified sections) — any `findings` (duplicate canonical/title/H1/intent, ≥ 20% same-role overlap) | **block** |
 | R8 | Page SEO: rendered title > 60 or description outside 120–155 → caution; primary keyword absent from title or description after the change → **block** |
@@ -455,4 +473,9 @@ picks up `client-brief.md` → `aq_knowledge`; REST `client_brief`), `includes/c
   (`ka_field_attr`), `admin/editor/canvas.js` (selection + label logic mirrored)
 - `seo-humanize` skill §1 (the nine invariants = the rubric), `page-complete` skill
   `reference/checks.md` Gate B (B1–B9)
+- `local-seo-content` skill — `references/keyword-mapping.md` (intent vocabulary, one
+  primary per page, 3–5 secondaries, anti-cannibalization rules) and
+  `references/local-seo-checklist.md` § Page length guidance (the depth defaults in §4.1)
+- `redesign` skill — `references/report-spec.md` § Brand Guidelines and § SEO And Content
+  Strategy (the brief's source sections)
 - Sibling spec: `2026-09-01-alt-text-generator-design.md` (v0.3.49; `AQ_Claude` upgrades)
