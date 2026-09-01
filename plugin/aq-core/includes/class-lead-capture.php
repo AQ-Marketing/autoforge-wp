@@ -670,8 +670,11 @@ if(document.readyState!=='loading')run();else document.addEventListener('DOMCont
 
 	/** Upsert the contact + attach the message as a note. Returns true or an error string. */
 	private static function push_to_ghl(array $f) {
-		$tags = ['Website Lead'];
+		$tags = ['Website Lead', 'prospect website form'];
 		if ($f['service'] !== '') { $tags[] = $f['service']; }
+		// Fleet default includes 'prospect website form' so a CRM automation can trigger
+		// on every website lead; filterable per-site to add/replace tags.
+		$tags = array_values(array_unique(array_filter((array) apply_filters('aq_ghl_lead_tags', $tags, $f))));
 
 		$payload = array_filter([
 			'locationId'  => self::ghl_location(),
