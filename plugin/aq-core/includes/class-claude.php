@@ -33,12 +33,21 @@ class AQ_Claude {
 	const ENDPOINT   = 'https://api.anthropic.com/v1/messages';
 	const MODELS_URL = 'https://api.anthropic.com/v1/models';
 	const API_VER    = '2023-06-01';
-	const MODEL      = 'claude-opus-4-8'; // default — most capable Claude model
+	const MODEL      = 'claude-opus-5'; // default — newest, most capable Claude model
 
-	/** Claude models offered in the admin model pickers. */
+	/** Beta header that enables server-side refusal fallbacks on Opus 5. */
+	const FALLBACK_BETA   = 'server-side-fallback-2026-07-01';
+	/** Image inputs the Messages API accepts, and its per-image size limit (5 MB). */
+	const IMAGE_MIMES     = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+	const IMAGE_MAX_BYTES = 5242880;
+	/** Valid output_config.effort levels. */
+	const EFFORTS         = ['low', 'medium', 'high', 'xhigh', 'max'];
+
+	/** Claude models offered in the admin model pickers (default first). */
 	public static function models(): array {
 		return [
-			'claude-opus-4-8'  => 'Claude Opus 4.8 (most capable)',
+			'claude-opus-5'    => 'Claude Opus 5 (newest, most capable)',
+			'claude-opus-4-8'  => 'Claude Opus 4.8',
 			'claude-sonnet-5'  => 'Claude Sonnet 5 (faster, lower cost)',
 			'claude-haiku-4-5' => 'Claude Haiku 4.5 (fastest, cheapest)',
 		];
@@ -81,6 +90,38 @@ class AQ_Claude {
 	/** Validate a model id against the offered list, else fall back to the default. */
 	public static function resolve_model(string $model): string {
 		return array_key_exists($model, self::models()) ? $model : self::MODEL;
+	}
+
+	/**
+	 * Build a base64 image content block for the Messages API from a local file,
+	 * or null when the file is unreadable, not a supported image, or over the
+	 * 5 MB per-image limit. Pass $mime when known (WordPress knows it); otherwise
+	 * it is sniffed with getimagesize() and finally the file extension.
+	 */
+	public static function image_block(string $path, string $mime = ''): ?array {
+		if ($path === '' || !is_file($path) || !is_readable($path)) {
+			return null;
+		}
+		$size = filesize($path);
+		if ($size === false || $size <= 0 || $size > self::IMAGE_MAX_BYTES) {
+			return null;
+		}
+		if ($mime === '') {
+			$info = @getimagesize($path);
+			$mime = is_array($info) && !empty($info['mime']) ? (string) $info['mime'] : '';
+			if ($mime === '') {
+				$map  = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png', 'gif' => 'image/gif', 'webp' => 'image/webp'];
+				$mime = $map[strtolower(pathinfo($path, PATHINFO_EXTENSION))] ?? '';
+			}
+		}
+		if (!in_array($mime, self::IMAGE_MIMES, true)) {
+			return null;
+		}
+		$data = file_get_contents($path);
+		if ($data === false) {
+			return null;
+		}
+		return ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => base64_encode($data)]];
 	}
 
 	/**
