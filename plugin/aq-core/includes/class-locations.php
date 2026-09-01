@@ -190,7 +190,7 @@ class AQ_Locations {
 		$nonce   = wp_create_nonce('wp_rest');
 		$rest_url= esc_url_raw(rest_url('aq/v1/site-config'));
 
-		AQ_Admin_Hub::open('Locations', 'Manage service-area towns, counties, regions and business info (NAP).', 'aq-locations');
+		AQ_Admin_Hub::open('Locations/NAP', 'Manage service-area towns, counties, regions and business info (NAP).', 'aq-locations');
 
 		self::style();
 

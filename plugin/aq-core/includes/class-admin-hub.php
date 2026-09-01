@@ -35,7 +35,7 @@ class AQ_Admin_Hub {
 		add_submenu_page(self::SLUG, 'Overview', 'Overview', self::CAP, self::SLUG, [__CLASS__, 'render_overview']);
 		add_submenu_page(self::SLUG, 'Pages', 'Pages', self::CAP, 'aq-pages', [__CLASS__, 'render_pages']);
 		add_submenu_page(self::SLUG, 'SEO', 'SEO', self::CAP, 'aq-seo', ['AQ_SEO_Manager', 'render']);
-		add_submenu_page(self::SLUG, 'Locations', 'Locations', self::CAP, 'aq-locations', ['AQ_Locations', 'render']);
+		add_submenu_page(self::SLUG, 'Locations/NAP', 'Locations/NAP', self::CAP, 'aq-locations', ['AQ_Locations', 'render']);
 		add_submenu_page(self::SLUG, 'Navigation', 'Navigation', self::CAP, 'aq-navigation', ['AQ_Navigation', 'render']);
 		add_submenu_page(self::SLUG, 'Footer', 'Footer', self::CAP, 'aq-footer', ['AQ_Footer', 'render']);
 		add_submenu_page(self::SLUG, 'Performance', 'Performance', self::CAP, 'aq-performance', ['AQ_Performance', 'render']);
@@ -114,7 +114,7 @@ class AQ_Admin_Hub {
 				'site-analytics'    => ['label' => 'Site Analytics', 'soon' => true],
 				'aq-tracking'       => 'Tracking',
 			]],
-			['type' => 'link', 'slug' => 'aq-locations', 'label' => 'Locations', 'icon' => 'location'],
+			['type' => 'link', 'slug' => 'aq-locations', 'label' => 'Locations/NAP', 'icon' => 'location'],
 			['type' => 'link', 'slug' => 'aq-chatbot', 'label' => 'Chatbot', 'icon' => 'format-chat'],
 			['type' => 'group', 'label' => 'Settings', 'icon' => 'admin-generic', 'items' => [
 				'aq-integrations' => 'Integrations', 'aq-import' => 'Import',
@@ -441,7 +441,7 @@ class AQ_Admin_Hub {
 	public static function render_soon(): void {
 		$screen = isset($_GET['page']) ? sanitize_key((string) $_GET['page']) : '';
 		$map = ['aq-seo' => ['SEO Manager', 'Edit titles, descriptions, canonicals and keywords across all pages.'],
-			'aq-locations' => ['Locations', 'Manage service-area towns, counties and business info.'],
+			'aq-locations' => ['Locations/NAP', 'Manage service-area towns, counties and business info.'],
 			'aq-performance' => ['Performance', 'PageSpeed scores, Core Web Vitals and cache controls.']];
 		[$title, $sub] = $map[$screen] ?? ['Coming soon', ''];
 		self::open($title, $sub, $screen);
