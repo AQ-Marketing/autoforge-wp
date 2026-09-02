@@ -3,6 +3,7 @@ require __DIR__ . '/lib/wp-shims.php';
 require __DIR__ . '/lib/mini-test.php';
 if (!class_exists('AQ_Claude'))   { require dirname(__DIR__) . '/plugin/aq-core/includes/class-claude.php'; }
 if (!class_exists('AQ_Alt_Text')) { require dirname(__DIR__) . '/plugin/aq-core/includes/class-alt-text.php'; }
+if (!class_exists('AQ_OpenAI')) { require dirname(__DIR__) . '/plugin/aq-core/includes/class-openai.php'; }
 
 $tmp = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'aq-alt-test-' . getmypid();
 @mkdir($tmp);
@@ -118,6 +119,27 @@ try {
 		if ($saved[$k] === null) { delete_option($opt); } else { update_option($opt, $saved[$k], false); }
 	}
 }
+
+t('provider(): claude ids -> claude, everything else -> openai', function () {
+	eq('claude', AQ_Alt_Text::provider('claude-opus-5'));
+	eq('claude', AQ_Alt_Text::provider('claude-haiku-4-5'));
+	eq('openai', AQ_Alt_Text::provider('gpt-4o-mini'));
+	eq('openai', AQ_Alt_Text::provider('gpt-4o'));
+	eq('openai', AQ_Alt_Text::provider('o4-mini'));
+});
+t('all_models(): includes both Claude and OpenAI ids', function () {
+	$m = AQ_Alt_Text::all_models();
+	ok(array_key_exists('claude-opus-5', $m));
+	ok(array_key_exists('gpt-4o-mini', $m));
+});
+t('model(): a saved OpenAI id is honoured, an unknown id falls back to Claude', function () {
+	$saved = get_option(AQ_Alt_Text::OPTION, null);
+	update_option(AQ_Alt_Text::OPTION, ['model' => 'gpt-4o-mini'], false);
+	eq('gpt-4o-mini', AQ_Alt_Text::model());
+	update_option(AQ_Alt_Text::OPTION, ['model' => 'not-real'], false);
+	eq('claude-opus-5', AQ_Alt_Text::model());
+	if ($saved === null) { delete_option(AQ_Alt_Text::OPTION); } else { update_option(AQ_Alt_Text::OPTION, $saved, false); }
+});
 
 foreach (glob($tmp . '/*') as $f) { @unlink($f); }
 @rmdir($tmp);

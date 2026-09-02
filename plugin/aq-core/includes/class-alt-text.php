@@ -218,11 +218,40 @@ class AQ_Alt_Text {
 
 	/** Auto-generate on new uploads? Setting on AND Claude ready. */
 	public static function enabled(): bool {
-		return !empty(self::settings()['enabled']) && self::claude_ready();
+		return !empty(self::settings()['enabled']) && self::ready();
 	}
 
+	/** All alt-text models across providers (Claude first, then OpenAI). */
+	public static function all_models(): array {
+		$m = class_exists('AQ_Claude') ? AQ_Claude::models() : [];
+		if (class_exists('AQ_OpenAI')) {
+			$m += AQ_OpenAI::models();
+		}
+		return $m;
+	}
+
+	/** Which provider serves a model id. Claude ids start with "claude"; all else is OpenAI. */
+	public static function provider(string $model): string {
+		return stripos($model, 'claude') === 0 ? 'claude' : 'openai';
+	}
+
+	/** The selected model, validated against the combined list (unknown -> Claude default). */
 	public static function model(): string {
-		return AQ_Claude::resolve_model((string) self::settings()['model']);
+		$m = (string) self::settings()['model'];
+		return array_key_exists($m, self::all_models()) ? $m : 'claude-opus-5';
+	}
+
+	/** Is the provider for this model configured with a key? */
+	public static function provider_ready(string $model): bool {
+		if (self::provider($model) === 'openai') {
+			return class_exists('AQ_OpenAI') && AQ_OpenAI::is_ready();
+		}
+		return class_exists('AQ_Claude') && AQ_Claude::is_ready();
+	}
+
+	/** Is the currently-selected model's provider ready? */
+	public static function ready(): bool {
+		return self::provider_ready(self::model());
 	}
 
 	/* ============================================================
@@ -363,8 +392,10 @@ class AQ_Alt_Text {
 		if (!self::should_generate($mime, $alt, $deco, true)) {
 			return ['ok' => false, 'status' => 'skipped', 'reason' => $deco ? 'marked decorative' : 'already has alt text'];
 		}
-		if (!self::claude_ready()) {
-			return ['ok' => false, 'status' => 'failed', 'reason' => 'Claude not configured'];
+		$model = self::model();
+		if (!self::provider_ready($model)) {
+			$prov = self::provider($model) === 'openai' ? 'OpenAI' : 'Claude';
+			return ['ok' => false, 'status' => 'failed', 'reason' => $prov . ' not configured'];
 		}
 		if (self::daily_remaining() <= 0) {
 			return ['ok' => false, 'status' => 'deferred', 'reason' => 'daily cap reached'];
@@ -377,26 +408,33 @@ class AQ_Alt_Text {
 			update_post_meta($id, '_aq_alt_skip', 'no image file under 5 MB');
 			return ['ok' => false, 'status' => 'skipped', 'reason' => 'no image file under 5 MB'];
 		}
-		$image = AQ_Claude::image_block($source['path'], $source['mime'] !== '' ? $source['mime'] : $mime);
-		if ($image === null) {
-			update_post_meta($id, '_aq_alt_skip', 'unreadable image file');
-			return ['ok' => false, 'status' => 'skipped', 'reason' => 'unreadable image file'];
-		}
+		$src_mime = $source['mime'] !== '' ? $source['mime'] : $mime;
+		$system   = self::system_prompt();
+		$user     = self::user_text(self::context_for($id));
 
-		$model = self::model();
-		$res   = AQ_Claude::message([
-			'model'       => $model,
-			'max_tokens'  => 300,
-			'timeout'     => 45,
-			'system'      => self::system_prompt(),
-			'messages'    => [['role' => 'user', 'content' => [$image, ['type' => 'text', 'text' => self::user_text(self::context_for($id))]]]],
-			'tools'       => [self::tool_def()],
-			'tool_choice' => ['type' => 'tool', 'name' => 'set_alt_text'],
-		]);
-		if (is_wp_error($res)) {
-			return ['ok' => false, 'status' => 'failed', 'reason' => $res->get_error_message()];
+		if (self::provider($model) === 'openai') {
+			$desc = AQ_OpenAI::describe_image($model, $source['path'], $src_mime, $system, $user);
+		} else {
+			$image = AQ_Claude::image_block($source['path'], $src_mime);
+			if ($image === null) {
+				update_post_meta($id, '_aq_alt_skip', 'unreadable image file');
+				return ['ok' => false, 'status' => 'skipped', 'reason' => 'unreadable image file'];
+			}
+			$res  = AQ_Claude::message([
+				'model'       => $model,
+				'max_tokens'  => 300,
+				'timeout'     => 45,
+				'system'      => $system,
+				'messages'    => [['role' => 'user', 'content' => [$image, ['type' => 'text', 'text' => $user]]]],
+				'tools'       => [self::tool_def()],
+				'tool_choice' => ['type' => 'tool', 'name' => 'set_alt_text'],
+			]);
+			$desc = is_wp_error($res) ? $res : ($res['tool_input'] ?? null);
 		}
-		$parsed = self::parse_result($res['tool_input']);
+		if (is_wp_error($desc)) {
+			return ['ok' => false, 'status' => 'failed', 'reason' => $desc->get_error_message()];
+		}
+		$parsed = self::parse_result($desc);
 		if ($parsed === null) {
 			return ['ok' => false, 'status' => 'failed', 'reason' => 'no usable alt text returned'];
 		}
