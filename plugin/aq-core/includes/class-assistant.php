@@ -457,6 +457,8 @@ class AQ_Assistant {
 			wp_json_encode($company, JSON_UNESCAPED_SLASHES),
 			'== TRACKED KEYWORDS ==',
 			wp_json_encode($seo['trackedKeywords'] ?? [], JSON_UNESCAPED_SLASHES),
+			'== CURRENT SEARCH RANKINGS (from the SEO Agent; use to prioritise — protect strong positions, push weak ones. Empty means no scan has run yet) ==',
+			wp_json_encode($seo['rankingSnapshot'] ?? null, JSON_UNESCAPED_SLASHES),
 			'== ALL PAGES (watch for two pages targeting the same thing) ==',
 			wp_json_encode($inv, JSON_UNESCAPED_SLASHES),
 		];
