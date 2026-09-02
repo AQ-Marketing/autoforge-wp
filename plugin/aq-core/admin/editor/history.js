@@ -100,7 +100,28 @@
 		return out;
 	}
 
-	var api = { historyPush: historyPush, historyUndo: historyUndo, historyRedo: historyRedo, reorder: reorder, applyCategory: applyCategory, galleryCfg: galleryCfg };
+	// Filter a page list for the builder's page-switcher typeahead. Matches the
+	// (trimmed, case-insensitive) query as a substring of EITHER the title or the
+	// path, preserves the input order (server sorts by title), and returns at most
+	// `limit` (default 10) results. An empty query returns the first `limit` pages.
+	// Pure: never mutates the input. Null-safe on the list and on each row.
+	function filterPages(pages, query, limit) {
+		var list = Array.isArray(pages) ? pages : [];
+		var cap  = (typeof limit === 'number' && limit > 0) ? limit : 10;
+		var q    = String(query == null ? '' : query).trim().toLowerCase();
+		var out  = [];
+		for (var i = 0; i < list.length && out.length < cap; i++) {
+			var p = list[i];
+			if (!p) { continue; }
+			if (q === '') { out.push(p); continue; }
+			var t    = String(p.title == null ? '' : p.title).toLowerCase();
+			var path = String(p.path == null ? '' : p.path).toLowerCase();
+			if (t.indexOf(q) > -1 || path.indexOf(q) > -1) { out.push(p); }
+		}
+		return out;
+	}
+
+	var api = { historyPush: historyPush, historyUndo: historyUndo, historyRedo: historyRedo, reorder: reorder, applyCategory: applyCategory, galleryCfg: galleryCfg, filterPages: filterPages };
 	if (typeof module !== 'undefined' && module.exports) { module.exports = api; }
 	root.AQHistory = api;
 })(typeof window !== 'undefined' ? window : globalThis);

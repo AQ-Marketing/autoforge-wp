@@ -23,6 +23,35 @@
 .aqb-btn--ghost { background: rgba(255,255,255,.1); color: #fff; }
 .aqb-btn--ghost:hover { background: rgba(255,255,255,.18); }
 
+/* Page switcher (combobox in the header) */
+.aqb-switch { position: relative; }
+.aqb-switch__input { width: 190px; max-width: 32vw; background: rgba(255,255,255,.1); color: #fff;
+	border: 1px solid rgba(255,255,255,.16); border-radius: 8px; font-size: 12px; font-weight: 600;
+	padding: 6px 10px; outline: none; }
+.aqb-switch__input::placeholder { color: #c9cfd6; opacity: .8; }
+.aqb-switch__input:focus { border-color: #c8102e; background: rgba(255,255,255,.16); }
+.aqb-switch__list { position: absolute; top: calc(100% + 6px); left: 0; z-index: 80; width: 320px; max-width: 80vw;
+	max-height: 340px; overflow-y: auto; margin: 0; padding: 6px; list-style: none;
+	background: #fff; color: #0d1014; border: 1px solid #e6e8eb; border-radius: 10px;
+	box-shadow: 0 12px 34px rgba(13,16,20,.28); }
+.aqb-switch__opt { display: flex; flex-direction: column; gap: 1px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }
+.aqb-switch__opt.is-active, .aqb-switch__opt:hover { background: #f1f3f6; }
+.aqb-switch__t { font-size: 13px; font-weight: 600; color: #15191f; }
+.aqb-switch__p { font-size: 11px; color: #8a94a1; }
+.aqb-switch__empty { padding: 10px; font-size: 12px; color: #8a94a1; }
+
+/* Unsaved-changes confirm dialog (page switch) */
+.aqb-confirm { position: absolute; inset: 0; z-index: 90; display: flex; align-items: center; justify-content: center;
+	background: rgba(13,16,20,.5); }
+.aqb-confirm__panel { width: 420px; max-width: 92vw; background: #fff; border-radius: 12px; padding: 20px;
+	box-shadow: 0 20px 60px rgba(13,16,20,.4); }
+.aqb-confirm__title { margin: 0 0 8px; font-family: Poppins, Inter, system-ui, sans-serif; font-size: 16px; color: #0d1014; }
+.aqb-confirm__msg { margin: 0 0 18px; font-size: 13px; line-height: 1.55; color: #5b6471; }
+.aqb-confirm__btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.aqb-confirm__btns .aqb-btn--ghost { background: #eef1f5; color: #15191f; }
+.aqb-confirm__btns .aqb-btn--ghost:hover { background: #e6e8eb; }
+.aqb-confirm__discard { color: #a30d25 !important; }
+
 /* Body */
 .aqb-body { flex: 1 1 auto; display: flex; min-height: 0; }
 .aqb-pane { background: #fff; overflow-y: auto; }

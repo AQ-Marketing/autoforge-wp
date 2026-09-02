@@ -226,5 +226,58 @@ t('galleryCfg supports turning off the category feature', function () {
 	eq('', H.galleryCfg({ category: '' }).category);
 });
 
+/* ---- filterPages (page-switcher typeahead matcher) ---- */
+var PAGES = [
+	{ id: 1, title: 'About Us', path: '/about/' },
+	{ id: 2, title: 'Contact', path: '/contact/' },
+	{ id: 3, title: 'House Washing', path: '/house-pressure-washing/' },
+	{ id: 4, title: 'Pressure Washing Nashua NH', path: '/pressure-washing-nashua-nh/' },
+	{ id: 5, title: 'Home', path: '/' }
+];
+
+t('filterPages exposed', function () { ok(typeof H.filterPages === 'function'); });
+
+t('filterPages empty query returns all (capped)', function () {
+	eq(5, H.filterPages(PAGES, '').length);
+	eq(2, H.filterPages(PAGES, '', 2).length);
+});
+
+t('filterPages matches title (case-insensitive substring)', function () {
+	var r = H.filterPages(PAGES, 'wash');
+	eq(2, r.length);
+	eq([3, 4], r.map(function (p) { return p.id; }));
+});
+
+t('filterPages matches path when title does not', function () {
+	var r = H.filterPages(PAGES, 'nashua');
+	eq(1, r.length); eq(4, r[0].id);
+});
+
+t('filterPages trims and lowercases the query', function () {
+	eq(1, H.filterPages(PAGES, '  CONTACT  ').length);
+});
+
+t('filterPages caps results at the limit (default 10)', function () {
+	var many = [];
+	for (var i = 0; i < 25; i++) { many.push({ id: i, title: 'Service ' + i, path: '/s' + i + '/' }); }
+	eq(10, H.filterPages(many, 'service').length);
+	eq(3, H.filterPages(many, 'service', 3).length);
+});
+
+t('filterPages preserves input order', function () {
+	var r = H.filterPages(PAGES, '/');
+	eq([1, 2, 3, 4, 5], r.map(function (p) { return p.id; }));
+});
+
+t('filterPages is null-safe on list and rows', function () {
+	eq([], H.filterPages(null, 'x'));
+	eq([], H.filterPages(undefined, ''));
+	eq(1, H.filterPages([null, { id: 9, title: 'Roof Cleaning', path: '/roof/' }], 'roof').length);
+});
+
+t('filterPages no match returns empty', function () {
+	eq([], H.filterPages(PAGES, 'zzznothing'));
+});
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail > 0 ? 1 : 0);

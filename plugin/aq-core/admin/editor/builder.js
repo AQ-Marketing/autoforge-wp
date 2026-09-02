@@ -206,6 +206,7 @@
 		els.dirty = ce('span', 'aqb-dirty', '● unsaved');
 		els.dirty.style.display = 'none';
 		left.appendChild(els.dirty);
+		left.appendChild(buildSwitcher());
 
 		var mid = ce('div', 'aqb-topbar__m');
 		['desktop', 'tablet', 'mobile'].forEach(function (d) {
@@ -269,6 +270,208 @@
 		els.reviewPanel = ce('div', 'aqb-review');
 		els.reviewPanel.style.display = 'none';
 		root.appendChild(els.reviewPanel);
+	}
+
+	/* ---------------- page switcher (jump to any page) ---------------- */
+	// A combobox in the header: type to filter every builder-editable page by title
+	// or path, then Enter/click to jump there. Unsaved edits are guarded by a 3-way
+	// Save / Discard / Cancel prompt before navigating. Works on any site — the page
+	// list comes from aq/v1/editor/pages and the target URL is derived from the
+	// CURRENT location (same admin slug, swapped id param).
+	var SW = { pages: null, filtered: [], active: -1, open: false, loading: false };
+	var SW_OPT_PREFIX = 'aqb-swopt-';
+
+	function buildSwitcher() {
+		var wrap = ce('div', 'aqb-switch');
+		var input = ce('input', 'aqb-switch__input');
+		input.type = 'text';
+		input.placeholder = 'Go to page…';
+		input.setAttribute('role', 'combobox');
+		input.setAttribute('aria-autocomplete', 'list');
+		input.setAttribute('aria-expanded', 'false');
+		input.setAttribute('aria-controls', 'aqb-switch-list');
+		input.setAttribute('aria-label', 'Go to another page');
+		input.autocomplete = 'off';
+		input.spellcheck = false;
+		var list = ce('ul', 'aqb-switch__list');
+		list.id = 'aqb-switch-list';
+		list.setAttribute('role', 'listbox');
+		list.style.display = 'none';
+		els.switchInput = input;
+		els.switchList = list;
+
+		input.addEventListener('focus', function () { swEnsurePages(function () { swRender(input.value); swOpen(); }); });
+		input.addEventListener('input', function () { swEnsurePages(function () { swRender(input.value); swOpen(); }); });
+		input.addEventListener('keydown', swKeydown);
+		// Close when focus leaves the whole control (allow a click on an option first).
+		wrap.addEventListener('focusout', function () {
+			setTimeout(function () { if (!wrap.contains(document.activeElement)) { swClose(); } }, 120);
+		});
+
+		wrap.appendChild(input);
+		wrap.appendChild(list);
+		return wrap;
+	}
+
+	function swEnsurePages(cb) {
+		if (Array.isArray(SW.pages)) { if (cb) { cb(); } return; }
+		if (SW.loading) { return; }
+		SW.loading = true;
+		api('/pages').then(function (d) {
+			SW.pages = Array.isArray(d) ? d : [];
+			SW.loading = false;
+			if (cb) { cb(); }
+		}).catch(function () { SW.pages = []; SW.loading = false; if (cb) { cb(); } });
+	}
+
+	function swFilter(query) {
+		if (HIST && typeof HIST.filterPages === 'function') { return HIST.filterPages(SW.pages, query, 10); }
+		return (SW.pages || []).slice(0, 10);
+	}
+
+	function swRender(query) {
+		var list = els.switchList;
+		list.innerHTML = '';
+		SW.filtered = swFilter(query);
+		SW.active = -1;
+		if (!SW.filtered.length) {
+			var empty = ce('li', 'aqb-switch__empty', SW.pages && SW.pages.length ? 'No matching pages' : 'No pages');
+			empty.setAttribute('role', 'presentation');
+			list.appendChild(empty);
+			els.switchInput.removeAttribute('aria-activedescendant');
+			return;
+		}
+		SW.filtered.forEach(function (p, i) {
+			var opt = ce('li', 'aqb-switch__opt');
+			opt.id = SW_OPT_PREFIX + i;
+			opt.setAttribute('role', 'option');
+			opt.setAttribute('aria-selected', 'false');
+			var isCurrent = String(p.id) === String(CFG.pageId);
+			opt.appendChild(ce('span', 'aqb-switch__t', p.title + (isCurrent ? ' (current)' : '')));
+			opt.appendChild(ce('span', 'aqb-switch__p', p.path || ''));
+			opt.addEventListener('mousedown', function (e) { e.preventDefault(); }); // keep input focus
+			opt.addEventListener('click', function () { swChoose(i); });
+			opt.addEventListener('mousemove', function () { swSetActive(i); });
+			list.appendChild(opt);
+		});
+	}
+
+	function swOpen() {
+		els.switchList.style.display = 'block';
+		els.switchInput.setAttribute('aria-expanded', 'true');
+		SW.open = true;
+	}
+	function swClose() {
+		els.switchList.style.display = 'none';
+		els.switchInput.setAttribute('aria-expanded', 'false');
+		els.switchInput.removeAttribute('aria-activedescendant');
+		SW.open = false;
+		SW.active = -1;
+	}
+	function swSetActive(i) {
+		var opts = els.switchList.querySelectorAll('.aqb-switch__opt');
+		for (var j = 0; j < opts.length; j++) {
+			var on = j === i;
+			opts[j].classList.toggle('is-active', on);
+			opts[j].setAttribute('aria-selected', on ? 'true' : 'false');
+		}
+		SW.active = i;
+		if (i >= 0 && opts[i]) {
+			els.switchInput.setAttribute('aria-activedescendant', opts[i].id);
+			if (opts[i].scrollIntoView) { opts[i].scrollIntoView({ block: 'nearest' }); }
+		} else {
+			els.switchInput.removeAttribute('aria-activedescendant');
+		}
+	}
+	function swMove(delta) {
+		if (!SW.filtered.length) { return; }
+		var n = SW.filtered.length;
+		var i = SW.active < 0 ? (delta > 0 ? 0 : n - 1) : (SW.active + delta + n) % n;
+		swSetActive(i);
+	}
+	function swKeydown(e) {
+		if (e.key === 'ArrowDown') { e.preventDefault(); if (!SW.open) { swEnsurePages(function () { swRender(els.switchInput.value); swOpen(); }); } else { swMove(1); } }
+		else if (e.key === 'ArrowUp') { e.preventDefault(); swMove(-1); }
+		else if (e.key === 'Enter') {
+			if (SW.open && SW.active >= 0) { e.preventDefault(); swChoose(SW.active); }
+		}
+		else if (e.key === 'Escape') {
+			if (SW.open) { e.preventDefault(); e.stopPropagation(); swClose(); }
+		}
+	}
+	function swChoose(i) {
+		var p = SW.filtered[i];
+		if (!p) { return; }
+		if (String(p.id) === String(CFG.pageId)) { swClose(); els.switchInput.blur(); return; } // already here
+		guardedNavigate(p.id);
+	}
+
+	// Build the target builder URL from the CURRENT location: same admin page slug,
+	// swap the id param (whatever it is named) to the chosen page id. Robust to a
+	// differently-named id param — it finds the param currently holding this page id.
+	function buildPageUrl(id) {
+		var url = new URL(window.location.href);
+		var params = url.searchParams;
+		var idParam = 'page_id';
+		params.forEach(function (v, k) { if (k !== 'page' && v === String(CFG.pageId)) { idParam = k; } });
+		params.set(idParam, String(id));
+		return url.toString();
+	}
+	function navigateToPage(id) { window.location.href = buildPageUrl(id); }
+
+	// Navigate to another page, guarding unsaved edits with a 3-way prompt.
+	function guardedNavigate(id) {
+		if (!state.dirty) { navigateToPage(id); return; }
+		openSwitchDialog(id);
+	}
+
+	function openSwitchDialog(id) {
+		closeSwitchDialog();
+		var overlay = ce('div', 'aqb-confirm');
+		var panel = ce('div', 'aqb-confirm__panel');
+		panel.setAttribute('role', 'dialog');
+		panel.setAttribute('aria-modal', 'true');
+		panel.setAttribute('aria-labelledby', 'aqb-confirm-title');
+		var h = ce('h3', 'aqb-confirm__title', 'Unsaved changes');
+		h.id = 'aqb-confirm-title';
+		panel.appendChild(h);
+		panel.appendChild(ce('p', 'aqb-confirm__msg', GATED
+			? 'You have unsaved changes on this page. Review & publish them, discard them, or stay here?'
+			: 'You have unsaved changes on this page. Save them before leaving, discard them, or stay here?'));
+		var row = ce('div', 'aqb-confirm__btns');
+
+		var saveBtn = ce('button', 'aqb-btn aqb-btn--primary', GATED ? 'Review & Publish' : 'Save & go');
+		saveBtn.addEventListener('click', function () {
+			if (GATED) {
+				// Gated users cannot write directly — send them through the review panel;
+				// navigation happens manually after they publish.
+				closeSwitchDialog(); swClose(); startReview();
+			} else {
+				saveBtn.disabled = true;
+				save(function (ok) {
+					if (ok) { closeSwitchDialog(); navigateToPage(id); return true; }
+					saveBtn.disabled = false;
+					return false;
+				});
+			}
+		});
+		var discardBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-confirm__discard', 'Discard & go');
+		discardBtn.addEventListener('click', function () { closeSwitchDialog(); navigateToPage(id); });
+		var cancelBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-confirm__cancel', 'Cancel');
+		cancelBtn.addEventListener('click', function () { closeSwitchDialog(); if (els.switchInput) { els.switchInput.focus(); swOpen(); } });
+
+		row.appendChild(saveBtn); row.appendChild(discardBtn); row.appendChild(cancelBtn);
+		panel.appendChild(row);
+		overlay.appendChild(panel);
+		overlay.addEventListener('click', function (e) { if (e.target === overlay) { cancelBtn.click(); } });
+		overlay.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.preventDefault(); cancelBtn.click(); } });
+		document.getElementById('aq-builder-root').appendChild(overlay);
+		els.switchDialog = overlay;
+		saveBtn.focus();
+	}
+	function closeSwitchDialog() {
+		if (els.switchDialog && els.switchDialog.parentNode) { els.switchDialog.parentNode.removeChild(els.switchDialog); }
+		els.switchDialog = null;
 	}
 
 	/* ---------------- SEO review gate ---------------- */
@@ -1235,7 +1438,11 @@
 	}
 
 	/* ---------------- save ---------------- */
-	function save() {
+	// onDone(ok) — optional; called after the save resolves so callers (e.g. the page
+	// switcher's "Save & go") can act on success. When it returns truthy the caller
+	// has taken over the post-save UI (e.g. navigating away) so we skip the canvas
+	// reload that would otherwise run.
+	function save(onDone) {
 		els.save.disabled = true; els.save.textContent = 'Saving…';
 		api('/save', { method: 'POST', body: { id: CFG.pageId, sections: stripSections() } })
 			.then(function (d) {
@@ -1244,15 +1451,18 @@
 					state.base = clone(state.sections); // committed → next (optional) review diffs from here
 					histSeed(); // saved state becomes the new undo baseline
 					state.rehighlight = state.selected;
-					els.iframe.src = CFG.canvasUrl; // reload to show the true render
+					var handled = (typeof onDone === 'function') && onDone(true);
+					if (!handled) { els.iframe.src = CFG.canvasUrl; } // reload to show the true render
 				} else {
 					els.save.disabled = false; els.save.textContent = 'Save changes';
 					window.alert('Save failed: ' + ((d && (d.message || d.code)) || 'unknown error'));
+					if (typeof onDone === 'function') { onDone(false); }
 				}
 			})
 			.catch(function (e) {
 				els.save.disabled = false; els.save.textContent = 'Save changes';
 				window.alert('Save failed: ' + e.message);
+				if (typeof onDone === 'function') { onDone(false); }
 			});
 	}
 

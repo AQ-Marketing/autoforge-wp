@@ -397,11 +397,12 @@
 		return order;
 	}
 	function galEnd() {
-		if (galFrom != null) {
-			var tiles = document.querySelectorAll('.aq-gallery__item.aqg-dragging');
-			for (var i = 0; i < tiles.length; i++) { tiles[i].classList.remove('aqg-dragging'); }
-		}
-		var overs = document.querySelectorAll('.aq-gallery__item.aqg-over');
+		// Class-agnostic cleanup: bespoke galleries (e.g. .gal-item) use their own tile
+		// class, so clear the drag/over cues by the state classes alone — never scoped
+		// to the engine's .aq-gallery__item markup.
+		var dragging = document.querySelectorAll('.aqg-dragging');
+		for (var i = 0; i < dragging.length; i++) { dragging[i].classList.remove('aqg-dragging'); }
+		var overs = document.querySelectorAll('.aqg-over');
 		for (var j = 0; j < overs.length; j++) { overs[j].classList.remove('aqg-over'); }
 		galFrom = null;
 	}

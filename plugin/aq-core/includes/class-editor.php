@@ -170,6 +170,43 @@ class AQ_Editor {
 			'permission_callback' => $can,
 			'callback'            => [__CLASS__, 'rest_preview'],
 		]);
+
+		// Page list for the in-builder page switcher. Same capability as save/page.
+		register_rest_route('aq/v1', '/editor/pages', [
+			'methods'             => 'GET',
+			'permission_callback' => $can,
+			'callback'            => [__CLASS__, 'rest_pages'],
+		]);
+	}
+
+	/**
+	 * GET /editor/pages — every builder-editable page, for the header page switcher.
+	 * Returns published `page` posts the current user can edit, ordered by title, as
+	 * [{id, title, path, type}]. The builder edits pages (render_builder gates on
+	 * post_type === 'page'); this mirrors the assistant's page query but is owned by
+	 * the editor route so it carries the editor capability check.
+	 */
+	public static function rest_pages(WP_REST_Request $req) {
+		$out   = [];
+		$posts = get_posts([
+			'post_type'   => 'page',
+			'post_status' => 'publish',
+			'numberposts' => -1,
+			'orderby'     => 'title',
+			'order'       => 'ASC',
+		]);
+		foreach ($posts as $p) {
+			if (!current_user_can('edit_post', $p->ID)) {
+				continue;
+			}
+			$out[] = [
+				'id'    => (int) $p->ID,
+				'title' => $p->post_title !== '' ? $p->post_title : '(untitled)',
+				'path'  => (string) (wp_parse_url(get_permalink($p->ID), PHP_URL_PATH) ?: '/'),
+				'type'  => (string) $p->post_type,
+			];
+		}
+		return rest_ensure_response($out);
 	}
 
 	/** Transient key for a user+page live-preview snapshot (non-persisting). */
