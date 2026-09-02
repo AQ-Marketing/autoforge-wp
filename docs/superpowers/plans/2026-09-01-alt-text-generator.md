@@ -1944,3 +1944,19 @@ Expected: one line each.
 - §8 verification 1–9 → Task 10 Steps 3–11 ✔
 - §9 rollout → Tasks 9, 11, 12 ✔
 - Placeholder scan: no TBD/TODO; every code step has full code. Type consistency: `generate()` statuses `written|decorative|skipped|failed|deferred` used identically in `process_queue`, `process_missing`, `cli`, and the screen JS; `counts()` keys `total|missing|ai|decorative|failed|skipped|queued` match `render()`; `settings()` keys `enabled|model|daily_cap` match `save()`.
+
+---
+
+## Staging verification note (2026-09-01, ACME 1761035, commit 3c5c7d1)
+
+Deployed the 5 changed files from `feat/alt-text` @ `3c5c7d1` to ACME staging via the Pressable WP-CLI channel and verified everything that does not require a Claude key:
+
+- Plugin loads clean: `VERSION=0.3.49 MODEL=claude-opus-5 ALT=loaded HOOK=wired` (no fatal — all 5 files parse under real WordPress/PHP).
+- **Unit suite on the real host** (`wp eval-file`, plugin classes already loaded, real WP functions, real mbstring): harness **5/5**, claude **10/10**, alt-text **13/13** — all `complete` (the harness exits nonzero on any failure, which would flip status to `failed`).
+- `counts()` SQL correct: **total=277, missing=223**, ai=0, decorative=0, queued=0.
+- `settings()` defaults: model `claude-opus-5`, cap 300.
+- **Front-end parity:** `/house-pressure-washing/` returns 200 with **0** alt-text feature markup; its 15 existing alts untouched (feature adds no front-end hooks).
+- **No-key negative path (Step 10) confirmed:** ACME staging has **no Anthropic key** → `claude_ready=no`, `enabled=no`; `wp aq alt-text` errors cleanly ("Claude is not configured"); nothing enqueued. The feature degrades exactly as designed.
+- Test files removed from the server afterward (`cleaned`).
+
+**Still to verify (blocked on a credential):** the real image→alt generation (Step 7 upload→alt, Step 8 backfill of the 223, Step 9 decorative). These need an Anthropic key set on ACME staging (AutoForge → Integrations, or the `AQ_ANTHROPIC_KEY` wp-config constant). An API key is a credential Claude must not enter — Justin sets it, then the backfill + a test upload confirm end-to-end generation before the fleet release.
