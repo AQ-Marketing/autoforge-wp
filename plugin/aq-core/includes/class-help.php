@@ -108,7 +108,7 @@ class AQ_Help {
 					the correct, accessible choice.</li>
 					<li>To fix a description, open the image (the <strong>Edit</strong> link in "Recently written") and change its alt text there.</li>
 				</ul>
-				<div class="aq-help__tip"><strong>Needs:</strong> a Claude key under Integrations. The daily allowance caps how many images are described per day so cost can never run away.</div>
+				<div class="aq-help__tip"><strong>Needs:</strong> a Claude key (default models) or an OpenAI key (GPT models) under Integrations. The daily allowance caps how many images are described per day so cost can never run away.</div>
 			'); ?>
 
 			<div class="aq-help__group">Getting found on Google</div>

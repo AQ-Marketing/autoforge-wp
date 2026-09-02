@@ -641,8 +641,9 @@ class AQ_Alt_Text {
 	 * One bounded batch; the screen's JS loops until remaining = 0 or deferred.
 	 */
 	public static function rest_run(WP_REST_Request $req) {
-		if (!self::claude_ready()) {
-			return new WP_Error('aq_no_key', 'Claude is not configured. Add a key under AutoForge → Integrations.', ['status' => 400]);
+		if (!self::ready()) {
+			$prov = self::provider(self::model()) === 'openai' ? 'OpenAI' : 'Claude';
+			return new WP_Error('aq_no_key', $prov . ' is not configured. Add a key under AutoForge → Integrations, or pick a different model on the Media screen.', ['status' => 400]);
 		}
 		@set_time_limit(0);
 		$body  = $req->get_json_params();
@@ -686,8 +687,9 @@ class AQ_Alt_Text {
 		$limit   = max(1, (int) ($assoc['limit'] ?? 50));
 		$dry     = !empty($assoc['dry-run']);
 		$missing = !empty($assoc['missing']);
-		if (!self::claude_ready()) {
-			\WP_CLI::error('Claude is not configured (AutoForge → Integrations).');
+		if (!self::ready()) {
+			$prov = self::provider(self::model()) === 'openai' ? 'OpenAI' : 'Claude';
+			\WP_CLI::error($prov . ' is not configured (AutoForge → Integrations).');
 		}
 		if ($dry) {
 			$ids = $missing ? self::missing_ids($limit) : self::due_ids(self::queue());
@@ -718,8 +720,10 @@ class AQ_Alt_Text {
 		}
 		$s      = self::settings();
 		$c      = self::counts();
-		$ready  = self::claude_ready();
-		$models = AQ_Claude::models();
+		$model  = self::model();
+		$prov   = self::provider($model) === 'openai' ? 'OpenAI' : 'Claude';
+		$ready  = self::provider_ready($model);
+		$models = self::all_models();
 		$int    = admin_url('admin.php?page=aq-integrations');
 		$eligible_remaining = max(0, $c['missing'] - $c['failed'] - $c['skipped']);
 
@@ -760,7 +764,7 @@ class AQ_Alt_Text {
 		<?php endif; ?>
 
 		<?php if (!$ready) : ?>
-			<div class="aq-alt-banner aq-alt-banner--warn">Claude isn't connected, so alt text can't be written yet. Add a Claude key under <a href="<?php echo esc_url($int); ?>">Integrations</a>.</div>
+			<div class="aq-alt-banner aq-alt-banner--warn"><?php echo esc_html($prov); ?> isn't connected, so alt text can't be written yet. Add the <?php echo esc_html($prov); ?> key under <a href="<?php echo esc_url($int); ?>">Integrations</a>, or pick a different model below.</div>
 		<?php elseif (!empty($s['enabled'])) : ?>
 			<div class="aq-alt-banner aq-alt-banner--ok"><strong>On.</strong> New images get alt text automatically within about a minute of upload.</div>
 		<?php endif; ?>
@@ -803,6 +807,7 @@ class AQ_Alt_Text {
 							<option value="<?php echo esc_attr($id); ?>" <?php selected($s['model'], $id); ?>><?php echo esc_html($label); ?></option>
 						<?php endforeach; ?>
 					</select>
+					<p class="aq-alt-hint">Claude models need a Claude key; GPT models need an OpenAI key — both set under <a href="<?php echo esc_url($int); ?>">Integrations</a>.</p>
 				</div>
 				<div class="aq-alt-field">
 					<label for="aq-alt-cap">Daily allowance <?php echo AQ_Admin_Hub::tip('Maximum number of images described per day. Anything beyond it simply waits for tomorrow — a safety cap on cost.'); ?></label>
@@ -895,7 +900,7 @@ class AQ_Alt_Text {
 		$model = (string) ($in['model'] ?? '');
 		update_option(self::OPTION, [
 			'enabled'   => !empty($in['enabled']),
-			'model'     => array_key_exists($model, AQ_Claude::models()) ? $model : 'claude-opus-5',
+			'model'     => array_key_exists($model, self::all_models()) ? $model : 'claude-opus-5',
 			'daily_cap' => min(5000, max(1, (int) ($in['daily_cap'] ?? 300))),
 		], false);
 		wp_safe_redirect(add_query_arg(['page' => self::SLUG, 'updated' => '1'], admin_url('admin.php')));
