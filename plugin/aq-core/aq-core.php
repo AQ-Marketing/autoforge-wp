@@ -3,7 +3,7 @@
  * Plugin Name: AutoForge
  * Plugin URI: https://aqmarketing.com
  * Description: Client-agnostic WordPress platform — one plugin owns front-end rendering (structured sections, header/footer, the visual builder), site config (NAP/license), SEO meta + titles, JSON-LD, ACF section schema, robots, JSON content sync, and the embedded Boost performance module. Every site is driven entirely from its own data; the theme is a near-empty stub.
- * Version: 0.3.49
+ * Version: 0.3.50
  * Requires PHP: 8.0
  * Author: AQ Marketing
  * Text Domain: aq-core
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.3.49');
+define('AQ_CORE_VERSION', '0.3.50');
 
 /**
  * Agency email domain whose ADMINS bypass the visual-editor SEO review gate
@@ -102,6 +102,9 @@ require_once AQ_CORE_DIR . 'includes/class-claude.php';
 require_once AQ_CORE_DIR . 'includes/class-openai.php';
 require_once AQ_CORE_DIR . 'includes/class-alt-text.php';
 require_once AQ_CORE_DIR . 'includes/class-editor-review.php';
+require_once AQ_CORE_DIR . 'includes/class-assistant-rules.php';
+require_once AQ_CORE_DIR . 'includes/class-knowledge.php';
+require_once AQ_CORE_DIR . 'includes/class-assistant.php';
 require_once AQ_CORE_DIR . 'includes/class-integrations.php';
 require_once AQ_CORE_DIR . 'includes/class-importer.php';
 require_once AQ_CORE_DIR . 'includes/class-global-styles.php';
@@ -158,6 +161,8 @@ AQ_Editor::register();
 AQ_Editor_Review::register();
 AQ_Integrations::register();
 AQ_Alt_Text::register();
+AQ_Knowledge::register();
+AQ_Assistant::register();
 AQ_Importer::register();
 AQ_Global_Styles::register();
 AQ_Navigation::register();

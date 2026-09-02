@@ -612,8 +612,12 @@ class AQ_Content_Sync {
 		return (array) (self::seo_manifest($source)['intents'][$path] ?? []);
 	}
 
-	/** @return array<int,array<string,mixed>> */
-	private static function seo_inventory(): array {
+	/**
+	 * @return array<int,array<string,mixed>> Gate rows for every published page/post.
+	 * Public so the live-site assistant guardian (AQ_Assistant) can re-run the
+	 * duplicate/overlap gate with a proposed edit swapped in.
+	 */
+	public static function seo_inventory(): array {
 		$inventory = [];
 		$posts = get_posts(['post_type' => ['page', 'post'], 'post_status' => 'publish', 'numberposts' => -1]);
 		foreach ($posts as $post) {

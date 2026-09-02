@@ -104,7 +104,7 @@ class AQ_Admin_Hub {
 				'aq-footer' => 'Footer', 'aq-logo' => 'Logo', 'aq-legal' => 'Legal Pages',
 			]],
 			['type' => 'group', 'label' => 'SEO', 'icon' => 'search', 'items' => [
-				'aq-seo' => 'SEO', 'aq-seo-agent' => 'SEO Agent', 'aq-redirects' => 'Redirects',
+				'aq-seo' => 'SEO', 'aq-knowledge' => 'Knowledge', 'aq-seo-agent' => 'SEO Agent', 'aq-redirects' => 'Redirects',
 			]],
 			['type' => 'group', 'label' => 'Leads & Forms', 'icon' => 'email-alt', 'items' => [
 				'aq-forms' => 'Forms', 'aq-submissions' => 'Submissions',
@@ -116,6 +116,7 @@ class AQ_Admin_Hub {
 			]],
 			['type' => 'link', 'slug' => 'aq-locations', 'label' => 'Locations/NAP', 'icon' => 'location'],
 			['type' => 'link', 'slug' => 'aq-chatbot', 'label' => 'Chatbot', 'icon' => 'format-chat'],
+			['type' => 'link', 'slug' => 'aq-assistant', 'label' => 'Assistant', 'icon' => 'admin-comments'],
 			['type' => 'group', 'label' => 'Settings', 'icon' => 'admin-generic', 'items' => [
 				'aq-integrations' => 'Integrations', 'aq-import' => 'Import',
 				'aq-performance' => 'Performance', 'aq-help' => 'Help',
