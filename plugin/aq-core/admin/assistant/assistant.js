@@ -1,21 +1,27 @@
 /**
- * AQ Assistant — front-end chat panel for the admin-only, live-site SEO-guardian.
+ * AQ Assistant — chat panel for the admin-only, live-site SEO-guardian.
  *
- * Runs on the real published page for a logged-in admin. The PHP side
- * (AQ_Assistant) enqueues this and exposes
- * window.AQ_ASSIST = { restRoot, knowledge, builder, nonce, pageId, labels, stickyBar }.
+ * Runs on the real published page AND inside wp-admin for a logged-in admin. The
+ * PHP side (AQ_Assistant) enqueues this and exposes
+ * window.AQ_ASSIST = { restRoot, knowledge, builder, nonce, pageId, context,
+ *                      labels, stickyBar, prefs }.
  *
  * A plain chat panel: the admin types what they want changed and the server
  * decides which text it refers to, proposes a change with a verdict, and the
  * admin applies it. No point-and-click, no field pickers, no overlays.
  *
+ * The edited page is chosen by a header dropdown (front end: defaults to the
+ * current page; admin: to the page being edited, else empty). Every REST call is
+ * routed through one `activePostId`. The floating launcher is draggable and its
+ * position persists per-user (server + localStorage).
+ *
  * Vanilla JS, no libraries, no build step. All classes namespaced .aq-asst-*.
- * Endpoints: GET  restRoot/context/{pageId}
- *            GET  restRoot/thread/{pageId}
+ * Endpoints: GET  restRoot/pages
+ *            GET  restRoot/prefs        POST restRoot/prefs { launcher }
+ *            GET  restRoot/context/{id} GET  restRoot/thread/{id}
  *            POST restRoot/message   { page_id, selection:null, message }
  *            POST restRoot/apply     { page_id, proposalId, alternativeIndex? }
- *            POST restRoot/undo      { logId }
- *            POST restRoot/clear     { page_id }
+ *            POST restRoot/undo      { logId }   POST restRoot/clear { page_id }
  */
 (function () {
 	'use strict';
@@ -24,6 +30,12 @@
 	if (!CFG || !CFG.restRoot) { return; }
 
 	var REDUCE = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+	/* The page every REST call targets. Starts at the bootstrapped page (may be 0
+	 * in wp-admin when no page is being edited) and follows the header selector. */
+	var activePostId = parseInt(CFG.pageId, 10) || 0;
+	var DRAG_THRESHOLD = 4;
+	var LAUNCH_KEY = 'aq_asst_launcher';
 
 	/* ------------------------------------------------------------------ *
 	 * Small helpers
@@ -55,24 +67,37 @@
 
 	var state = {
 		open: false,
+		pagesLoaded: false,
 		contextLoaded: false,
 		rehydrated: false,
 		threadCache: []
 	};
 
-	/* Per-page localStorage mirror key (instant paint before the network). */
-	var MIRROR_KEY = 'aq_asst_' + (location && location.pathname ? location.pathname : '');
-	function mirrorSave(arr) { try { localStorage.setItem(MIRROR_KEY, JSON.stringify(arr)); } catch (e) { /* private window */ } }
+	/* Per-page localStorage mirror key (instant paint before the network). Keyed by
+	 * the ACTIVE post so switching pages in the selector shows the right thread. */
+	function mirrorKey() { return 'aq_asst_thread_' + activePostId; }
+	function mirrorSave(arr) { try { localStorage.setItem(mirrorKey(), JSON.stringify(arr)); } catch (e) { /* private window */ } }
 	function mirrorLoad() {
 		try {
-			var raw = localStorage.getItem(MIRROR_KEY);
+			var raw = localStorage.getItem(mirrorKey());
 			var a = raw ? JSON.parse(raw) : null;
 			return Array.isArray(a) ? a : null;
 		} catch (e) { return null; }
 	}
-	function mirrorClear() { try { localStorage.removeItem(MIRROR_KEY); } catch (e) { /* private window */ } }
+	function mirrorClear() { try { localStorage.removeItem(mirrorKey()); } catch (e) { /* private window */ } }
 
-	var root, launcher, panel, threadEl, textarea, noteArea, sendBtn;
+	/* Launcher-position localStorage cache (per browser; server is source of truth). */
+	function launchLoad() {
+		try {
+			var raw = localStorage.getItem(LAUNCH_KEY);
+			var o = raw ? JSON.parse(raw) : null;
+			return (o && (o.side === 'left' || o.side === 'right')) ? o : null;
+		} catch (e) { return null; }
+	}
+	function launchSave(o) { try { localStorage.setItem(LAUNCH_KEY, JSON.stringify(o)); } catch (e) { /* private window */ } }
+
+	var root, launcher, panel, threadEl, textarea, noteArea, sendBtn, pageSelect;
+	var currentSide = 'right';
 
 	/* ------------------------------------------------------------------ *
 	 * Build the launcher + panel (once)
@@ -85,11 +110,11 @@
 		/* Launcher */
 		launcher = el('button', 'aq-asst-launcher');
 		launcher.type = 'button';
-		launcher.setAttribute('aria-label', 'Open the site assistant');
+		launcher.setAttribute('aria-label', 'Open the site assistant (drag to move)');
 		launcher.appendChild(el('span', 'aq-asst-launcher-ico', '💬'));
 		launcher.appendChild(el('span', 'aq-asst-launcher-txt', 'Assistant'));
 		if (CFG.stickyBar) { launcher.classList.add('aq-asst-launcher--sticky'); }
-		launcher.addEventListener('click', openPanel);
+		makeDraggable(launcher);
 		root.appendChild(launcher);
 
 		/* Panel */
@@ -101,7 +126,8 @@
 		if (REDUCE) { panel.classList.add('aq-asst-noanim'); }
 
 		var header = el('div', 'aq-asst-header');
-		header.appendChild(el('div', 'aq-asst-title', 'Assistant'));
+		var htop = el('div', 'aq-asst-headtop');
+		htop.appendChild(el('div', 'aq-asst-title', 'Assistant'));
 		var hactions = el('div', 'aq-asst-hactions');
 		var clearBtn = el('button', 'aq-asst-clear');
 		clearBtn.type = 'button';
@@ -115,7 +141,25 @@
 		closeBtn.textContent = '✕';
 		closeBtn.addEventListener('click', closePanel);
 		hactions.appendChild(closeBtn);
-		header.appendChild(hactions);
+		htop.appendChild(hactions);
+		header.appendChild(htop);
+
+		/* Page selector — which page the assistant edits. */
+		var selRow = el('div', 'aq-asst-pagerow');
+		var selLabel = el('label', 'aq-asst-pagelabel', 'Editing');
+		selLabel.setAttribute('for', 'aq-asst-page');
+		pageSelect = el('select', 'aq-asst-page');
+		pageSelect.id = 'aq-asst-page';
+		pageSelect.setAttribute('aria-label', 'Choose which page to edit');
+		var ph = el('option', null, 'Choose a page to edit');
+		ph.value = '0';
+		pageSelect.appendChild(ph);
+		pageSelect.addEventListener('change', function () {
+			setActivePost(parseInt(pageSelect.value, 10) || 0);
+		});
+		selRow.appendChild(selLabel);
+		selRow.appendChild(pageSelect);
+		header.appendChild(selRow);
 		panel.appendChild(header);
 
 		noteArea = el('div', 'aq-asst-notes');
@@ -150,7 +194,118 @@
 		root.appendChild(panel);
 		document.body.appendChild(root);
 
+		/* Restore the launcher position: server bootstrap → localStorage → default. */
+		var pref = (CFG.prefs && CFG.prefs.launcher) ? CFG.prefs.launcher : launchLoad();
+		if (pref && (pref.side === 'left' || pref.side === 'right')) { applyLauncherPos(pref); }
+
 		document.addEventListener('keydown', onKeydown, true);
+		window.addEventListener('resize', clampLauncher);
+	}
+
+	/* ------------------------------------------------------------------ *
+	 * Draggable launcher (drag past a threshold = move; otherwise = click)
+	 * ------------------------------------------------------------------ */
+
+	function makeDraggable(btn) {
+		var startX = 0, startY = 0, baseLeft = 0, baseTop = 0;
+		var dragging = false, pointerId = null, suppressClick = false;
+
+		btn.addEventListener('pointerdown', function (e) {
+			if (e.button != null && e.button !== 0) { return; }
+			pointerId = e.pointerId;
+			var r = btn.getBoundingClientRect();
+			startX = e.clientX; startY = e.clientY;
+			baseLeft = r.left; baseTop = r.top;
+			dragging = false;
+			try { btn.setPointerCapture(pointerId); } catch (err) { /* older browsers */ }
+		});
+
+		btn.addEventListener('pointermove', function (e) {
+			if (pointerId === null) { return; }
+			var dx = e.clientX - startX, dy = e.clientY - startY;
+			if (!dragging) {
+				if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) { return; }
+				dragging = true;
+				btn.classList.add('aq-asst-dragging');
+				document.body.classList.add('aq-asst-noselect');
+			}
+			var w = btn.offsetWidth, h = btn.offsetHeight;
+			var left = clamp(baseLeft + dx, 0, window.innerWidth - w);
+			var top  = clamp(baseTop + dy, 0, window.innerHeight - h);
+			btn.style.left = left + 'px';
+			btn.style.top = top + 'px';
+			btn.style.right = 'auto';
+			btn.style.bottom = 'auto';
+		});
+
+		function end() {
+			if (pointerId !== null) { try { btn.releasePointerCapture(pointerId); } catch (err) {} }
+			pointerId = null;
+			if (dragging) {
+				dragging = false;
+				suppressClick = true;
+				btn.classList.remove('aq-asst-dragging');
+				document.body.classList.remove('aq-asst-noselect');
+				persistLauncher(btn);
+			}
+		}
+		btn.addEventListener('pointerup', end);
+		btn.addEventListener('pointercancel', end);
+
+		/* A real click (mouse or keyboard Enter/Space) opens the panel — unless it
+		 * was the tail of a drag, in which case swallow this one click. */
+		btn.addEventListener('click', function (e) {
+			if (suppressClick) { suppressClick = false; e.preventDefault(); e.stopPropagation(); return; }
+			openPanel();
+		});
+	}
+
+	function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+	/* Apply an edge-anchored position {side,x,y}, clamped to the viewport. */
+	function applyLauncherPos(pref) {
+		if (!launcher) { return; }
+		currentSide = pref.side === 'left' ? 'left' : 'right';
+		var w = launcher.offsetWidth || 0, h = launcher.offsetHeight || 0;
+		var x = clamp(parseInt(pref.x, 10) || 0, 0, Math.max(0, window.innerWidth - w));
+		var y = clamp(parseInt(pref.y, 10) || 0, 0, Math.max(0, window.innerHeight - h));
+		launcher.style.top = 'auto';
+		launcher.style.bottom = y + 'px';
+		if (currentSide === 'left') {
+			launcher.style.left = x + 'px';
+			launcher.style.right = 'auto';
+		} else {
+			launcher.style.right = x + 'px';
+			launcher.style.left = 'auto';
+		}
+	}
+
+	/* Turn the launcher's current pixel rect into an edge-anchored pref, then save
+	 * it to CSS (normalized), localStorage, and the server. */
+	function persistLauncher(btn) {
+		var r = btn.getBoundingClientRect();
+		var vw = window.innerWidth, vh = window.innerHeight;
+		var side = (r.left + r.width / 2) < vw / 2 ? 'left' : 'right';
+		var x = side === 'left' ? r.left : (vw - r.right);
+		var y = vh - r.bottom;
+		var pref = { side: side, x: Math.round(clamp(x, 0, 2000)), y: Math.round(clamp(y, 0, 2000)) };
+		applyLauncherPos(pref);
+		launchSave(pref);
+		api('/prefs', 'POST', { launcher: pref }).then(function () {}, function () {});
+	}
+
+	/* Keep the launcher on-screen after a viewport resize. */
+	function clampLauncher() {
+		if (!launcher) { return; }
+		applyLauncherPos({ side: currentSide, x: launcherEdgeX(), y: launcherEdgeY() });
+	}
+	function launcherEdgeX() {
+		var r = launcher.getBoundingClientRect();
+		return currentSide === 'left' ? r.left : (window.innerWidth - r.right);
+	}
+	function launcherEdgeY() {
+		var r = launcher.getBoundingClientRect();
+		return window.innerHeight - r.bottom;
 	}
 
 	/* ------------------------------------------------------------------ *
@@ -161,11 +316,44 @@
 		if (!root) { build(); }
 		state.open = true;
 		panel.hidden = false;
+		/* Anchor the panel to the launcher's current side (open toward center). */
+		panel.classList.toggle('aq-asst-panel--left', currentSide === 'left');
 		launcher.classList.add('aq-asst-launcher--hidden');
 		requestAnimationFrame(function () { panel.classList.add('aq-asst-panel--in'); });
 		if (textarea) { textarea.focus(); }
+		if (!state.pagesLoaded) { loadPages(); }
 		if (!state.contextLoaded) { loadContext(); }
 		if (!state.rehydrated) { rehydrate(); }
+	}
+
+	/* Fill the page selector from the server; default to the active/bootstrapped page. */
+	function loadPages() {
+		state.pagesLoaded = true;
+		api('/pages', 'GET').then(function (list) {
+			if (!Array.isArray(list) || !pageSelect) { return; }
+			list.forEach(function (p) {
+				var o = el('option', null, p.title + ' (' + p.path + ')');
+				o.value = String(p.id);
+				pageSelect.appendChild(o);
+			});
+			pageSelect.value = String(activePostId || 0);
+		}, function () { /* non-fatal; selector keeps the placeholder */ });
+	}
+
+	/* Switch the page every REST call targets; reset + reload the conversation. */
+	function setActivePost(id) {
+		id = parseInt(id, 10) || 0;
+		if (id === activePostId) { return; }
+		activePostId = id;
+		state.contextLoaded = false;
+		state.rehydrated = false;
+		state.threadCache = [];
+		if (threadEl) { threadEl.textContent = ''; }
+		if (noteArea) { noteArea.hidden = true; noteArea.textContent = ''; }
+		if (activePostId) {
+			loadContext();
+			rehydrate();
+		}
 	}
 
 	function closePanel() {
@@ -183,8 +371,9 @@
 	}
 
 	function loadContext() {
+		if (!activePostId) { return; }
 		state.contextLoaded = true;
-		api('/context/' + CFG.pageId, 'GET').then(function (j) {
+		api('/context/' + activePostId, 'GET').then(function (j) {
 			if (!j || j.ok === false) { return; }
 			var notes = [];
 			if (!j.hasFullPlan) { notes.push('This page has a basic plan only.'); }
@@ -229,6 +418,14 @@
 		var msg = (textarea.value || '').trim();
 		if (!msg) { textarea.focus(); return; }
 
+		/* No page chosen yet → say so before hitting the server. */
+		if (!activePostId) {
+			addBubble('user', msg);
+			textarea.value = '';
+			addBubble('assistant', 'Pick a page to edit first — use the "Editing" dropdown at the top of this panel.');
+			return;
+		}
+
 		addBubble('user', msg);
 		cachePush({ role: 'user', text: msg });
 		textarea.value = '';
@@ -236,7 +433,7 @@
 		setBusy(true);
 
 		/* No client-side selection — the server resolves the target from the words. */
-		api('/message', 'POST', { page_id: CFG.pageId, selection: null, message: msg })
+		api('/message', 'POST', { page_id: activePostId, selection: null, message: msg })
 			.then(function (j) {
 				thinking.remove();
 				setBusy(false);
@@ -320,12 +517,13 @@
 	 */
 	function rehydrate() {
 		if (state.rehydrated) { return; }
+		if (!activePostId) { return; }
 		state.rehydrated = true;
 
 		var cached = mirrorLoad();
 		if (cached && cached.length) { paintThread(cached); }
 
-		api('/thread/' + CFG.pageId, 'GET').then(function (j) {
+		api('/thread/' + activePostId, 'GET').then(function (j) {
 			if (!j || j.ok === false || !Array.isArray(j.thread)) { return; }
 			if (j.thread.length) {
 				paintThread(j.thread);
@@ -340,8 +538,9 @@
 
 	/* Clear button: wipe server + UI + mirror. */
 	function clearThread() {
+		if (!activePostId) { return; }
 		if (!window.confirm('Clear this conversation?')) { return; }
-		api('/clear', 'POST', { page_id: CFG.pageId }).then(function () {}, function () {});
+		api('/clear', 'POST', { page_id: activePostId }).then(function () {}, function () {});
 		state.threadCache = [];
 		if (threadEl) { threadEl.textContent = ''; }
 		mirrorClear();
@@ -442,7 +641,7 @@
 	}
 
 	function doApply(card, altIndex, wrap) {
-		var payload = { page_id: CFG.pageId, proposalId: card.proposalId };
+		var payload = { page_id: activePostId, proposalId: card.proposalId };
 		if (altIndex >= 0) { payload.alternativeIndex = altIndex; }
 
 		var buttons = wrap.querySelectorAll('button');

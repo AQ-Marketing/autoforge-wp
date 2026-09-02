@@ -33,6 +33,7 @@ class AQ_Assistant {
 	public static function register(): void {
 		add_action('rest_api_init', [__CLASS__, 'rest_routes']);
 		add_action('template_redirect', [__CLASS__, 'maybe_activate'], 2);
+		add_action('admin_enqueue_scripts', [__CLASS__, 'admin_enqueue']);
 		add_action('admin_bar_menu', [__CLASS__, 'admin_bar_node'], 81);
 		add_action('admin_menu', [__CLASS__, 'menu'], 26);
 		add_action('admin_post_aq_assistant_save', [__CLASS__, 'save_settings']);
@@ -57,6 +58,13 @@ class AQ_Assistant {
 		return !empty(self::settings()['enabled']) && self::claude_ready();
 	}
 
+	/** Active inside wp-admin? Same gate, minus the front-end singular check. */
+	public static function active_admin(): bool {
+		if (!is_admin() || (defined('REST_REQUEST') && REST_REQUEST)) { return false; }
+		if (!current_user_can(self::CAP)) { return false; }
+		return !empty(self::settings()['enabled']) && self::claude_ready();
+	}
+
 	/* ---------------- activation (markers + panel) ---------------- */
 
 	public static function maybe_activate(): void {
@@ -65,8 +73,28 @@ class AQ_Assistant {
 		add_action('wp_enqueue_scripts', [__CLASS__, 'enqueue'], 20);
 	}
 
+	/** Front-end enqueue: bound to the currently-viewed page. */
 	public static function enqueue(): void {
-		$id   = get_queried_object_id();
+		self::do_enqueue(get_queried_object_id(), 'front');
+	}
+
+	/**
+	 * Admin (wp-admin) enqueue: same assets + bootstrap, same gate. On a page-edit
+	 * screen it binds to that page; anywhere else it starts unbound (post id 0) and
+	 * the panel's page selector chooses the target.
+	 */
+	public static function admin_enqueue($hook): void {
+		if (!self::active_admin()) { return; }
+		$id     = 0;
+		$screen = function_exists('get_current_screen') ? get_current_screen() : null;
+		if ($screen && $screen->base === 'post' && $screen->post_type === 'page') {
+			$id = isset($_GET['post']) ? (int) $_GET['post'] : 0;
+		}
+		self::do_enqueue($id, 'admin');
+	}
+
+	/** Shared: enqueue the assets and localize the bootstrap context for either surface. */
+	private static function do_enqueue(int $id, string $context): void {
 		$base = plugins_url('admin/assistant/', AQ_CORE_DIR . 'aq-core.php');
 		$dir  = AQ_CORE_DIR . 'admin/assistant/';
 		$ver  = function ($f) use ($dir) { return file_exists($dir . $f) ? (string) filemtime($dir . $f) : AQ_CORE_VERSION; };
@@ -78,9 +106,17 @@ class AQ_Assistant {
 			'builder'    => esc_url_raw(admin_url('admin.php?page=aq-pages&page_id=' . $id)),
 			'nonce'      => wp_create_nonce('wp_rest'),
 			'pageId'     => $id,
+			'context'    => $context,
 			'labels'     => class_exists('AQ_Editor') ? AQ_Editor::layout_labels() : [],
-			'stickyBar'  => (bool) (function_exists('aq_site') ? aq_site('stickyBar.enabled') : false),
+			'stickyBar'  => $context === 'front' && (bool) (function_exists('aq_site') ? aq_site('stickyBar.enabled') : false),
+			'prefs'      => self::stored_prefs(),
 		]);
+	}
+
+	/** The saved per-user launcher prefs (raw; empty array when unset). */
+	public static function stored_prefs(): array {
+		$p = function_exists('get_user_meta') ? get_user_meta(get_current_user_id(), 'aq_assistant_prefs', true) : '';
+		return is_array($p) ? $p : [];
 	}
 
 	public static function admin_bar_node($bar): void {
@@ -101,6 +137,14 @@ class AQ_Assistant {
 		register_rest_route('aq/v1', '/assistant/message', ['methods' => 'POST', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_message']]);
 		register_rest_route('aq/v1', '/assistant/apply', ['methods' => 'POST', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_apply']]);
 		register_rest_route('aq/v1', '/assistant/undo', ['methods' => 'POST', 'permission_callback' => function () { return current_user_can(self::CAP); }, 'callback' => [__CLASS__, 'rest_undo']]);
+		// Admin-only helpers for the wp-admin surface: the editable-page list for
+		// the panel selector, and the per-user launcher position.
+		$cap = function () { return current_user_can(self::CAP); };
+		register_rest_route('aq/v1', '/assistant/pages', ['methods' => 'GET', 'permission_callback' => $cap, 'callback' => [__CLASS__, 'rest_pages']]);
+		register_rest_route('aq/v1', '/assistant/prefs', [
+			['methods' => 'GET', 'permission_callback' => $cap, 'callback' => [__CLASS__, 'rest_prefs_get']],
+			['methods' => 'POST', 'permission_callback' => $cap, 'callback' => [__CLASS__, 'rest_prefs_set']],
+		]);
 		// Agency-only manual trigger for the supplementary ranking audit.
 		register_rest_route('aq/v1', '/ranking/scan', [
 			'methods'             => 'POST',
@@ -115,6 +159,57 @@ class AQ_Assistant {
 			return rest_ensure_response(['ok' => false, 'error' => 'Ranking audit unavailable.']);
 		}
 		return rest_ensure_response(AQ_Ranking_Audit::run_scan());
+	}
+
+	/** GET /assistant/pages — published pages the user can edit, for the panel selector. */
+	public static function rest_pages(WP_REST_Request $req) {
+		$out   = [];
+		$pages = get_posts(['post_type' => 'page', 'post_status' => 'publish', 'numberposts' => -1, 'orderby' => 'title', 'order' => 'ASC']);
+		foreach ($pages as $p) {
+			if (!current_user_can('edit_post', $p->ID)) { continue; }
+			$out[] = [
+				'id'    => (int) $p->ID,
+				'title' => $p->post_title !== '' ? $p->post_title : '(untitled)',
+				'path'  => (string) (wp_parse_url(get_permalink($p->ID), PHP_URL_PATH) ?: '/'),
+			];
+		}
+		return rest_ensure_response($out);
+	}
+
+	/** GET /assistant/prefs — this user's saved launcher position (empty when unset). */
+	public static function rest_prefs_get(WP_REST_Request $req) {
+		return rest_ensure_response(self::stored_prefs());
+	}
+
+	/** POST /assistant/prefs { launcher:{side,x,y} } — validate + save per-user. */
+	public static function rest_prefs_set(WP_REST_Request $req) {
+		$body = $req->get_json_params();
+		$in   = is_array($body['launcher'] ?? null) ? $body['launcher'] : [];
+		$clean = self::sanitize_prefs($in);
+		update_user_meta(get_current_user_id(), 'aq_assistant_prefs', ['launcher' => $clean]);
+		return rest_ensure_response(['ok' => true, 'launcher' => $clean]);
+	}
+
+	/**
+	 * Pure sanitizer for the launcher position. Clamps side to left|right (default
+	 * right), x/y to whole pixels 0..2000 (default 20), and drops any unknown keys.
+	 */
+	public static function sanitize_prefs(array $in): array {
+		$side = (isset($in['side']) && in_array($in['side'], ['left', 'right'], true)) ? (string) $in['side'] : 'right';
+		return [
+			'side' => $side,
+			'x'    => self::clamp_int($in['x'] ?? null, 0, 2000, 20),
+			'y'    => self::clamp_int($in['y'] ?? null, 0, 2000, 20),
+		];
+	}
+
+	/** Clamp a numeric-ish value to [min,max]; non-numeric → default. */
+	private static function clamp_int($v, int $min, int $max, int $default): int {
+		if (is_bool($v) || $v === null || (is_string($v) && !is_numeric(trim($v))) || (!is_int($v) && !is_float($v) && !is_string($v))) {
+			return $default;
+		}
+		$n = (int) $v;
+		return max($min, min($max, $n));
 	}
 
 	/** GET /assistant/context/{id} — page SEO values, plan status, field labels. */
