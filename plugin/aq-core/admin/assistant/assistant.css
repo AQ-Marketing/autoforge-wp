@@ -1,16 +1,14 @@
 /**
- * AQ Assistant — front-end panel styles.
+ * AQ Assistant — front-end chat panel styles.
  *
  * Theme-agnostic: everything is scoped to .aq-asst-* and sets its own font
  * stack + colors so the panel looks correct on any client site. Single,
  * deliberate light look. Accents: green = Safe, amber = Adjusted, red = Blocked.
- * No external fonts, no @imports, no network requests.
+ * No external fonts, no @imports, no network requests. Plain chat — no overlays.
  */
 
 .aq-asst-root,
-.aq-asst-panel,
-.aq-asst-tip,
-.aq-asst-hilabel {
+.aq-asst-panel {
 	--aqa-surface: #ffffff;
 	--aqa-surface-2: #f6f8fa;
 	--aqa-border: #e2e6ea;
@@ -31,8 +29,7 @@
 	box-sizing: border-box;
 }
 .aq-asst-root *,
-.aq-asst-panel *,
-.aq-asst-tip * {
+.aq-asst-panel * {
 	box-sizing: border-box;
 	font-family: inherit;
 }
@@ -133,10 +130,7 @@
 	background: var(--aqa-surface-2);
 	border-bottom: 1px solid var(--aqa-border);
 }
-.aq-asst-note {
-	font-size: 12.5px;
-	color: var(--aqa-text-2);
-}
+.aq-asst-note { font-size: 12.5px; color: var(--aqa-text-2); }
 .aq-asst-note + .aq-asst-note { margin-top: 4px; }
 
 /* Thread */
@@ -199,83 +193,7 @@
 	border-top: 1px solid var(--aqa-border);
 	padding: 12px 14px 14px;
 	background: var(--aqa-surface);
-	position: relative;
 }
-.aq-asst-tools {
-	display: flex;
-	gap: 8px;
-	margin-bottom: 10px;
-	flex-wrap: wrap;
-}
-.aq-asst-tool {
-	border: 1px solid var(--aqa-border-2);
-	background: var(--aqa-surface);
-	color: var(--aqa-text);
-	font-size: 12.5px;
-	font-weight: 600;
-	padding: 7px 12px;
-	border-radius: 8px;
-	cursor: pointer;
-}
-.aq-asst-tool:hover { background: var(--aqa-surface-2); }
-.aq-asst-tool:focus-visible { outline: 2px solid var(--aqa-accent); outline-offset: 1px; }
-
-.aq-asst-seopop {
-	position: absolute;
-	top: 44px;   /* anchored just below the Page SEO button by JS (offsetTop + height) */
-	left: 14px;  /* aligned to the button by JS (offsetLeft) */
-	background: var(--aqa-surface);
-	border: 1px solid var(--aqa-border-2);
-	border-radius: 10px;
-	box-shadow: var(--aqa-shadow);
-	padding: 6px;
-	display: flex;
-	flex-direction: column;
-	min-width: 170px;
-	z-index: 30;
-}
-.aq-asst-seopop-opt {
-	text-align: left;
-	border: none;
-	background: transparent;
-	color: var(--aqa-text);
-	font-size: 13px;
-	padding: 8px 10px;
-	border-radius: 6px;
-	cursor: pointer;
-}
-.aq-asst-seopop-opt:hover { background: var(--aqa-surface-2); }
-.aq-asst-seopop-opt:focus-visible { outline: 2px solid var(--aqa-accent); outline-offset: -1px; }
-
-/* selection chip */
-.aq-asst-chiparea { margin-bottom: 10px; }
-.aq-asst-chip {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	padding: 7px 10px;
-	background: var(--aqa-surface-2);
-	border: 1px solid var(--aqa-border);
-	border-radius: 8px;
-	font-size: 12.5px;
-}
-.aq-asst-chip-lbl { font-weight: 600; color: var(--aqa-text); white-space: nowrap; }
-.aq-asst-chip-snip { color: var(--aqa-text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
-.aq-asst-chip-x {
-	margin-left: auto;
-	border: none;
-	background: transparent;
-	color: var(--aqa-muted);
-	font-size: 12px;
-	cursor: pointer;
-	width: 22px;
-	height: 22px;
-	border-radius: 6px;
-	flex: 0 0 auto;
-}
-.aq-asst-chip-x:hover { background: #e6eaef; color: var(--aqa-text); }
-.aq-asst-chip-x:focus-visible { outline: 2px solid var(--aqa-accent); outline-offset: 1px; }
-
 .aq-asst-inputrow { display: flex; gap: 8px; align-items: flex-end; }
 .aq-asst-textarea {
 	flex: 1 1 auto;
@@ -347,12 +265,7 @@
 .aq-asst-card-reason { margin: 0 0 10px; font-size: 13px; line-height: 1.45; color: var(--aqa-text); }
 .aq-asst-card-plan { margin: 0 0 8px; font-size: 12.5px; color: var(--aqa-blocked); }
 
-.aq-asst-diff {
-	display: flex;
-	flex-direction: column;
-	gap: 6px;
-	margin-bottom: 10px;
-}
+.aq-asst-diff { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 .aq-asst-diff-before,
 .aq-asst-diff-after { display: flex; gap: 8px; align-items: baseline; font-size: 13px; line-height: 1.4; }
 .aq-asst-diff-tag {
@@ -417,64 +330,14 @@
 .aq-asst-undo:focus-visible { outline: 2px solid var(--aqa-accent); outline-offset: 1px; }
 .aq-asst-undo-msg { flex-basis: 100%; color: var(--aqa-text-2); }
 
-.aq-asst-planlink,
-.aq-asst-tip-link {
+.aq-asst-planlink {
 	display: inline-block;
 	color: var(--aqa-accent);
 	font-weight: 600;
 	font-size: 13px;
 	text-decoration: underline;
 }
-.aq-asst-planlink:focus-visible,
-.aq-asst-tip-link:focus-visible { outline: 2px solid var(--aqa-accent); outline-offset: 2px; }
-
-/* ------------------------------------------------------------------ *
- * Select mode (point-and-ask)
- * ------------------------------------------------------------------ */
-
-.aq-asst-selveil {
-	position: fixed;
-	inset: 0;
-	z-index: 99998;
-	background: rgba(15, 23, 35, 0.14);
-	pointer-events: none;
-}
-.aq-asst-selecting { cursor: crosshair; }
-
-.aq-asst-hibox {
-	position: absolute;
-	z-index: 99999;
-	border: 2px solid var(--aqa-accent);
-	border-radius: 4px;
-	background: rgba(37, 99, 201, 0.10);
-	pointer-events: none;
-}
-.aq-asst-hilabel {
-	position: absolute;
-	z-index: 99999;
-	background: var(--aqa-accent);
-	color: #fff;
-	font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-	font-size: 11.5px;
-	font-weight: 600;
-	padding: 2px 7px;
-	border-radius: 4px;
-	pointer-events: none;
-	white-space: nowrap;
-}
-.aq-asst-tip {
-	position: absolute;
-	z-index: 100002;
-	max-width: 270px;
-	background: var(--aqa-text);
-	color: #fff;
-	font-size: 12.5px;
-	line-height: 1.4;
-	padding: 9px 11px;
-	border-radius: 8px;
-	box-shadow: var(--aqa-shadow);
-}
-.aq-asst-tip .aq-asst-tip-link { color: #9dc2ff; }
+.aq-asst-planlink:focus-visible { outline: 2px solid var(--aqa-accent); outline-offset: 2px; }
 
 /* ------------------------------------------------------------------ *
  * Responsive: bottom sheet on small viewports
@@ -504,9 +367,5 @@
 
 @media print {
 	.aq-asst-root,
-	.aq-asst-panel,
-	.aq-asst-selveil,
-	.aq-asst-hibox,
-	.aq-asst-hilabel,
-	.aq-asst-tip { display: none !important; }
+	.aq-asst-panel { display: none !important; }
 }
