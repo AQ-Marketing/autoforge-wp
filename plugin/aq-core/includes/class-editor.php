@@ -216,11 +216,38 @@ class AQ_Editor {
 	}
 
 	/**
+	 * The section layouts a save is allowed to keep: every layout the editor has
+	 * a field schema for, UNION every layout registered on the ACF flexible-content
+	 * field. A bespoke/theme layout can be a valid registered section without
+	 * exposing editor fields (edited as data, not in the builder); it renders fine
+	 * but is absent from field_schema(). Gating saves on field_schema() alone
+	 * silently DROPPED such sections on every save, wiping page bodies down to the
+	 * header + footer. Union with the registered layouts so a save can never
+	 * destroy a section the engine still renders. Single source of truth for both
+	 * write paths — clean_sections() and AQ_Editor_Review::sanitize_sections().
+	 */
+	public static function save_allowed_layouts(): array {
+		$allowed = array_keys(self::field_schema());
+		if (function_exists('acf_get_field')) {
+			$fg = acf_get_field('field_aq_sections');
+			if (is_array($fg) && !empty($fg['layouts']) && is_array($fg['layouts'])) {
+				foreach ($fg['layouts'] as $layout) {
+					$name = is_array($layout) ? (string) ($layout['name'] ?? '') : '';
+					if ($name !== '') {
+						$allowed[] = $name;
+					}
+				}
+			}
+		}
+		return array_values(array_unique($allowed));
+	}
+
+	/**
 	 * Keep only known layouts and drop transient client keys (_uid, etc.). Shared
 	 * by Save and the live Preview so the two see an identical working set.
 	 */
 	private static function clean_sections(array $secs): array {
-		$allowed = array_keys(self::field_schema());
+		$allowed = self::save_allowed_layouts();
 		$clean   = [];
 		foreach ($secs as $s) {
 			if (!is_array($s) || empty($s['type']) || !in_array($s['type'], $allowed, true)) {

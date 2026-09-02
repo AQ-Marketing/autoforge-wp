@@ -718,7 +718,7 @@ class AQ_Editor_Review {
 
 	/** Keep only known layouts + drop transient client keys (mirrors AQ_Editor::rest_save). */
 	private static function sanitize_sections(array $sections): array {
-		$allowed = class_exists('AQ_Editor') ? array_keys(AQ_Editor::field_schema()) : [];
+		$allowed = class_exists('AQ_Editor') ? AQ_Editor::save_allowed_layouts() : [];
 		$clean   = [];
 		foreach ($sections as $s) {
 			if (!is_array($s) || empty($s['type'])) { continue; }
