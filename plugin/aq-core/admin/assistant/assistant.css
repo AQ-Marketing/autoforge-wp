@@ -93,6 +93,12 @@ body.aq-asst-noselect { user-select: none; -webkit-user-select: none; }
 }
 .aq-asst-panel--in { transform: translateX(0); }
 .aq-asst-noanim { transition: none; }
+/* `.aq-asst-panel` sets display:flex, which outranks the UA `[hidden]` rule — so
+ * without this, panel.hidden=true (set by closePanel) is a no-op and the panel
+ * only ever hides via the slide transform. If that transform doesn't take
+ * (reduced-motion quirks, a browser/extension setting), the panel never closes
+ * and the ✕ appears broken. Make `hidden` authoritative so close always works. */
+.aq-asst-panel[hidden] { display: none !important; }
 
 /* Left-anchored variant (launcher dropped on the left half of the screen). */
 .aq-asst-panel--left {
