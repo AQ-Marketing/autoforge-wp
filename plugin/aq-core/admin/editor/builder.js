@@ -1434,7 +1434,10 @@
 		galSelClear(); // indices shifted → drop the transient multi-selection
 		if (state.selected !== m.index) { selectSection(m.index, false); }
 		else { renderInspector(); }
-		setDirty(true); pushChange();
+		// The canvas already reordered the tiles in place (see canvas.js galApplyDomOrder),
+		// so DON'T livePreview() — a reload here is exactly the "page refresh" we want to
+		// avoid. Just record the change for undo, like text/image edits do.
+		setDirty(true); histRecord(); updateHistButtons();
 	}
 
 	/* ---------------- save ---------------- */

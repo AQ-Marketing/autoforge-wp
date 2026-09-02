@@ -399,6 +399,19 @@
 		if (ti < 0) { order.push(fromVal); } else { order.splice(ti, 0, fromVal); }
 		return order;
 	}
+	// Reorder the tile elements in place to match `order` (the tiles' current
+	// data-aq-gallery-item values), then renumber them 0..n so the canvas stays in
+	// sync with the parent's re-indexed images array — smooth, no iframe reload.
+	function galApplyDomOrder(galEl, order) {
+		var tiles = galTiles(galEl), byVal = {}, i;
+		for (i = 0; i < tiles.length; i++) { byVal[parseInt(tiles[i].getAttribute('data-aq-gallery-item'), 10)] = tiles[i]; }
+		var parent = tiles[0] ? tiles[0].parentNode : null;
+		if (!parent) { return; }
+		for (i = 0; i < order.length; i++) {
+			var el = byVal[order[i]];
+			if (el) { parent.appendChild(el); el.setAttribute('data-aq-gallery-item', String(i)); }
+		}
+	}
 	function galEnd() {
 		// Class-agnostic cleanup: bespoke galleries (e.g. .gal-item) use their own tile
 		// class, so clear the drag/over cues by the state classes alone — never scoped
@@ -437,6 +450,7 @@
 		var toVal = tile ? parseInt(tile.getAttribute('data-aq-gallery-item'), 10) : null;
 		if (toVal !== galFrom) {
 			var order = galReorder(gal, galFrom, toVal);
+			galApplyDomOrder(gal, order); // smooth in-place reorder — no iframe reload
 			parentWin.postMessage({ source: 'aq-canvas', type: 'gallery-reorder', index: indexOf(sectionOf(gal)), order: order }, ORIGIN);
 		}
 		galEnd();
