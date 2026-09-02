@@ -10,6 +10,7 @@
  *   historyUndo({stack, ptr})         -> { ptr, snapshot, changed }
  *   historyRedo({stack, ptr})         -> { ptr, snapshot, changed }
  *   reorder(list, orderIndexes)       -> new list ordered by the given indices
+ *   applyCategory(images, indices, category) -> new images w/ category set on those
  *
  * A snapshot is opaque to these helpers (the builder uses
  * { sections: clone, selected: int }); they only move the pointer.
@@ -59,7 +60,27 @@
 		return out;
 	}
 
-	var api = { historyPush: historyPush, historyUndo: historyUndo, historyRedo: historyRedo, reorder: reorder };
+	// Bulk-set `category` on the image rows at the given `indices` (a list of
+	// positions into `images`). Returns a NEW array; changed rows are shallow
+	// copies so the input array and its untouched rows are never mutated.
+	// Out-of-range / non-number indices are ignored; the category is trimmed.
+	function applyCategory(images, indices, category) {
+		if (!Array.isArray(images)) { return images; }
+		var cat = (category == null ? '' : String(category)).trim();
+		var want = {};
+		(Array.isArray(indices) ? indices : []).forEach(function (i) {
+			if (typeof i === 'number' && i >= 0 && i < images.length) { want[i] = true; }
+		});
+		return images.map(function (img, i) {
+			if (!want[i]) { return img; }
+			var next = {};
+			for (var k in img) { if (Object.prototype.hasOwnProperty.call(img, k)) { next[k] = img[k]; } }
+			next.category = cat;
+			return next;
+		});
+	}
+
+	var api = { historyPush: historyPush, historyUndo: historyUndo, historyRedo: historyRedo, reorder: reorder, applyCategory: applyCategory };
 	if (typeof module !== 'undefined' && module.exports) { module.exports = api; }
 	root.AQHistory = api;
 })(typeof window !== 'undefined' ? window : globalThis);

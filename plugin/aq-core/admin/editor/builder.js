@@ -18,7 +18,7 @@
 	// agency admin). Gated users get "Review & Publish"; bypass users keep "Save".
 	var GATED = !!CFG.reviewEnabled && !CFG.canBypass;
 
-	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null };
+	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null, gallerySel: null, gallerySelUid: null, galleryBulkCat: '' };
 	var HIST = (typeof window !== 'undefined' && window.AQHistory) ? window.AQHistory : null;
 	var uid = 0;
 	var els = {};
@@ -888,9 +888,32 @@
 		return lab;
 	}
 
+	// Transient (never-persisted) multi-select of image indices for the current
+	// gallery. Resets when the selected section changes (matched by _uid).
+	function galSelSet(sec) {
+		if (state.gallerySelUid !== sec._uid || !state.gallerySel) {
+			state.gallerySel = {};        // plain object as an index set { "3": true }
+			state.gallerySelUid = sec._uid;
+			state.galleryBulkCat = '';
+		}
+		return state.gallerySel;
+	}
+	function galSelClear() { state.gallerySel = {}; state.galleryBulkCat = ''; }
+	function galSelCount() {
+		var n = 0, s = state.gallerySel || {};
+		for (var k in s) { if (s[k]) { n++; } }
+		return n;
+	}
+	function galSelIndices() {
+		var out = [], s = state.gallerySel || {};
+		for (var k in s) { if (s[k]) { out.push(parseInt(k, 10)); } }
+		return out;
+	}
+
 	// Render the gallery's full control set into the inspector pane `p`.
 	function renderGalleryInspector(p, sec) {
 		galEnsure(sec);
+		var sel = galSelSet(sec);
 
 		// Add images (bulk upload + bulk select from the media library).
 		var add = ce('button', 'aqb-btn aqb-btn--primary aqb-gadd', '+ Add images');
@@ -902,12 +925,15 @@
 			? 'Drag the images on the page to reorder them.'
 			: 'Images are auto-sorted. Switch “Order by” to Manual to drag-reorder on the page.'));
 
-		// Per-image rows: thumbnail + category + caption + remove (NO reorder here).
+		// Bulk toolbar (multi-select → set/clear category, bulk remove).
+		if (sec.images.length) { p.appendChild(galBulkBar(sec)); }
+
+		// Per-image rows: checkbox + thumbnail + category + caption + remove.
 		var list = ce('div', 'aqb-gimglist');
 		if (!sec.images.length) {
 			list.appendChild(ce('p', 'aqb-muted', 'No images yet. Use “Add images” to bulk-add from the media library.'));
 		}
-		sec.images.forEach(function (img, idx) { list.appendChild(galImageRow(sec, img, idx)); });
+		sec.images.forEach(function (img, idx) { list.appendChild(galImageRow(sec, img, idx, sel)); });
 		p.appendChild(list);
 
 		// Layout controls.
@@ -924,8 +950,91 @@
 		if (sec.filters_enabled) { p.appendChild(galCategories(sec)); }
 	}
 
-	function galImageRow(sec, img, idx) {
-		var row = ce('div', 'aqb-gimgrow');
+	// Bulk toolbar: shown above the image list; the category + action buttons act
+	// on the current multi-selection (transient, never saved).
+	function galBulkBar(sec) {
+		var count = galSelCount();
+		var bar = ce('div', 'aqb-gbulk' + (count ? ' is-active' : ''));
+
+		var top = ce('div', 'aqb-gbulk__top');
+		var allBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-gbulk__sm', 'Select all'); allBtn.type = 'button';
+		allBtn.addEventListener('click', function () {
+			state.gallerySel = {};
+			for (var i = 0; i < sec.images.length; i++) { state.gallerySel[i] = true; }
+			renderInspector();
+		});
+		var clrBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-gbulk__sm', 'Clear'); clrBtn.type = 'button';
+		clrBtn.disabled = !count;
+		clrBtn.addEventListener('click', function () { galSelClear(); renderInspector(); });
+		top.appendChild(ce('span', 'aqb-gbulk__count', count + ' selected'));
+		top.appendChild(allBtn);
+		top.appendChild(clrBtn);
+		bar.appendChild(top);
+
+		// Category picker (from the section list, + inline "New…"), held in transient
+		// state so it survives the re-render that selection toggles trigger.
+		var catSel = ce('select', 'aqb-ginput');
+		catSel.appendChild(new Option('— set category —', ''));
+		(sec.categories || []).forEach(function (row) { var l = catLabel(row); if (l) { catSel.appendChild(new Option(l, l)); } });
+		catSel.appendChild(new Option('＋ New…', '__new'));
+		var curBulk = state.galleryBulkCat || '';
+		if (curBulk && !Array.prototype.some.call(catSel.options, function (o) { return o.value === curBulk; })) {
+			catSel.insertBefore(new Option(curBulk, curBulk), catSel.options[catSel.options.length - 1]);
+		}
+		catSel.value = curBulk;
+		catSel.disabled = !count;
+		catSel.addEventListener('change', function () {
+			if (catSel.value === '__new') {
+				var nv = window.prompt('New category label:', '');
+				nv = nv ? nv.trim() : '';
+				if (nv) {
+					if (!sec.categories.some(function (r) { return catLabel(r) === nv; })) { sec.categories.push({ label: nv }); }
+					state.galleryBulkCat = nv; setDirty(true); renderInspector();
+				} else { catSel.value = state.galleryBulkCat || ''; }
+				return;
+			}
+			state.galleryBulkCat = catSel.value;
+		});
+
+		var actions = ce('div', 'aqb-gbulk__actions');
+		var applyBtn = ce('button', 'aqb-btn aqb-btn--primary aqb-gbulk__apply', 'Apply to ' + count + ' selected'); applyBtn.type = 'button';
+		applyBtn.disabled = !count;
+		applyBtn.addEventListener('click', function () {
+			if (!galSelCount() || !HIST || typeof HIST.applyCategory !== 'function') { return; }
+			sec.images = HIST.applyCategory(sec.images, galSelIndices(), state.galleryBulkCat || '');
+			galSelClear();
+			setDirty(true); renderInspector(); pushChange();
+		});
+		var rmBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-gbulk__remove', 'Remove ' + count + ' selected'); rmBtn.type = 'button';
+		rmBtn.disabled = !count;
+		rmBtn.addEventListener('click', function () {
+			if (!galSelCount()) { return; }
+			if (!window.confirm('Remove ' + galSelCount() + ' selected image(s) from this gallery?')) { return; }
+			var drop = state.gallerySel || {};
+			sec.images = sec.images.filter(function (_img, i) { return !drop[i]; });
+			galSelClear();
+			setDirty(true); renderInspector(); pushChange();
+		});
+		actions.appendChild(catSel);
+		actions.appendChild(applyBtn);
+		actions.appendChild(rmBtn);
+		bar.appendChild(actions);
+		return bar;
+	}
+
+	function galImageRow(sec, img, idx, sel) {
+		var selected = !!(sel && sel[idx]);
+		var row = ce('div', 'aqb-gimgrow' + (selected ? ' is-sel' : ''));
+
+		var check = ce('input', 'aqb-gimgrow__check'); check.type = 'checkbox'; check.checked = selected;
+		check.title = 'Select for bulk actions';
+		check.addEventListener('change', function () {
+			var s = galSelSet(sec);
+			if (check.checked) { s[idx] = true; } else { delete s[idx]; }
+			renderInspector();
+		});
+		row.appendChild(check);
+
 		var thumb = ce('div', 'aqb-gimgrow__thumb');
 		var url = galThumb(img.id);
 		if (url) { var im = ce('img'); im.src = url; im.alt = ''; thumb.appendChild(im); }
@@ -942,7 +1051,7 @@
 		row.appendChild(fields);
 
 		var rm = ce('button', 'aqb-gimgrow__x', '×'); rm.title = 'Remove'; rm.type = 'button';
-		rm.addEventListener('click', function () { sec.images.splice(idx, 1); setDirty(true); renderInspector(); pushChange(); });
+		rm.addEventListener('click', function () { sec.images.splice(idx, 1); galSelClear(); setDirty(true); renderInspector(); pushChange(); });
 		row.appendChild(rm);
 		return row;
 	}
@@ -1008,7 +1117,7 @@
 			var raw = window.prompt('Media library attachment IDs (comma-separated):', '');
 			if (raw) {
 				raw.split(',').forEach(function (x) { var id = parseInt(String(x).trim(), 10); if (id > 0) { sec.images.push({ id: id, caption: '', category: '' }); } });
-				setDirty(true); renderInspector(); pushChange();
+				galSelClear(); setDirty(true); renderInspector(); pushChange();
 			}
 			return;
 		}
@@ -1020,7 +1129,7 @@
 				state.galleryImages[String(a.id)] = { id: a.id, url: a.url, thumb: thumb, alt: a.alt || '' };
 				sec.images.push({ id: a.id, caption: '', category: '' });
 			});
-			setDirty(true); renderInspector(); pushChange();
+			galSelClear(); setDirty(true); renderInspector(); pushChange();
 		});
 		frame.open();
 	}
@@ -1032,6 +1141,7 @@
 		if (!sec || !Array.isArray(sec.images) || !Array.isArray(m.order)) { return; }
 		if (!HIST || typeof HIST.reorder !== 'function') { return; }
 		sec.images = HIST.reorder(sec.images, m.order);
+		galSelClear(); // indices shifted → drop the transient multi-selection
 		if (state.selected !== m.index) { selectSection(m.index, false); }
 		else { renderInspector(); }
 		setDirty(true); pushChange();

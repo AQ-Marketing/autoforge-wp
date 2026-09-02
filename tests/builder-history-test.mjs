@@ -23,7 +23,8 @@ function ok(cond, msg) { if (!cond) { throw new Error(msg || 'expected truthy');
 
 t('module loaded and exposes the helpers', function () {
 	ok(H && typeof H.historyPush === 'function' && typeof H.historyUndo === 'function'
-		&& typeof H.historyRedo === 'function' && typeof H.reorder === 'function');
+		&& typeof H.historyRedo === 'function' && typeof H.reorder === 'function'
+		&& typeof H.applyCategory === 'function');
 });
 
 t('historyPush appends within cap', function () {
@@ -131,6 +132,54 @@ t('reorder with a non-array order returns a copy of the list', function () {
 	const out = H.reorder(src, null);
 	eq(['a', 'b'], out);
 	ok(out !== src, 'returns a new array');
+});
+
+/* ---- applyCategory (bulk category editing) ---- */
+t('applyCategory sets the category on the given indices only', function () {
+	var imgs = [{ id: 1, category: '' }, { id: 2, category: 'Old' }, { id: 3, category: '' }];
+	var out = H.applyCategory(imgs, [0, 2], 'House');
+	eq('House', out[0].category);
+	eq('Old', out[1].category);
+	eq('House', out[2].category);
+});
+
+t('applyCategory preserves other fields on changed rows', function () {
+	var out = H.applyCategory([{ id: 7, caption: 'Front', category: '' }], [0], 'Roof');
+	eq({ id: 7, caption: 'Front', category: 'Roof' }, out[0]);
+});
+
+t('applyCategory with an empty selection changes nothing', function () {
+	var imgs = [{ id: 1, category: 'A' }, { id: 2, category: 'B' }];
+	eq(imgs, H.applyCategory(imgs, [], 'X'));
+});
+
+t('applyCategory ignores out-of-range / non-number indices', function () {
+	var imgs = [{ id: 1, category: '' }, { id: 2, category: '' }];
+	var out = H.applyCategory(imgs, [5, -1, '0', 1], 'Deck');
+	eq('', out[0].category, 'string "0" is not a numeric index');
+	eq('Deck', out[1].category);
+});
+
+t('applyCategory trims the category', function () {
+	var out = H.applyCategory([{ id: 1, category: '' }], [0], '  Patio  ');
+	eq('Patio', out[0].category);
+});
+
+t('applyCategory can clear a category (empty string)', function () {
+	var out = H.applyCategory([{ id: 1, category: 'House' }], [0], '');
+	eq('', out[0].category);
+});
+
+t('applyCategory is pure (input array + untouched rows not mutated)', function () {
+	var imgs = [{ id: 1, category: 'A' }, { id: 2, category: 'B' }];
+	var out = H.applyCategory(imgs, [0], 'Z');
+	eq('A', imgs[0].category, 'input row unchanged');
+	ok(out !== imgs, 'returns a new array');
+	ok(out[1] === imgs[1], 'unchanged row keeps its reference');
+});
+
+t('applyCategory returns the input when images is not an array', function () {
+	eq(null, H.applyCategory(null, [0], 'X'));
 });
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
