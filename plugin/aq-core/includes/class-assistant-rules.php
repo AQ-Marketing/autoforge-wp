@@ -122,8 +122,12 @@ class AQ_Assistant_Rules {
 			} elseif ($delta <= -0.10) {
 				$add('R5', 'caution', 'This shortens the page by more than 10%. Check the key points and terms are still covered.');
 			}
-			if ($target > 0 && $wa < (int) round($target * 0.9)) {
-				$add('R5', 'block', 'The page would drop below its planned length (about ' . $target . ' words). Keep enough depth to answer the searcher.');
+			// Only when the EDIT pushes the page below target (it was at/above before).
+			// A page that is already shorter than its (often estimated) target is not
+			// the edit's fault — don't block every small change on it.
+			$floor = (int) round($target * 0.9);
+			if ($target > 0 && $wa < $floor && $wb >= $floor) {
+				$add('R5', 'block', 'This change drops the page below its planned length (about ' . $target . ' words). Keep enough depth to answer the searcher.');
 			}
 		}
 

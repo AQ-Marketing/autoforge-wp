@@ -314,12 +314,17 @@ class AQ_Assistant {
 		$reason = (string) ($in['reason'] ?? '');
 		$label  = self::edits_label($edits);
 		if ($verdict === 'blocked') {
-			$planRule = (string) ($in['plan_rule'] ?? '');
-			$ruleMsg  = $rules['findings'][0]['message'] ?? '';
+			$modelBlocked = ((string) ($in['verdict'] ?? 'safe')) === 'blocked';
+			$ruleMsg      = (string) ($rules['findings'][0]['message'] ?? '');
+			$planRule     = (string) ($in['plan_rule'] ?? '');
+			// If the deterministic rules (not the model) caused the block, lead with
+			// the RULE's reason — otherwise the card shows the model's upbeat wording
+			// next to a Blocked verdict, which reads as a contradiction.
+			$shown = $modelBlocked ? ($reason !== '' ? $reason : $ruleMsg) : ($ruleMsg !== '' ? $ruleMsg : $reason);
 			return [
 				'kind' => 'blocked',
-				'text' => $reason !== '' ? $reason : $ruleMsg,
-				'card' => ['field' => $label, 'reason' => $reason !== '' ? $reason : $ruleMsg, 'planRule' => $planRule !== '' ? $planRule : $ruleMsg],
+				'text' => $shown,
+				'card' => ['field' => $label, 'reason' => $shown, 'planRule' => $planRule !== '' ? $planRule : $ruleMsg],
 			];
 		}
 
