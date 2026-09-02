@@ -96,6 +96,8 @@ class AQ_Assistant {
 			return current_user_can(self::CAP) && ($id === 0 || current_user_can('edit_post', $id));
 		};
 		register_rest_route('aq/v1', '/assistant/context/(?P<id>\d+)', ['methods' => 'GET', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_context']]);
+		register_rest_route('aq/v1', '/assistant/thread/(?P<id>\d+)', ['methods' => 'GET', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_thread']]);
+		register_rest_route('aq/v1', '/assistant/clear', ['methods' => 'POST', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_clear']]);
 		register_rest_route('aq/v1', '/assistant/message', ['methods' => 'POST', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_message']]);
 		register_rest_route('aq/v1', '/assistant/apply', ['methods' => 'POST', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_apply']]);
 		register_rest_route('aq/v1', '/assistant/undo', ['methods' => 'POST', 'permission_callback' => function () { return current_user_can(self::CAP); }, 'callback' => [__CLASS__, 'rest_undo']]);
@@ -113,6 +115,19 @@ class AQ_Assistant {
 			'hasBrief'    => class_exists('AQ_Knowledge') && AQ_Knowledge::has_brief(),
 			'primary'     => (string) ($plan['primary_intent'] ?? ''),
 		]);
+	}
+
+	/** GET /assistant/thread/{id} — the saved conversation, to rehydrate the panel after a refresh. */
+	public static function rest_thread(WP_REST_Request $req) {
+		$tr = self::thread((int) $req['id']);
+		return rest_ensure_response(['ok' => true, 'thread' => array_values($tr['thread'])]);
+	}
+
+	/** POST /assistant/clear { page_id } — wipe this user's conversation for the page. */
+	public static function rest_clear(WP_REST_Request $req) {
+		$id = (int) ($req->get_json_params()['page_id'] ?? 0);
+		delete_transient(self::TR_PREFIX . get_current_user_id() . '_' . $id);
+		return rest_ensure_response(['ok' => true]);
 	}
 
 	/**
@@ -143,10 +158,8 @@ class AQ_Assistant {
 
 		$reply = self::run_guardian($id, $post, $sections, $sel, $message, $tr['thread']);
 
-		// Persist the turn + any proposal.
+		// Persist the turn + any proposal so the conversation survives a page refresh.
 		$tr['thread'][] = ['role' => 'user', 'text' => $message];
-		$tr['thread'][] = ['role' => 'assistant', 'text' => (string) ($reply['text'] ?? '')];
-		$tr['thread']   = array_slice($tr['thread'], -24);
 		if (!empty($reply['proposal'])) {
 			$pid = 'p' . substr(md5(uniqid('', true)), 0, 12);
 			$reply['proposal']['created']   = time();
@@ -156,8 +169,13 @@ class AQ_Assistant {
 			$reply['card']['proposalId'] = $pid;
 			unset($reply['proposal']);
 		}
+		// Store the assistant turn WITH its kind + card so rehydration shows the
+		// same proposal / blocked cards (and working Apply buttons) after a refresh.
+		$asst = ['role' => 'assistant', 'text' => (string) ($reply['text'] ?? ''), 'kind' => (string) ($reply['kind'] ?? 'answer')];
+		if (!empty($reply['card'])) { $asst['card'] = $reply['card']; }
+		$tr['thread'][] = $asst;
+		$tr['thread']   = array_slice($tr['thread'], -24);
 		self::save_thread($id, $tr);
-		unset($reply['proposal']);
 		$reply['ok'] = true;
 		return rest_ensure_response($reply);
 	}
