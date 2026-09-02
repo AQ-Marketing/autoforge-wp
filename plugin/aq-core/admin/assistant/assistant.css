@@ -222,9 +222,8 @@
 
 .aq-asst-seopop {
 	position: absolute;
-	bottom: 100%;
-	left: 14px;
-	margin-bottom: 6px;
+	top: 44px;   /* anchored just below the Page SEO button by JS (offsetTop + height) */
+	left: 14px;  /* aligned to the button by JS (offsetLeft) */
 	background: var(--aqa-surface);
 	border: 1px solid var(--aqa-border-2);
 	border-radius: 10px;
@@ -233,7 +232,7 @@
 	display: flex;
 	flex-direction: column;
 	min-width: 170px;
-	z-index: 5;
+	z-index: 30;
 }
 .aq-asst-seopop-opt {
 	text-align: left;

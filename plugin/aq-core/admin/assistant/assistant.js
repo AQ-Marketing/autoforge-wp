@@ -296,7 +296,11 @@
 	function toggleSeoPopover(anchor) {
 		seoPopover.hidden = !seoPopover.hidden;
 		if (!seoPopover.hidden && anchor) {
+			// Anchor directly under the "Page SEO" button (offsets are relative to
+			// the position:relative composer), so it reads as a menu on the button
+			// and never floats over the thread.
 			seoPopover.style.left = anchor.offsetLeft + 'px';
+			seoPopover.style.top = (anchor.offsetTop + anchor.offsetHeight + 6) + 'px';
 		}
 	}
 
@@ -329,6 +333,7 @@
 	function onKeydown(e) {
 		if (e.key !== 'Escape') { return; }
 		if (state.selectMode) { e.preventDefault(); exitSelectMode(); return; }
+		if (seoPopover && !seoPopover.hidden) { e.preventDefault(); seoPopover.hidden = true; return; }
 		if (state.open) { e.preventDefault(); closePanel(); }
 	}
 
