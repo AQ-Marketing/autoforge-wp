@@ -101,6 +101,19 @@
 	background: var(--aqa-surface);
 }
 .aq-asst-title { font-size: 15px; font-weight: 700; }
+.aq-asst-hactions { display: flex; align-items: center; gap: 4px; }
+.aq-asst-clear {
+	border: 1px solid var(--aqa-border-2);
+	background: var(--aqa-surface);
+	color: var(--aqa-text-2);
+	font-size: 12px;
+	font-weight: 600;
+	padding: 5px 10px;
+	border-radius: 7px;
+	cursor: pointer;
+}
+.aq-asst-clear:hover { background: var(--aqa-surface-2); color: var(--aqa-text); }
+.aq-asst-clear:focus-visible { outline: 2px solid var(--aqa-accent); outline-offset: 1px; }
 .aq-asst-x {
 	border: none;
 	background: transparent;

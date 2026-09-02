@@ -141,8 +141,22 @@
 		selection: null,
 		selectMode: false,
 		contextLoaded: false,
+		rehydrated: false,
+		threadCache: [],
 		hoverSel: null
 	};
+
+	/* Per-page localStorage mirror key (instant paint before the network). */
+	var MIRROR_KEY = 'aq_asst_' + (location && location.pathname ? location.pathname : '');
+	function mirrorSave(arr) { try { localStorage.setItem(MIRROR_KEY, JSON.stringify(arr)); } catch (e) { /* private window */ } }
+	function mirrorLoad() {
+		try {
+			var raw = localStorage.getItem(MIRROR_KEY);
+			var a = raw ? JSON.parse(raw) : null;
+			return Array.isArray(a) ? a : null;
+		} catch (e) { return null; }
+	}
+	function mirrorClear() { try { localStorage.removeItem(MIRROR_KEY); } catch (e) { /* private window */ } }
 
 	var root, launcher, panel, threadEl, textarea, chipArea, noteArea, sendBtn, seoPopover;
 	var overlay, hiBox, hiLabel, tipEl;
@@ -175,12 +189,20 @@
 
 		var header = el('div', 'aq-asst-header');
 		header.appendChild(el('div', 'aq-asst-title', 'Assistant'));
+		var hactions = el('div', 'aq-asst-hactions');
+		var clearBtn = el('button', 'aq-asst-clear');
+		clearBtn.type = 'button';
+		clearBtn.textContent = 'Clear';
+		clearBtn.setAttribute('aria-label', 'Clear this conversation');
+		clearBtn.addEventListener('click', clearThread);
+		hactions.appendChild(clearBtn);
 		var closeBtn = el('button', 'aq-asst-x');
 		closeBtn.type = 'button';
 		closeBtn.setAttribute('aria-label', 'Close assistant');
 		closeBtn.textContent = '✕';
 		closeBtn.addEventListener('click', closePanel);
-		header.appendChild(closeBtn);
+		hactions.appendChild(closeBtn);
+		header.appendChild(hactions);
 		panel.appendChild(header);
 
 		noteArea = el('div', 'aq-asst-notes');
@@ -290,6 +312,7 @@
 		requestAnimationFrame(function () { panel.classList.add('aq-asst-panel--in'); });
 		if (textarea) { textarea.focus(); }
 		if (!state.contextLoaded) { loadContext(); }
+		if (!state.rehydrated) { rehydrate(); }
 	}
 
 	function closePanel() {
@@ -481,6 +504,7 @@
 		var selSnapshot = state.selection; // remember for DOM updates after apply
 
 		addBubble('user', msg);
+		cachePush({ role: 'user', text: msg });
 		textarea.value = '';
 		var thinking = addThinking();
 		setBusy(true);
@@ -511,7 +535,22 @@
 		sendBtn.textContent = on ? 'Sending…' : 'Send';
 	}
 
+	/* Live reply: record it in the cache/mirror, then render (side effects on). */
 	function handleReply(j, selSnapshot) {
+		var entry = { role: 'assistant', text: j.text || '', kind: j.kind };
+		if (j.card) { entry.card = j.card; }
+		cachePush(entry);
+		renderAssistant(j, selSnapshot, true);
+	}
+
+	/**
+	 * Shared assistant renderer — used for BOTH live replies and rehydrated
+	 * entries. `live` controls side effects (need_selection auto-enters select
+	 * mode only for a fresh reply, never on rehydrate). Rehydrated proposal
+	 * cards pass a null selSnapshot: Apply still works via proposalId; only the
+	 * optimistic in-place DOM update is skipped (the true render returns on reload).
+	 */
+	function renderAssistant(j, selSnapshot, live) {
 		var kind = j.kind;
 		if (kind === 'answer') {
 			addBubble('assistant', j.text || 'OK.');
@@ -519,7 +558,7 @@
 		}
 		if (kind === 'need_selection') {
 			addBubble('assistant', j.text || "Click the text you'd like to change, then tell me what to do.");
-			enterSelectMode();
+			if (live) { enterSelectMode(); }
 			return;
 		}
 		if (kind === 'safe' || kind === 'adjusted') {
@@ -533,6 +572,61 @@
 			return;
 		}
 		addBubble('assistant', j.text || 'OK.');
+	}
+
+	/* Render one stored thread entry through the same paths as a live reply. */
+	function renderEntry(entry) {
+		if (!entry) { return; }
+		if (entry.role === 'user') { addBubble('user', entry.text || ''); return; }
+		renderAssistant({ kind: entry.kind, text: entry.text, card: entry.card }, null, false);
+	}
+
+	/* Repaint the whole thread from an array of stored entries (no duplicates). */
+	function paintThread(arr) {
+		if (!threadEl) { return; }
+		threadEl.textContent = '';
+		state.threadCache = Array.isArray(arr) ? arr.slice() : [];
+		state.threadCache.forEach(renderEntry);
+		scrollThread();
+	}
+
+	function cachePush(entry) {
+		state.threadCache.push(entry);
+		mirrorSave(state.threadCache);
+	}
+
+	/**
+	 * Rehydrate the conversation: paint instantly from the localStorage mirror,
+	 * then reconcile with the server (source of truth). Runs once.
+	 */
+	function rehydrate() {
+		if (state.rehydrated) { return; }
+		state.rehydrated = true;
+
+		var cached = mirrorLoad();
+		if (cached && cached.length) { paintThread(cached); }
+
+		api('/thread/' + CFG.pageId, 'GET').then(function (j) {
+			if (!j || j.ok === false || !Array.isArray(j.thread)) { return; }
+			if (j.thread.length) {
+				paintThread(j.thread);
+				mirrorSave(j.thread);
+			} else {
+				// Server authoritative: no conversation → clear any stale mirror.
+				paintThread([]);
+				mirrorClear();
+			}
+		}, function () { /* keep whatever the mirror painted; leave an empty thread otherwise */ });
+	}
+
+	/* Clear button: wipe server + UI + selection + mirror. */
+	function clearThread() {
+		if (!window.confirm('Clear this conversation?')) { return; }
+		api('/clear', 'POST', { page_id: CFG.pageId }).then(function () {}, function () {});
+		state.threadCache = [];
+		if (threadEl) { threadEl.textContent = ''; }
+		clearSelection();
+		mirrorClear();
 	}
 
 	/* ------------------------------------------------------------------ *
@@ -703,7 +797,7 @@
 	 * Boot
 	 * ------------------------------------------------------------------ */
 
-	function init() { build(); }
+	function init() { build(); rehydrate(); }
 	if (document.readyState === 'loading') {
 		document.addEventListener('DOMContentLoaded', init);
 	} else {
