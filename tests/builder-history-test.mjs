@@ -24,7 +24,7 @@ function ok(cond, msg) { if (!cond) { throw new Error(msg || 'expected truthy');
 t('module loaded and exposes the helpers', function () {
 	ok(H && typeof H.historyPush === 'function' && typeof H.historyUndo === 'function'
 		&& typeof H.historyRedo === 'function' && typeof H.reorder === 'function'
-		&& typeof H.applyCategory === 'function');
+		&& typeof H.applyCategory === 'function' && typeof H.galleryCfg === 'function');
 });
 
 t('historyPush appends within cap', function () {
@@ -180,6 +180,50 @@ t('applyCategory is pure (input array + untouched rows not mutated)', function (
 
 t('applyCategory returns the input when images is not an array', function () {
 	eq(null, H.applyCategory(null, [0], 'X'));
+});
+
+t('applyCategory writes a custom field name when given one', function () {
+	var out = H.applyCategory([{ file: 'a.webp', tag: '' }], [0], 'Roof', 'tag');
+	eq('Roof', out[0].tag);
+	ok(!('category' in out[0]), 'did not touch the default field');
+});
+
+/* ---- galleryCfg (gallery_editor config merge) ---- */
+t('galleryCfg with no override returns the aq_gallery defaults', function () {
+	eq({
+		items: 'images', image: 'id', image_format: 'id', category: 'category',
+		caption: 'caption', categories: 'categories', filters: 'filters_enabled',
+		columns: 'columns', gap: 'gap', order_by: 'order_by', lightbox: 'lightbox'
+	}, H.galleryCfg());
+});
+
+t('galleryCfg with null/non-object returns defaults', function () {
+	eq('images', H.galleryCfg(null).items);
+	eq('images', H.galleryCfg('nope').items);
+});
+
+t('galleryCfg merges a partial override over the defaults', function () {
+	var c = H.galleryCfg({ items: 'photos', image: 'file', image_format: 'basename', categories: 'derive', filters: 'always' });
+	eq('photos', c.items);
+	eq('file', c.image);
+	eq('basename', c.image_format);
+	eq('derive', c.categories);
+	eq('always', c.filters);
+	eq('caption', c.caption, 'untouched key keeps its default');
+	eq('order_by', c.order_by);
+	eq('lightbox', c.lightbox);
+});
+
+t('galleryCfg preserves an explicit null (hidden control)', function () {
+	var c = H.galleryCfg({ gap: null, lightbox: null, order_by: null });
+	eq(null, c.gap);
+	eq(null, c.lightbox);
+	eq(null, c.order_by);
+	eq('columns', c.columns, 'other layout keys unaffected');
+});
+
+t('galleryCfg supports turning off the category feature', function () {
+	eq('', H.galleryCfg({ category: '' }).category);
 });
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

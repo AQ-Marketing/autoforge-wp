@@ -848,25 +848,64 @@
 		setDirty(true); pushChange();
 	}
 
-	/* ---------------- gallery editor (in the sidebar inspector) ---------------- */
-	// Reordering images happens by dragging the REAL tiles on the canvas (see
-	// canvas.js + the gallery-reorder message); the sidebar owns everything else:
-	// add images, per-image category/caption/remove, categories, and layout.
+	/* ---------------- gallery editor (config-driven; in the sidebar) ---------------- */
+	// Any section whose editor schema has inplace:'gallery' gets this editor. Its
+	// gallery_editor config (merged over defaults by AQHistory.galleryCfg) maps the
+	// engine's generic UI onto that section's own field names / conventions, so a
+	// bespoke gallery section can adopt the full editor. See class-editor.php's
+	// "GALLERY_EDITOR CONFIG" block for the keys + a worked example.
+	//
+	// Reordering happens by dragging the REAL tiles on the canvas (canvas.js +
+	// gallery-reorder message); the sidebar owns everything else.
 	function galSec() { return state.sections[state.selected]; }
 	function catLabel(row) { return typeof row === 'string' ? row : ((row && row.label) || ''); }
-	function galEnsure(sec) {
-		if (!Array.isArray(sec.images)) { sec.images = []; }
-		if (!Array.isArray(sec.categories)) { sec.categories = []; }
-		if (sec.columns == null || sec.columns === '') { sec.columns = '3'; }
-		if (sec.gap == null || sec.gap === '') { sec.gap = 'md'; }
-		if (sec.order_by == null || sec.order_by === '') { sec.order_by = 'manual'; }
-		if (sec.lightbox == null) { sec.lightbox = true; }
-		if (sec.filters_enabled == null) { sec.filters_enabled = false; }
+	function galleryCfg(type) {
+		var entry = CFG.schema && CFG.schema[type];
+		return (HIST && typeof HIST.galleryCfg === 'function') ? HIST.galleryCfg(entry && entry.gallery_editor) : (entry && entry.gallery_editor) || {};
 	}
-	function galThumb(id) {
-		var m = state.galleryImages[String(id)] || state.galleryImages[id];
+	// Resolve items array for the configured field, creating it if missing.
+	function galItems(sec, cfg) { if (!Array.isArray(sec[cfg.items])) { sec[cfg.items] = []; } return sec[cfg.items]; }
+	function galEnsure(sec, cfg) {
+		galItems(sec, cfg);
+		// A stored categories field (not 'derive'/empty) is an array we manage.
+		if (cfg.categories && cfg.categories !== 'derive' && !Array.isArray(sec[cfg.categories])) { sec[cfg.categories] = []; }
+		// Only default a layout field if it is actually configured (a real field name).
+		if (cfg.columns && (sec[cfg.columns] == null || sec[cfg.columns] === '')) { sec[cfg.columns] = '3'; }
+		if (cfg.gap && (sec[cfg.gap] == null || sec[cfg.gap] === '')) { sec[cfg.gap] = 'md'; }
+		if (cfg.order_by && (sec[cfg.order_by] == null || sec[cfg.order_by] === '')) { sec[cfg.order_by] = 'manual'; }
+		if (cfg.lightbox && sec[cfg.lightbox] == null) { sec[cfg.lightbox] = true; }
+		if (cfg.filters && cfg.filters !== 'always' && cfg.filters !== 'off' && sec[cfg.filters] == null) { sec[cfg.filters] = false; }
+	}
+	function galThumb(value) {
+		if (value == null || value === '') { return ''; }
+		var m = state.galleryImages[String(value)] || state.galleryImages[value];
 		return m && m.thumb ? m.thumb : '';
 	}
+	// Is manual drag-reorder active? (order_by unset ⇒ always manual.)
+	function galManual(sec, cfg) { return !cfg.order_by || String(sec[cfg.order_by] || 'manual') === 'manual'; }
+	// Is the category feature on for this gallery? (category sub-field configured.)
+	function galHasCats(cfg) { return !!cfg.category; }
+	// Whether the filter bar is on: 'always' | 'off' | a section bool field.
+	function galFiltersOn(sec, cfg) {
+		if (cfg.filters === 'always') { return true; }
+		if (cfg.filters === 'off' || !cfg.filters) { return false; }
+		return !!sec[cfg.filters];
+	}
+	// The resolved list of category LABELS: from a section field, or DERIVED from
+	// the distinct categories used across items (first-appearance order).
+	function galCatLabels(sec, cfg) {
+		if (!galHasCats(cfg)) { return []; }
+		if (cfg.categories === 'derive' || !cfg.categories) {
+			var seen = {}, out = [];
+			galItems(sec, cfg).forEach(function (img) {
+				var c = (img[cfg.category] || '').trim();
+				if (c && !seen[c.toLowerCase()]) { seen[c.toLowerCase()] = true; out.push(c); }
+			});
+			return out;
+		}
+		return (sec[cfg.categories] || []).map(catLabel).filter(function (l) { return l; });
+	}
+
 	function gRow(label, control) {
 		var row = ce('div', 'aqb-grow');
 		row.appendChild(ce('label', 'aqb-glabel', label));
@@ -912,7 +951,9 @@
 
 	// Render the gallery's full control set into the inspector pane `p`.
 	function renderGalleryInspector(p, sec) {
-		galEnsure(sec);
+		var cfg = galleryCfg(sec.type);
+		galEnsure(sec, cfg);
+		var items = galItems(sec, cfg);
 		var sel = galSelSet(sec);
 
 		// Add images (bulk upload + bulk select from the media library).
@@ -920,39 +961,54 @@
 		add.addEventListener('click', addGalleryImages);
 		p.appendChild(add);
 
-		var manual = String(sec.order_by || 'manual') === 'manual';
-		p.appendChild(ce('p', 'aqb-muted aqb-ghint', manual
+		p.appendChild(ce('p', 'aqb-muted aqb-ghint', galManual(sec, cfg)
 			? 'Drag the images on the page to reorder them.'
 			: 'Images are auto-sorted. Switch “Order by” to Manual to drag-reorder on the page.'));
 
 		// Bulk toolbar (multi-select → set/clear category, bulk remove).
-		if (sec.images.length) { p.appendChild(galBulkBar(sec)); }
+		if (items.length) { p.appendChild(galBulkBar(sec, cfg)); }
 
 		// Per-image rows: checkbox + thumbnail + category + caption + remove.
 		var list = ce('div', 'aqb-gimglist');
-		if (!sec.images.length) {
+		if (!items.length) {
 			list.appendChild(ce('p', 'aqb-muted', 'No images yet. Use “Add images” to bulk-add from the media library.'));
 		}
-		sec.images.forEach(function (img, idx) { list.appendChild(galImageRow(sec, img, idx, sel)); });
+		items.forEach(function (img, idx) { list.appendChild(galImageRow(sec, cfg, img, idx, sel)); });
 		p.appendChild(list);
 
-		// Layout controls.
-		p.appendChild(gRow('Order by', gSelect(String(sec.order_by), {
-			manual: 'Manual (drag on page)', title: 'Title A–Z', date_desc: 'Newest first',
-			date_asc: 'Oldest first', filename: 'Filename A–Z', random: 'Random'
-		}, function (v) { sec.order_by = v; setDirty(true); renderInspector(); pushChange(); })));
-		p.appendChild(gRow('Columns', gSelect(String(sec.columns), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec.columns = v; setDirty(true); pushChange(); })));
-		p.appendChild(gRow('Gap', gSelect(String(sec.gap), { sm: 'Small', md: 'Medium', lg: 'Large' }, function (v) { sec.gap = v; setDirty(true); pushChange(); })));
-		p.appendChild(gRow('Click to enlarge', gToggle(sec.lightbox, function (v) { sec.lightbox = v; setDirty(true); pushChange(); })));
-		p.appendChild(gRow('Category filter bar', gToggle(sec.filters_enabled, function (v) { sec.filters_enabled = v; setDirty(true); renderInspector(); pushChange(); })));
+		// Layout controls — each rendered ONLY when its config maps to a real field.
+		if (cfg.order_by) {
+			p.appendChild(gRow('Order by', gSelect(String(sec[cfg.order_by]), {
+				manual: 'Manual (drag on page)', title: 'Title A–Z', date_desc: 'Newest first',
+				date_asc: 'Oldest first', filename: 'Filename A–Z', random: 'Random'
+			}, function (v) { sec[cfg.order_by] = v; setDirty(true); renderInspector(); pushChange(); })));
+		}
+		if (cfg.columns) {
+			p.appendChild(gRow('Columns', gSelect(String(sec[cfg.columns]), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec[cfg.columns] = v; setDirty(true); pushChange(); })));
+		}
+		if (cfg.gap) {
+			p.appendChild(gRow('Gap', gSelect(String(sec[cfg.gap]), { sm: 'Small', md: 'Medium', lg: 'Large' }, function (v) { sec[cfg.gap] = v; setDirty(true); pushChange(); })));
+		}
+		if (cfg.lightbox) {
+			p.appendChild(gRow('Click to enlarge', gToggle(sec[cfg.lightbox], function (v) { sec[cfg.lightbox] = v; setDirty(true); pushChange(); })));
+		}
+		// Filter-bar toggle only when `filters` maps to a real bool field (not always/off).
+		var filtersField = cfg.filters && cfg.filters !== 'always' && cfg.filters !== 'off';
+		if (galHasCats(cfg) && filtersField) {
+			p.appendChild(gRow('Category filter bar', gToggle(sec[cfg.filters], function (v) { sec[cfg.filters] = v; setDirty(true); renderInspector(); pushChange(); })));
+		}
 
-		// Categories manager (only meaningful when the filter bar is on).
-		if (sec.filters_enabled) { p.appendChild(galCategories(sec)); }
+		// Categories manager (tab-order editor) — only for a STORED categories field,
+		// and only when the bar is on. In 'derive' mode categories come from items.
+		if (galHasCats(cfg) && cfg.categories && cfg.categories !== 'derive' && galFiltersOn(sec, cfg)) {
+			p.appendChild(galCategories(sec, cfg));
+		}
 	}
 
 	// Bulk toolbar: shown above the image list; the category + action buttons act
 	// on the current multi-selection (transient, never saved).
-	function galBulkBar(sec) {
+	function galBulkBar(sec, cfg) {
+		var items = galItems(sec, cfg);
 		var count = galSelCount();
 		var bar = ce('div', 'aqb-gbulk' + (count ? ' is-active' : ''));
 
@@ -960,7 +1016,7 @@
 		var allBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-gbulk__sm', 'Select all'); allBtn.type = 'button';
 		allBtn.addEventListener('click', function () {
 			state.gallerySel = {};
-			for (var i = 0; i < sec.images.length; i++) { state.gallerySel[i] = true; }
+			for (var i = 0; i < items.length; i++) { state.gallerySel[i] = true; }
 			renderInspector();
 		});
 		var clrBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-gbulk__sm', 'Clear'); clrBtn.type = 'button';
@@ -971,58 +1027,66 @@
 		top.appendChild(clrBtn);
 		bar.appendChild(top);
 
-		// Category picker (from the section list, + inline "New…"), held in transient
-		// state so it survives the re-render that selection toggles trigger.
-		var catSel = ce('select', 'aqb-ginput');
-		catSel.appendChild(new Option('— set category —', ''));
-		(sec.categories || []).forEach(function (row) { var l = catLabel(row); if (l) { catSel.appendChild(new Option(l, l)); } });
-		catSel.appendChild(new Option('＋ New…', '__new'));
-		var curBulk = state.galleryBulkCat || '';
-		if (curBulk && !Array.prototype.some.call(catSel.options, function (o) { return o.value === curBulk; })) {
-			catSel.insertBefore(new Option(curBulk, curBulk), catSel.options[catSel.options.length - 1]);
-		}
-		catSel.value = curBulk;
-		catSel.disabled = !count;
-		catSel.addEventListener('change', function () {
-			if (catSel.value === '__new') {
-				var nv = window.prompt('New category label:', '');
-				nv = nv ? nv.trim() : '';
-				if (nv) {
-					if (!sec.categories.some(function (r) { return catLabel(r) === nv; })) { sec.categories.push({ label: nv }); }
-					state.galleryBulkCat = nv; setDirty(true); renderInspector();
-				} else { catSel.value = state.galleryBulkCat || ''; }
-				return;
-			}
-			state.galleryBulkCat = catSel.value;
-		});
-
 		var actions = ce('div', 'aqb-gbulk__actions');
-		var applyBtn = ce('button', 'aqb-btn aqb-btn--primary aqb-gbulk__apply', 'Apply to ' + count + ' selected'); applyBtn.type = 'button';
-		applyBtn.disabled = !count;
-		applyBtn.addEventListener('click', function () {
-			if (!galSelCount() || !HIST || typeof HIST.applyCategory !== 'function') { return; }
-			sec.images = HIST.applyCategory(sec.images, galSelIndices(), state.galleryBulkCat || '');
-			galSelClear();
-			setDirty(true); renderInspector(); pushChange();
-		});
+
+		// Bulk category picker — only when the gallery has a category feature.
+		if (galHasCats(cfg)) {
+			var catSel = ce('select', 'aqb-ginput');
+			catSel.appendChild(new Option('— set category —', ''));
+			galCatLabels(sec, cfg).forEach(function (l) { catSel.appendChild(new Option(l, l)); });
+			catSel.appendChild(new Option('＋ New…', '__new'));
+			var curBulk = state.galleryBulkCat || '';
+			if (curBulk && !Array.prototype.some.call(catSel.options, function (o) { return o.value === curBulk; })) {
+				catSel.insertBefore(new Option(curBulk, curBulk), catSel.options[catSel.options.length - 1]);
+			}
+			catSel.value = curBulk;
+			catSel.disabled = !count;
+			catSel.addEventListener('change', function () {
+				if (catSel.value === '__new') {
+					var nv = window.prompt('New category label:', '');
+					nv = nv ? nv.trim() : '';
+					if (nv) {
+						// A stored categories field also records the new label; in derive
+						// mode it becomes usable once applied to an item (below).
+						if (cfg.categories && cfg.categories !== 'derive'
+							&& !(sec[cfg.categories] || []).some(function (r) { return catLabel(r) === nv; })) {
+							sec[cfg.categories].push({ label: nv });
+						}
+						state.galleryBulkCat = nv; setDirty(true); renderInspector();
+					} else { catSel.value = state.galleryBulkCat || ''; }
+					return;
+				}
+				state.galleryBulkCat = catSel.value;
+			});
+
+			var applyBtn = ce('button', 'aqb-btn aqb-btn--primary aqb-gbulk__apply', 'Apply to ' + count + ' selected'); applyBtn.type = 'button';
+			applyBtn.disabled = !count;
+			applyBtn.addEventListener('click', function () {
+				if (!galSelCount() || !HIST || typeof HIST.applyCategory !== 'function') { return; }
+				sec[cfg.items] = HIST.applyCategory(items, galSelIndices(), state.galleryBulkCat || '', cfg.category);
+				galSelClear();
+				setDirty(true); renderInspector(); pushChange();
+			});
+			actions.appendChild(catSel);
+			actions.appendChild(applyBtn);
+		}
+
 		var rmBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-gbulk__remove', 'Remove ' + count + ' selected'); rmBtn.type = 'button';
 		rmBtn.disabled = !count;
 		rmBtn.addEventListener('click', function () {
 			if (!galSelCount()) { return; }
 			if (!window.confirm('Remove ' + galSelCount() + ' selected image(s) from this gallery?')) { return; }
 			var drop = state.gallerySel || {};
-			sec.images = sec.images.filter(function (_img, i) { return !drop[i]; });
+			sec[cfg.items] = items.filter(function (_img, i) { return !drop[i]; });
 			galSelClear();
 			setDirty(true); renderInspector(); pushChange();
 		});
-		actions.appendChild(catSel);
-		actions.appendChild(applyBtn);
 		actions.appendChild(rmBtn);
 		bar.appendChild(actions);
 		return bar;
 	}
 
-	function galImageRow(sec, img, idx, sel) {
+	function galImageRow(sec, cfg, img, idx, sel) {
 		var selected = !!(sel && sel[idx]);
 		var row = ce('div', 'aqb-gimgrow' + (selected ? ' is-sel' : ''));
 
@@ -1035,35 +1099,36 @@
 		});
 		row.appendChild(check);
 
+		var val = img[cfg.image];
 		var thumb = ce('div', 'aqb-gimgrow__thumb');
-		var url = galThumb(img.id);
+		var url = galThumb(val);
 		if (url) { var im = ce('img'); im.src = url; im.alt = ''; thumb.appendChild(im); }
-		else { thumb.appendChild(ce('span', 'aqb-gthumb__id', '#' + (img.id || '?'))); }
+		else { thumb.appendChild(ce('span', 'aqb-gthumb__id', (val ? '' : '?') + (val != null && val !== '' ? String(val) : ''))); }
 		row.appendChild(thumb);
 
 		var fields = ce('div', 'aqb-gimgrow__fields');
-		fields.appendChild(galCatSelect(sec, img));
-		var cap = ce('input', 'aqb-ginput'); cap.type = 'text'; cap.placeholder = 'Caption (optional)';
-		cap.value = img.caption != null ? img.caption : '';
-		cap.addEventListener('input', function () { img.caption = cap.value; setDirty(true); pushTyping(); });
-		cap.addEventListener('change', function () { histRecord(); livePreview(); });
-		fields.appendChild(cap);
+		if (galHasCats(cfg)) { fields.appendChild(galCatSelect(sec, cfg, img)); }
+		if (cfg.caption) {
+			var cap = ce('input', 'aqb-ginput'); cap.type = 'text'; cap.placeholder = 'Caption (optional)';
+			cap.value = img[cfg.caption] != null ? img[cfg.caption] : '';
+			cap.addEventListener('input', function () { img[cfg.caption] = cap.value; setDirty(true); pushTyping(); });
+			cap.addEventListener('change', function () { histRecord(); livePreview(); });
+			fields.appendChild(cap);
+		}
 		row.appendChild(fields);
 
 		var rm = ce('button', 'aqb-gimgrow__x', '×'); rm.title = 'Remove'; rm.type = 'button';
-		rm.addEventListener('click', function () { sec.images.splice(idx, 1); galSelClear(); setDirty(true); renderInspector(); pushChange(); });
+		rm.addEventListener('click', function () { galItems(sec, cfg).splice(idx, 1); galSelClear(); setDirty(true); renderInspector(); pushChange(); });
 		row.appendChild(rm);
 		return row;
 	}
 
-	function galCatSelect(sec, img) {
+	function galCatSelect(sec, cfg, img) {
 		var sel = ce('select', 'aqb-gcatsel');
 		sel.appendChild(new Option('— category —', ''));
-		(sec.categories || []).forEach(function (row) {
-			var l = catLabel(row); if (l) { sel.appendChild(new Option(l, l)); }
-		});
+		galCatLabels(sec, cfg).forEach(function (l) { sel.appendChild(new Option(l, l)); });
 		sel.appendChild(new Option('＋ New…', '__new'));
-		var cur = img.category || '';
+		var cur = img[cfg.category] || '';
 		if (cur && !Array.prototype.some.call(sel.options, function (o) { return o.value === cur; })) {
 			sel.insertBefore(new Option(cur, cur), sel.options[sel.options.length - 1]);
 		}
@@ -1073,23 +1138,27 @@
 				var nv = window.prompt('New category label:', '');
 				nv = nv ? nv.trim() : '';
 				if (nv) {
-					if (!sec.categories.some(function (r) { return catLabel(r) === nv; })) { sec.categories.push({ label: nv }); }
-					img.category = nv;
-				} else { sel.value = img.category || ''; return; }
-			} else { img.category = sel.value; }
+					if (cfg.categories && cfg.categories !== 'derive'
+						&& !(sec[cfg.categories] || []).some(function (r) { return catLabel(r) === nv; })) {
+						sec[cfg.categories].push({ label: nv });
+					}
+					img[cfg.category] = nv;
+				} else { sel.value = img[cfg.category] || ''; return; }
+			} else { img[cfg.category] = sel.value; }
 			setDirty(true); renderInspector(); pushChange();
 		});
 		return sel;
 	}
 
-	function galCategories(sec) {
+	function galCategories(sec, cfg) {
+		var store = sec[cfg.categories] || [];
 		var wrap = ce('div', 'aqb-gcats');
 		wrap.appendChild(ce('div', 'aqb-glabel', 'Categories (tab order)'));
 		var list = ce('div', 'aqb-gcatlist');
-		sec.categories.forEach(function (row, i) {
+		store.forEach(function (row, i) {
 			var chip = ce('span', 'aqb-gchip', catLabel(row));
 			var x = ce('button', 'aqb-gchip__x', '×'); x.title = 'Remove';
-			x.addEventListener('click', function () { sec.categories.splice(i, 1); setDirty(true); renderInspector(); pushChange(); });
+			x.addEventListener('click', function () { store.splice(i, 1); setDirty(true); renderInspector(); pushChange(); });
 			chip.appendChild(x);
 			list.appendChild(chip);
 		});
@@ -1098,7 +1167,7 @@
 		var input = ce('input', 'aqb-ginput'); input.type = 'text'; input.placeholder = 'Add category…';
 		function commit() {
 			var v = input.value.trim();
-			if (v && !sec.categories.some(function (r) { return catLabel(r) === v; })) { sec.categories.push({ label: v }); setDirty(true); renderInspector(); pushChange(); }
+			if (v && !store.some(function (r) { return catLabel(r) === v; })) { store.push({ label: v }); setDirty(true); renderInspector(); pushChange(); }
 			else { input.value = ''; }
 		}
 		input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
@@ -1109,14 +1178,30 @@
 		return wrap;
 	}
 
+	// Shape a new image row using the configured sub-field names.
+	function galNewRow(cfg, value) {
+		var row = {};
+		row[cfg.image] = value;
+		if (cfg.caption) { row[cfg.caption] = ''; }
+		if (cfg.category) { row[cfg.category] = ''; }
+		return row;
+	}
+
 	function addGalleryImages() {
 		var sec = galSec();
 		if (!sec) { return; }
-		galEnsure(sec);
+		var cfg = galleryCfg(sec.type);
+		galEnsure(sec, cfg);
+		var items = galItems(sec, cfg);
+		var basenameFmt = cfg.image_format === 'basename';
 		if (!window.wp || !wp.media) {
-			var raw = window.prompt('Media library attachment IDs (comma-separated):', '');
+			var raw = window.prompt(basenameFmt ? 'Image filenames (comma-separated):' : 'Media library attachment IDs (comma-separated):', '');
 			if (raw) {
-				raw.split(',').forEach(function (x) { var id = parseInt(String(x).trim(), 10); if (id > 0) { sec.images.push({ id: id, caption: '', category: '' }); } });
+				raw.split(',').forEach(function (x) {
+					var t = String(x).trim(); if (!t) { return; }
+					var v = basenameFmt ? t : parseInt(t, 10);
+					if (basenameFmt ? !!v : v > 0) { items.push(galNewRow(cfg, v)); }
+				});
 				galSelClear(); setDirty(true); renderInspector(); pushChange();
 			}
 			return;
@@ -1126,21 +1211,23 @@
 			frame.state().get('selection').each(function (att) {
 				var a = att.toJSON();
 				var thumb = (a.sizes && a.sizes.thumbnail && a.sizes.thumbnail.url) ? a.sizes.thumbnail.url : a.url;
-				state.galleryImages[String(a.id)] = { id: a.id, url: a.url, thumb: thumb, alt: a.alt || '' };
-				sec.images.push({ id: a.id, caption: '', category: '' });
+				var value = basenameFmt ? (a.filename || imageBasename(a.url)) : a.id;
+				state.galleryImages[String(value)] = { id: a.id, url: a.url, thumb: thumb, alt: a.alt || '' };
+				items.push(galNewRow(cfg, value));
 			});
 			galSelClear(); setDirty(true); renderInspector(); pushChange();
 		});
 		frame.open();
 	}
 
-	// Apply a canvas tile-drag reorder: reorder the section's images by the
-	// received original-index order, then snapshot history + refresh the preview.
+	// Apply a canvas tile-drag reorder: reorder the section's items by the received
+	// original-index order, then snapshot history + refresh the preview.
 	function applyGalleryReorder(m) {
 		var sec = state.sections[m.index];
-		if (!sec || !Array.isArray(sec.images) || !Array.isArray(m.order)) { return; }
-		if (!HIST || typeof HIST.reorder !== 'function') { return; }
-		sec.images = HIST.reorder(sec.images, m.order);
+		if (!sec || !Array.isArray(m.order)) { return; }
+		var cfg = galleryCfg(sec.type);
+		if (!Array.isArray(sec[cfg.items]) || !HIST || typeof HIST.reorder !== 'function') { return; }
+		sec[cfg.items] = HIST.reorder(sec[cfg.items], m.order);
 		galSelClear(); // indices shifted → drop the transient multi-selection
 		if (state.selected !== m.index) { selectSection(m.index, false); }
 		else { renderInspector(); }

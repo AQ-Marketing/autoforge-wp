@@ -243,27 +243,85 @@ class AQ_Editor {
 	}
 
 	/**
-	 * Build an { attachmentId: {id,url,thumb,alt} } map for every image already
-	 * referenced by an aq_gallery section, so the in-place gallery editor can
-	 * show real thumbnails for images that were set on a previous save (freshly
-	 * picked ones come straight from wp.media with their own URLs).
+	 * Defaults for a gallery-editable section's `gallery_editor` config. These
+	 * reproduce aq_gallery's behavior exactly; a bespoke section overrides only
+	 * the keys it needs. Mirrors AQHistory.galleryCfg() in history.js — keep both
+	 * in sync. See the "GALLERY_EDITOR CONFIG" block below field_schema().
+	 */
+	public static function gallery_cfg_defaults(): array {
+		return [
+			'items'        => 'images',
+			'image'        => 'id',
+			'image_format' => 'id',       // 'id' | 'basename'
+			'category'     => 'category',
+			'caption'      => 'caption',
+			'categories'   => 'categories', // field name | 'derive'
+			'filters'      => 'filters_enabled', // field name | 'always' | 'off'
+			'columns'      => 'columns',
+			'gap'          => 'gap',
+			'order_by'     => 'order_by',
+			'lightbox'     => 'lightbox',
+		];
+	}
+
+	/** Merge a section's `gallery_editor` override over the defaults. */
+	public static function gallery_cfg($override): array {
+		$d = self::gallery_cfg_defaults();
+		if (!is_array($override)) {
+			return $d;
+		}
+		$out = [];
+		foreach ($d as $k => $v) {
+			$out[$k] = array_key_exists($k, $override) ? $override[$k] : $v;
+		}
+		return $out;
+	}
+
+	/**
+	 * Build a { value: {id,url,thumb,alt} } map for every image referenced by ANY
+	 * gallery-editable section on the page (schema entry inplace==='gallery'), so
+	 * the sidebar editor can show real thumbnails for previously-saved images.
+	 * The map is keyed by the STORED value — an attachment id (image_format 'id')
+	 * or a filename basename (image_format 'basename', resolved to an attachment
+	 * server-side) — matching how the builder looks it up. Newly-picked images
+	 * come straight from wp.media with their own URLs.
 	 */
 	private static function gallery_previews(array $sections): array {
-		$out = [];
+		$schema = self::field_schema();
+		$out    = [];
 		foreach ($sections as $s) {
-			if (($s['type'] ?? '') !== 'aq_gallery' || empty($s['images']) || !is_array($s['images'])) {
+			$type  = $s['type'] ?? '';
+			$entry = $schema[$type] ?? null;
+			if (!is_array($entry) || ($entry['inplace'] ?? '') !== 'gallery') {
 				continue;
 			}
-			foreach ($s['images'] as $img) {
-				$id = is_array($img) ? (int) ($img['id'] ?? 0) : 0;
-				if ($id <= 0 || isset($out[$id])) {
+			$cfg   = self::gallery_cfg($entry['gallery_editor'] ?? null);
+			$items = $s[$cfg['items']] ?? null;
+			if (!is_array($items)) {
+				continue;
+			}
+			foreach ($items as $img) {
+				$val = is_array($img) ? ($img[$cfg['image']] ?? null) : null;
+				if ($val === null || $val === '') {
 					continue;
+				}
+				$key = (string) $val;
+				if (isset($out[$key])) {
+					continue;
+				}
+				// Resolve to an attachment id: numeric = the id itself; otherwise a
+				// basename resolved via AQ_Content_Sync (same helper the renderer uses).
+				$id = is_numeric($val)
+					? (int) $val
+					: (class_exists('AQ_Content_Sync') ? (int) (AQ_Content_Sync::image_info((string) $val)['id'] ?? 0) : 0);
+				if ($id <= 0) {
+					continue; // unresolved → no thumb (the row still renders with its value)
 				}
 				$thumb = (string) wp_get_attachment_image_url($id, 'thumbnail');
 				if ($thumb === '') {
 					continue;
 				}
-				$out[$id] = [
+				$out[$key] = [
 					'id'    => $id,
 					'url'   => (string) wp_get_attachment_image_url($id, 'large'),
 					'thumb' => $thumb,
@@ -625,9 +683,45 @@ class AQ_Editor {
 			]],
 
 			'gallery' => ['fields' => [['name' => 'eyebrow', 'label' => 'Eyebrow', 'type' => 'text'], ['name' => 'heading', 'label' => 'Heading', 'type' => 'text'], ['name' => 'subheading', 'label' => 'Subheading', 'type' => 'text'], ['name' => 'intro', 'label' => 'Intro', 'type' => 'textarea'], ['name' => 'bg', 'label' => 'Background', 'type' => 'select'], ['name' => 'columns', 'label' => 'Columns', 'type' => 'select'], ['name' => 'items', 'label' => 'Images', 'type' => 'repeater', 'subfields' => [['name' => 'image', 'label' => 'Image', 'type' => 'image'], ['name' => 'caption', 'label' => 'Caption', 'type' => 'text']]]]],
-			// aq_gallery is edited IN-PLACE on the canvas (builder.js opens a gallery
-			// overlay when this type is selected — see the 'inplace' flag). The field
-			// list here is the persistence contract + generic-inspector fallback.
+			// ── GALLERY_EDITOR CONFIG ─────────────────────────────────────────────
+			// Any section whose schema entry declares inplace:'gallery' gets the full
+			// sidebar gallery editor (media bulk add, canvas drag-reorder, order-by,
+			// bulk category, per-image caption/category). A section maps the engine's
+			// generic UI onto its OWN field names via an optional 'gallery_editor'
+			// config; missing keys fall back to the defaults below (which reproduce
+			// aq_gallery), so aq_gallery declares NO config. Merged by
+			// AQ_Editor::gallery_cfg() (PHP) and AQHistory.galleryCfg() (JS) — keep both
+			// in sync. Config keys + defaults:
+			//   items        'images'         repeater field holding the photos
+			//   image        'id'             image sub-field name
+			//   image_format 'id'             'id' (attachment id) | 'basename' (filename, resolved at render)
+			//   category     'category'       sub-field ('' = no category feature)
+			//   caption      'caption'        sub-field ('' = no caption field)
+			//   categories   'categories'     section categories field, OR 'derive' (build from item categories)
+			//   filters      'filters_enabled' section bool field, OR 'always' | 'off'
+			//   columns      'columns'        section field, or null to hide the control
+			//   gap          'gap'            or null
+			//   order_by     'order_by'       or null (null ⇒ no control; manual drag always on)
+			//   lightbox     'lightbox'       or null
+			//
+			// Worked example — a bespoke section storing filename strings, deriving its
+			// category list from the photos, an always-on filter bar, and no gap/lightbox
+			// controls (its renderer must emit data-aq-gallery + data-aq-gallery-item in
+			// editor mode so canvas drag-reorder works):
+			//   $schema['acme_photo_wall'] = [
+			//     'inplace' => 'gallery',
+			//     'gallery_editor' => [
+			//       'items' => 'photos', 'image' => 'file', 'image_format' => 'basename',
+			//       'category' => 'tag', 'caption' => 'alt', 'categories' => 'derive',
+			//       'filters' => 'always', 'gap' => null, 'lightbox' => null,
+			//     ],
+			//     'fields' => [ /* persistence contract: photos repeater (file/tag/alt), columns, order_by … */ ],
+			//   ];
+			// ──────────────────────────────────────────────────────────────────────
+			//
+			// aq_gallery is edited via the sidebar gallery editor (builder.js, keyed on
+			// the 'inplace' flag). It declares no gallery_editor → uses the defaults.
+			// The field list here is the persistence contract + generic-inspector fallback.
 			'aq_gallery' => ['inplace' => 'gallery', 'fields' => [
 				['name' => 'columns', 'label' => 'Columns', 'type' => 'select', 'options' => ['2' => '2', '3' => '3', '4' => '4', '5' => '5'], 'group' => 'design'],
 				['name' => 'gap', 'label' => 'Gap', 'type' => 'select', 'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large'], 'group' => 'design'],

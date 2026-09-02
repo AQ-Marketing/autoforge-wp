@@ -10,7 +10,8 @@
  *   historyUndo({stack, ptr})         -> { ptr, snapshot, changed }
  *   historyRedo({stack, ptr})         -> { ptr, snapshot, changed }
  *   reorder(list, orderIndexes)       -> new list ordered by the given indices
- *   applyCategory(images, indices, category) -> new images w/ category set on those
+ *   applyCategory(images, indices, category, field?) -> new images w/ field set on those
+ *   galleryCfg(override)              -> gallery_editor config merged over defaults
  *
  * A snapshot is opaque to these helpers (the builder uses
  * { sections: clone, selected: int }); they only move the pointer.
@@ -60,12 +61,13 @@
 		return out;
 	}
 
-	// Bulk-set `category` on the image rows at the given `indices` (a list of
-	// positions into `images`). Returns a NEW array; changed rows are shallow
-	// copies so the input array and its untouched rows are never mutated.
-	// Out-of-range / non-number indices are ignored; the category is trimmed.
-	function applyCategory(images, indices, category) {
+	// Bulk-set the category `field` (default "category") on the image rows at the
+	// given `indices` (positions into `images`). Returns a NEW array; changed rows
+	// are shallow copies so the input array and its untouched rows are never
+	// mutated. Out-of-range / non-number indices ignored; the value is trimmed.
+	function applyCategory(images, indices, category, field) {
 		if (!Array.isArray(images)) { return images; }
+		var key = (field == null || field === '') ? 'category' : String(field);
 		var cat = (category == null ? '' : String(category)).trim();
 		var want = {};
 		(Array.isArray(indices) ? indices : []).forEach(function (i) {
@@ -75,12 +77,30 @@
 			if (!want[i]) { return img; }
 			var next = {};
 			for (var k in img) { if (Object.prototype.hasOwnProperty.call(img, k)) { next[k] = img[k]; } }
-			next.category = cat;
+			next[key] = cat;
 			return next;
 		});
 	}
 
-	var api = { historyPush: historyPush, historyUndo: historyUndo, historyRedo: historyRedo, reorder: reorder, applyCategory: applyCategory };
+	// Merge a section's `gallery_editor` override over the engine defaults. Keys
+	// present in the override win (including an explicit null, which HIDES that
+	// control). Absent keys fall back to the default that reproduces aq_gallery.
+	function galleryCfg(override) {
+		var d = {
+			items: 'images', image: 'id', image_format: 'id',
+			category: 'category', caption: 'caption', categories: 'categories',
+			filters: 'filters_enabled', columns: 'columns', gap: 'gap',
+			order_by: 'order_by', lightbox: 'lightbox'
+		};
+		if (!override || typeof override !== 'object') { return d; }
+		var out = {};
+		for (var k in d) {
+			out[k] = Object.prototype.hasOwnProperty.call(override, k) ? override[k] : d[k];
+		}
+		return out;
+	}
+
+	var api = { historyPush: historyPush, historyUndo: historyUndo, historyRedo: historyRedo, reorder: reorder, applyCategory: applyCategory, galleryCfg: galleryCfg };
 	if (typeof module !== 'undefined' && module.exports) { module.exports = api; }
 	root.AQHistory = api;
 })(typeof window !== 'undefined' ? window : globalThis);
