@@ -21,12 +21,15 @@ if (!class_exists('AQ_Gallery')) {
 	return;
 }
 
-$s    = $args['s'] ?? [];
-$conf = AQ_Gallery::sanitize_gallery(is_array($s) ? $s : []);
+$s       = $args['s'] ?? [];
+$conf    = AQ_Gallery::sanitize_gallery(is_array($s) ? $s : []);
+$editing = function_exists('ka_is_editing') && ka_is_editing();
 
-/* Resolve each stored image to attachment-derived fields so the sort stays pure. */
+/* Resolve each stored image to attachment-derived fields so the sort stays pure.
+ * `orig` is the index into the section's `images` array — the stable hook the
+ * canvas drag-reorder uses (it survives sorting/filtering of the display list). */
 $resolved = [];
-foreach ($conf['images'] as $img) {
+foreach ($conf['images'] as $orig => $img) {
 	$raw = $img['id'];
 	$att = is_numeric($raw)
 		? (int) $raw
@@ -37,6 +40,7 @@ foreach ($conf['images'] as $img) {
 	$file = (string) get_attached_file($att);
 	$resolved[] = [
 		'id'       => $att,
+		'orig'     => (int) $orig,
 		'title'    => (string) get_the_title($att),
 		'filename' => $file !== '' ? basename($file) : '',
 		'date'     => (string) get_post_field('post_date', $att),
@@ -57,7 +61,7 @@ if (!$resolved) {
 			<div class="container-edge container-edge--wide">
 				<div class="aq-gallery__placeholder">
 					<strong>Gallery</strong>
-					<span>Add images from the panel to build this gallery.</span>
+					<span>Add images from the sidebar to build this gallery.</span>
 				</div>
 			</div>
 			<style>
@@ -84,7 +88,13 @@ $lightbox = $conf['lightbox'];
 $print_assets = empty($GLOBALS['aq_gallery_assets_printed']);
 $GLOBALS['aq_gallery_assets_printed'] = true;
 ?>
-<section class="aq-gallery py-12 md:py-16 lg:py-20"<?php echo $lightbox ? ' data-lightbox="1"' : ''; ?>>
+<?php
+// Editor-only hooks: mark the gallery container + its ordering mode so the canvas
+// can enable drag-to-reorder (only when order_by is manual). Zero output on the
+// public site.
+$edit_attrs = $editing ? ' data-aq-gallery data-aq-gallery-order="' . esc_attr($conf['order_by']) . '"' : '';
+?>
+<section class="aq-gallery py-12 md:py-16 lg:py-20"<?php echo $lightbox ? ' data-lightbox="1"' : ''; ?><?php echo $edit_attrs; ?>>
 	<div class="container-edge container-edge--wide">
 		<?php if ($show_bar) : ?>
 		<div class="aq-gallery__filters" role="group" aria-label="Filter gallery by category">
@@ -107,8 +117,11 @@ $GLOBALS['aq_gallery_assets_printed'] = true;
 				$cat_slug  = $item['category'] !== '' ? AQ_Gallery::cat_slug($item['category']) : '';
 				$full      = (string) wp_get_attachment_image_url($item['id'], 'full');
 				$alt       = $item['alt'] !== '' ? $item['alt'] : $item['title'];
+				// Editor-only: stable original-index hook + draggable cue for canvas reorder.
+				$item_attrs = $editing ? ' data-aq-gallery-item="' . (int) $item['orig'] . '" draggable="true"' : '';
 				?>
-			<figure class="aq-gallery__item"<?php echo $cat_slug !== '' ? ' data-category="' . esc_attr($cat_slug) . '"' : ''; ?><?php echo ka_field_attr('images', $i); ?>>
+			<figure class="aq-gallery__item"<?php echo $cat_slug !== '' ? ' data-category="' . esc_attr($cat_slug) . '"' : ''; ?><?php echo $item_attrs; ?><?php echo ka_field_attr('images', $i); ?>>
+				<?php if ($editing) : ?><span class="aq-gallery__drag" aria-hidden="true" title="Drag to reorder">⠿</span><?php endif; ?>
 				<?php if ($lightbox) : ?>
 				<button type="button" class="aq-gallery__trigger" data-full="<?php echo esc_url($full); ?>" data-caption="<?php echo esc_attr($item['caption']); ?>" aria-label="<?php echo esc_attr('Enlarge image' . ($alt !== '' ? ': ' . $alt : '')); ?>">
 					<?php echo $img_html; ?>
@@ -142,6 +155,12 @@ $GLOBALS['aq_gallery_assets_printed'] = true;
 	.aq-gallery__img{display:block;width:100%;height:auto;object-fit:cover;aspect-ratio:4/3;border-radius:.5rem;box-shadow:0 4px 12px rgba(0,0,0,.1)}
 	.aq-gallery__chip{position:absolute;left:.625rem;bottom:.625rem;background:rgba(17,24,39,.82);color:#fff;font-size:.6875rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.25rem .55rem;border-radius:.3rem;pointer-events:none}
 	.aq-gallery__cap{margin-top:.75rem;font-size:.875rem;text-align:center;opacity:.8}
+	.aq-gallery__drag{display:none}
+	.aq-gallery__item[draggable="true"]{cursor:grab}
+	.aq-gallery__item[draggable="true"] .aq-gallery__drag{display:inline-flex;position:absolute;top:.5rem;right:.5rem;z-index:3;align-items:center;justify-content:center;background:rgba(17,24,39,.78);color:#fff;border-radius:.35rem;padding:.15rem .45rem;font-size:.85rem;line-height:1;cursor:grab}
+	.aq-gallery__item.aqg-dragging{opacity:.45}
+	.aq-gallery__item.aqg-over{outline:2px dashed #2563eb;outline-offset:3px;border-radius:.5rem}
+	@media(prefers-reduced-motion:reduce){.aq-gallery__item.aqg-dragging{opacity:1;transition:none}}
 	.aq-gallery-lb{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.9);padding:2rem}
 	.aq-gallery-lb[hidden]{display:none}
 	.aq-gallery-lb__img{max-width:min(92vw,1600px);max-height:82vh;width:auto;height:auto;border-radius:.5rem;box-shadow:0 12px 48px rgba(0,0,0,.5)}

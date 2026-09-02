@@ -582,7 +582,7 @@ $layouts['contact_form'] = [
 $layouts['aq_gallery'] = [
 	'key' => 'layout_aq_aq_gallery',
 	'name' => 'aq_gallery',
-	'label' => 'Gallery',
+	'label' => 'Image Gallery',
 	'sub_fields' => [
 		aq_field('aqgal', 'columns', 'number', ['default_value' => 3, 'min' => 2, 'max' => 5, 'instructions' => 'Columns on desktop (2–5). Stacks to fewer on tablet/mobile.']),
 		aq_field('aqgal', 'gap', 'select', ['choices' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large'], 'default_value' => 'md']),

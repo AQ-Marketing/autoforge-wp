@@ -18,7 +18,7 @@
 	// agency admin). Gated users get "Review & Publish"; bypass users keep "Save".
 	var GATED = !!CFG.reviewEnabled && !CFG.canBypass;
 
-	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, galleryRect: null, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null };
+	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null };
 	var HIST = (typeof window !== 'undefined' && window.AQHistory) ? window.AQHistory : null;
 	var uid = 0;
 	var els = {};
@@ -147,7 +147,6 @@
 		state.selected = (snap.selected != null && snap.selected < state.sections.length) ? snap.selected : -1;
 		renderStructure();
 		renderInspector();
-		syncGalleryPanel();
 	}
 	function undo() {
 		if (!HIST) { return; }
@@ -253,19 +252,11 @@
 		var body = ce('div', 'aqb-body');
 		els.structure = ce('div', 'aqb-pane aqb-structure');
 		var canvasWrap = ce('div', 'aqb-canvaswrap');
-		canvasWrap.style.position = 'relative'; // anchor point for the in-place gallery editor
-		els.canvasWrap = canvasWrap;
 		els.canvasInner = ce('div', 'aqb-canvasinner');
 		els.iframe = ce('iframe', 'aqb-canvas');
 		els.iframe.src = CFG.canvasUrl;
 		els.canvasInner.appendChild(els.iframe);
 		canvasWrap.appendChild(els.canvasInner);
-		// In-place gallery editor: a floating panel over the canvas, anchored to the
-		// selected aq_gallery section (NOT the right sidebar). Hidden until a gallery
-		// section is selected.
-		els.galleryPanel = ce('div', 'aqb-gpanel');
-		els.galleryPanel.hidden = true;
-		canvasWrap.appendChild(els.galleryPanel);
 		els.inspector = ce('div', 'aqb-pane aqb-inspector');
 
 		body.appendChild(els.structure);
@@ -471,7 +462,6 @@
 		if (state.selected >= state.sections.length) { state.selected = -1; }
 		renderStructure();
 		renderInspector();
-		syncGalleryPanel();
 		histSeed(); // committed state becomes the new undo baseline
 	}
 
@@ -482,7 +472,6 @@
 		Array.prototype.forEach.call(els.dev.children, function (b) {
 			b.classList.toggle('is-active', b.getAttribute('data-dev') === d);
 		});
-		positionGalleryPanel();
 	}
 
 	/* ---------------- structure pane ---------------- */
@@ -511,9 +500,13 @@
 		var addWrap = ce('div', 'aqb-addwrap');
 		var sel = ce('select', 'aqb-addsel');
 		sel.appendChild(new Option('+ Add section…', ''));
-		Object.keys(CFG.labels || {}).forEach(function (type) {
-			sel.appendChild(new Option(labelFor(type), type));
-		});
+		// Alphabetize the add-section picker by human label (A→Z) — only this list;
+		// the page's section structure above stays in page order.
+		Object.keys(CFG.labels || {})
+			.sort(function (a, b) { return labelFor(a).localeCompare(labelFor(b)); })
+			.forEach(function (type) {
+				sel.appendChild(new Option(labelFor(type), type));
+			});
 		sel.addEventListener('change', function () {
 			if (sel.value) { addSection(sel.value); sel.value = ''; }
 		});
@@ -533,34 +526,10 @@
 		renderStructure();
 		renderInspector();
 		if (tellCanvas) { postCanvas({ type: 'highlight', index: i }); }
-		syncGalleryPanel();
 	}
 
-	// Whether a section type is edited in place on the canvas (gallery overlay).
+	// Whether a section type is edited via bespoke inspector controls (aq_gallery).
 	function inplaceOf(type) { return (CFG.schema && CFG.schema[type] && CFG.schema[type].inplace) || ''; }
-
-	// Open the in-place gallery editor when an aq_gallery section is selected;
-	// close it (and stop rect tracking) otherwise.
-	function syncGalleryPanel() {
-		var s = state.sections[state.selected];
-		var isGallery = s && inplaceOf(s.type) === 'gallery';
-		if (isGallery) {
-			postCanvas({ type: 'trackrect', index: state.selected });
-			openGalleryPanel();
-		} else {
-			postCanvas({ type: 'trackrect', index: -1 });
-			closeGalleryPanel();
-		}
-	}
-	function closeGalleryPanel() {
-		if (els.galleryPanel) { els.galleryPanel.hidden = true; }
-	}
-	function openGalleryPanel() {
-		if (!els.galleryPanel) { return; }
-		els.galleryPanel.hidden = false;
-		renderGalleryPanel();
-		positionGalleryPanel();
-	}
 
 	/**
 	 * Jump the inspector to the exact field that was clicked on the canvas:
@@ -609,11 +578,8 @@
 		// In-place sections (aq_gallery) are edited on the canvas via a floating
 		// overlay, not here. Show a short pointer + a re-open button instead of the
 		// raw persistence fields (which would surface attachment IDs as text boxes).
-		if (inplaceOf(s.type)) {
-			p.appendChild(ce('p', 'aqb-muted', 'This gallery is edited directly on the page. Use the panel over the gallery to add images, reorder them, and set categories.'));
-			var openBtn = ce('button', 'aqb-btn aqb-btn--ghost', 'Edit gallery on page');
-			openBtn.addEventListener('click', function () { postCanvas({ type: 'highlight', index: state.selected }); openGalleryPanel(); });
-			p.appendChild(openBtn);
+		if (inplaceOf(s.type) === 'gallery') {
+			renderGalleryInspector(p, s);
 			return;
 		}
 		var fields = schemaFor(s.type);
@@ -857,32 +823,35 @@
 		var j = i + dir;
 		if (j < 0 || j >= state.sections.length) { return; }
 		var tmp = state.sections[i]; state.sections[i] = state.sections[j]; state.sections[j] = tmp;
-		state.selected = j; setDirty(true); renderStructure(); renderInspector(); syncGalleryPanel(); pushChange();
+		state.selected = j; setDirty(true); renderStructure(); renderInspector(); pushChange();
 	}
 	function duplicate(i) {
 		var copy = JSON.parse(JSON.stringify(state.sections[i]));
 		copy._uid = ++uid;
 		state.sections.splice(i + 1, 0, copy);
-		state.selected = i + 1; setDirty(true); renderStructure(); renderInspector(); syncGalleryPanel(); pushChange();
+		state.selected = i + 1; setDirty(true); renderStructure(); renderInspector(); pushChange();
 	}
 	function removeSection(i) {
 		if (!window.confirm('Remove this ' + labelFor(state.sections[i].type) + ' section?')) { return; }
 		state.sections.splice(i, 1);
 		if (state.selected >= state.sections.length) { state.selected = state.sections.length - 1; }
-		setDirty(true); renderStructure(); renderInspector(); syncGalleryPanel(); pushChange();
+		setDirty(true); renderStructure(); renderInspector(); pushChange();
 	}
 	function addSection(type) {
 		var s = { type: type, v: 1, _uid: ++uid };
 		var at = state.selected >= 0 ? state.selected + 1 : state.sections.length;
 		state.sections.splice(at, 0, s);
-		// Select the new section so the inspector shows it AND, for a gallery, the
-		// in-place editor opens (syncGalleryPanel via selectSection). Then snapshot
-		// history + push a live preview so the new (possibly empty) section appears.
+		// Select the new section so its controls appear in the sidebar immediately
+		// (gallery controls render there now). Then snapshot history + push a live
+		// preview so the new (possibly empty) section appears on the canvas.
 		selectSection(at, true);
 		setDirty(true); pushChange();
 	}
 
-	/* ---------------- in-place gallery editor ---------------- */
+	/* ---------------- gallery editor (in the sidebar inspector) ---------------- */
+	// Reordering images happens by dragging the REAL tiles on the canvas (see
+	// canvas.js + the gallery-reorder message); the sidebar owns everything else:
+	// add images, per-image category/caption/remove, categories, and layout.
 	function galSec() { return state.sections[state.selected]; }
 	function catLabel(row) { return typeof row === 'string' ? row : ((row && row.label) || ''); }
 	function galEnsure(sec) {
@@ -897,26 +866,6 @@
 	function galThumb(id) {
 		var m = state.galleryImages[String(id)] || state.galleryImages[id];
 		return m && m.thumb ? m.thumb : '';
-	}
-	// Keep the floating panel pinned to the gallery on the canvas (rect reported by
-	// canvas.js). Falls back to a top-right drawer when no rect is known yet.
-	function positionGalleryPanel() {
-		var panel = els.galleryPanel;
-		if (!panel || panel.hidden || !els.canvasWrap) { return; }
-		var wrapRect = els.canvasWrap.getBoundingClientRect();
-		var ifr = els.iframe.getBoundingClientRect();
-		var pw = 340, r = state.galleryRect, top, left;
-		if (r) {
-			top = (ifr.top - wrapRect.top) + Math.max(8, r.top) + 8;
-			left = (ifr.left - wrapRect.left) + r.left + r.width - pw - 12;
-			if (left < (ifr.left - wrapRect.left) + 8) { left = (ifr.left - wrapRect.left) + r.left + 12; }
-		} else {
-			top = 12; left = wrapRect.width - pw - 12;
-		}
-		left = Math.max(8, Math.min(left, wrapRect.width - pw - 8));
-		top = Math.max(8, Math.min(top, Math.max(8, wrapRect.height - 90)));
-		panel.style.top = top + 'px';
-		panel.style.left = left + 'px';
 	}
 	function gRow(label, control) {
 		var row = ce('div', 'aqb-grow');
@@ -939,84 +888,63 @@
 		return lab;
 	}
 
-	function renderGalleryPanel() {
-		var panel = els.galleryPanel, sec = galSec();
-		if (!panel) { return; }
-		if (!sec) { panel.hidden = true; return; }
+	// Render the gallery's full control set into the inspector pane `p`.
+	function renderGalleryInspector(p, sec) {
 		galEnsure(sec);
-		panel.innerHTML = '';
-
-		var head = ce('div', 'aqb-ghead');
-		head.appendChild(ce('span', 'aqb-gtitle', 'Gallery'));
-		var close = ce('button', 'aqb-icon', '✕'); close.title = 'Close (edit later from the sidebar)';
-		close.addEventListener('click', closeGalleryPanel);
-		head.appendChild(close);
-		panel.appendChild(head);
-
-		var body = ce('div', 'aqb-gbody');
 
 		// Add images (bulk upload + bulk select from the media library).
 		var add = ce('button', 'aqb-btn aqb-btn--primary aqb-gadd', '+ Add images');
 		add.addEventListener('click', addGalleryImages);
-		body.appendChild(add);
+		p.appendChild(add);
 
-		// Thumbnail grid (drag to reorder, remove, per-image category).
-		var grid = ce('div', 'aqb-ggrid');
+		var manual = String(sec.order_by || 'manual') === 'manual';
+		p.appendChild(ce('p', 'aqb-muted aqb-ghint', manual
+			? 'Drag the images on the page to reorder them.'
+			: 'Images are auto-sorted. Switch “Order by” to Manual to drag-reorder on the page.'));
+
+		// Per-image rows: thumbnail + category + caption + remove (NO reorder here).
+		var list = ce('div', 'aqb-gimglist');
 		if (!sec.images.length) {
-			grid.appendChild(ce('p', 'aqb-muted', 'No images yet. Use “Add images” to bulk-add from the media library.'));
+			list.appendChild(ce('p', 'aqb-muted', 'No images yet. Use “Add images” to bulk-add from the media library.'));
 		}
-		sec.images.forEach(function (img, idx) {
-			grid.appendChild(galThumbCard(sec, img, idx));
-		});
-		body.appendChild(grid);
+		sec.images.forEach(function (img, idx) { list.appendChild(galImageRow(sec, img, idx)); });
+		p.appendChild(list);
 
-		// Ordering + layout controls.
-		body.appendChild(gRow('Order by', gSelect(String(sec.order_by), {
-			manual: 'Manual (drag order)', title: 'Title A–Z', date_desc: 'Newest first',
+		// Layout controls.
+		p.appendChild(gRow('Order by', gSelect(String(sec.order_by), {
+			manual: 'Manual (drag on page)', title: 'Title A–Z', date_desc: 'Newest first',
 			date_asc: 'Oldest first', filename: 'Filename A–Z', random: 'Random'
-		}, function (v) { sec.order_by = v; setDirty(true); pushChange(); })));
-		body.appendChild(gRow('Columns', gSelect(String(sec.columns), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec.columns = v; setDirty(true); pushChange(); })));
-		body.appendChild(gRow('Gap', gSelect(String(sec.gap), { sm: 'Small', md: 'Medium', lg: 'Large' }, function (v) { sec.gap = v; setDirty(true); pushChange(); })));
-		body.appendChild(gRow('Click to enlarge', gToggle(sec.lightbox, function (v) { sec.lightbox = v; setDirty(true); pushChange(); })));
-		body.appendChild(gRow('Category filter bar', gToggle(sec.filters_enabled, function (v) { sec.filters_enabled = v; setDirty(true); renderGalleryPanel(); pushChange(); })));
+		}, function (v) { sec.order_by = v; setDirty(true); renderInspector(); pushChange(); })));
+		p.appendChild(gRow('Columns', gSelect(String(sec.columns), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec.columns = v; setDirty(true); pushChange(); })));
+		p.appendChild(gRow('Gap', gSelect(String(sec.gap), { sm: 'Small', md: 'Medium', lg: 'Large' }, function (v) { sec.gap = v; setDirty(true); pushChange(); })));
+		p.appendChild(gRow('Click to enlarge', gToggle(sec.lightbox, function (v) { sec.lightbox = v; setDirty(true); pushChange(); })));
+		p.appendChild(gRow('Category filter bar', gToggle(sec.filters_enabled, function (v) { sec.filters_enabled = v; setDirty(true); renderInspector(); pushChange(); })));
 
 		// Categories manager (only meaningful when the filter bar is on).
-		if (sec.filters_enabled) {
-			body.appendChild(galCategories(sec));
-		}
-
-		panel.appendChild(body);
+		if (sec.filters_enabled) { p.appendChild(galCategories(sec)); }
 	}
 
-	function galThumbCard(sec, img, idx) {
-		var card = ce('div', 'aqb-gcard');
-		card.setAttribute('draggable', 'true');
-		card.addEventListener('dragstart', function (e) { state.galDrag = idx; try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); } catch (er) {} });
-		card.addEventListener('dragover', function (e) { e.preventDefault(); card.classList.add('is-over'); });
-		card.addEventListener('dragleave', function () { card.classList.remove('is-over'); });
-		card.addEventListener('drop', function (e) {
-			e.preventDefault(); card.classList.remove('is-over');
-			var from = state.galDrag;
-			if (from == null || from === idx) { return; }
-			var moved = sec.images.splice(from, 1)[0];
-			sec.images.splice(idx, 0, moved);
-			sec.order_by = 'manual'; // dragging defines the manual order
-			state.galDrag = null;
-			setDirty(true); renderGalleryPanel(); pushChange();
-		});
-
-		var thumb = ce('div', 'aqb-gthumb');
+	function galImageRow(sec, img, idx) {
+		var row = ce('div', 'aqb-gimgrow');
+		var thumb = ce('div', 'aqb-gimgrow__thumb');
 		var url = galThumb(img.id);
 		if (url) { var im = ce('img'); im.src = url; im.alt = ''; thumb.appendChild(im); }
 		else { thumb.appendChild(ce('span', 'aqb-gthumb__id', '#' + (img.id || '?'))); }
-		var rm = ce('button', 'aqb-gremove', '×'); rm.title = 'Remove';
-		rm.addEventListener('click', function () { sec.images.splice(idx, 1); setDirty(true); renderGalleryPanel(); pushChange(); });
-		thumb.appendChild(rm);
-		card.appendChild(thumb);
+		row.appendChild(thumb);
 
-		// Per-image category selector (from the section's list, + inline "New…").
-		card.appendChild(galCatSelect(sec, img));
-		return card;
+		var fields = ce('div', 'aqb-gimgrow__fields');
+		fields.appendChild(galCatSelect(sec, img));
+		var cap = ce('input', 'aqb-ginput'); cap.type = 'text'; cap.placeholder = 'Caption (optional)';
+		cap.value = img.caption != null ? img.caption : '';
+		cap.addEventListener('input', function () { img.caption = cap.value; setDirty(true); pushTyping(); });
+		cap.addEventListener('change', function () { histRecord(); livePreview(); });
+		fields.appendChild(cap);
+		row.appendChild(fields);
+
+		var rm = ce('button', 'aqb-gimgrow__x', '×'); rm.title = 'Remove'; rm.type = 'button';
+		rm.addEventListener('click', function () { sec.images.splice(idx, 1); setDirty(true); renderInspector(); pushChange(); });
+		row.appendChild(rm);
+		return row;
 	}
 
 	function galCatSelect(sec, img) {
@@ -1040,7 +968,7 @@
 					img.category = nv;
 				} else { sel.value = img.category || ''; return; }
 			} else { img.category = sel.value; }
-			setDirty(true); renderGalleryPanel(); pushChange();
+			setDirty(true); renderInspector(); pushChange();
 		});
 		return sel;
 	}
@@ -1052,7 +980,7 @@
 		sec.categories.forEach(function (row, i) {
 			var chip = ce('span', 'aqb-gchip', catLabel(row));
 			var x = ce('button', 'aqb-gchip__x', '×'); x.title = 'Remove';
-			x.addEventListener('click', function () { sec.categories.splice(i, 1); setDirty(true); renderGalleryPanel(); pushChange(); });
+			x.addEventListener('click', function () { sec.categories.splice(i, 1); setDirty(true); renderInspector(); pushChange(); });
 			chip.appendChild(x);
 			list.appendChild(chip);
 		});
@@ -1061,7 +989,7 @@
 		var input = ce('input', 'aqb-ginput'); input.type = 'text'; input.placeholder = 'Add category…';
 		function commit() {
 			var v = input.value.trim();
-			if (v && !sec.categories.some(function (r) { return catLabel(r) === v; })) { sec.categories.push({ label: v }); setDirty(true); renderGalleryPanel(); pushChange(); }
+			if (v && !sec.categories.some(function (r) { return catLabel(r) === v; })) { sec.categories.push({ label: v }); setDirty(true); renderInspector(); pushChange(); }
 			else { input.value = ''; }
 		}
 		input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
@@ -1080,7 +1008,7 @@
 			var raw = window.prompt('Media library attachment IDs (comma-separated):', '');
 			if (raw) {
 				raw.split(',').forEach(function (x) { var id = parseInt(String(x).trim(), 10); if (id > 0) { sec.images.push({ id: id, caption: '', category: '' }); } });
-				setDirty(true); renderGalleryPanel(); pushChange();
+				setDirty(true); renderInspector(); pushChange();
 			}
 			return;
 		}
@@ -1092,9 +1020,21 @@
 				state.galleryImages[String(a.id)] = { id: a.id, url: a.url, thumb: thumb, alt: a.alt || '' };
 				sec.images.push({ id: a.id, caption: '', category: '' });
 			});
-			setDirty(true); renderGalleryPanel(); pushChange();
+			setDirty(true); renderInspector(); pushChange();
 		});
 		frame.open();
+	}
+
+	// Apply a canvas tile-drag reorder: reorder the section's images by the
+	// received original-index order, then snapshot history + refresh the preview.
+	function applyGalleryReorder(m) {
+		var sec = state.sections[m.index];
+		if (!sec || !Array.isArray(sec.images) || !Array.isArray(m.order)) { return; }
+		if (!HIST || typeof HIST.reorder !== 'function') { return; }
+		sec.images = HIST.reorder(sec.images, m.order);
+		if (state.selected !== m.index) { selectSection(m.index, false); }
+		else { renderInspector(); }
+		setDirty(true); pushChange();
 	}
 
 	/* ---------------- save ---------------- */
@@ -1132,10 +1072,9 @@
 		if (m.type === 'select') {
 			selectSection(m.index, false);
 			if (m.field || m.repeater) { focusField(m); }
-		} else if (m.type === 'secrect') {
-			// Canvas reported the tracked gallery section's on-screen rect → reposition
-			// the in-place editor to stay anchored to it as the canvas scrolls.
-			if (m.index === state.selected) { state.galleryRect = m.rect || null; positionGalleryPanel(); }
+		} else if (m.type === 'gallery-reorder') {
+			// Tiles were drag-reordered on the canvas → apply the new image order.
+			applyGalleryReorder(m);
 		} else if (m.type === 'edit') {
 			applyEdit(m);
 		} else if (m.type === 'ready') {
@@ -1144,7 +1083,6 @@
 				postCanvas({ type: 'highlight', index: state.rehighlight });
 				state.rehighlight = -1;
 			}
-			syncGalleryPanel(); // reopen/reposition the in-place gallery editor after a canvas reload
 		}
 	});
 
@@ -1197,7 +1135,6 @@
 		window.addEventListener('beforeunload', function (e) {
 			if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
 		});
-		window.addEventListener('resize', positionGalleryPanel);
 		// Keyboard: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo.
 		window.addEventListener('keydown', function (e) {
 			var mod = e.ctrlKey || e.metaKey;

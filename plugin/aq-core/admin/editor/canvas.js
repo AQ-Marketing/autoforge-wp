@@ -102,24 +102,9 @@
 	var editingEl = null;       // element currently being edited in place
 	var editInfo = null;        // { index, field, repeater, rindex, type, mode }
 	var lastClick = { x: 0, y: 0 };
-	var trackIndex = -1;        // section whose on-screen rect the builder wants (in-place gallery editor)
-	// Report a tracked section's viewport rect so the builder can anchor its
-	// in-place editor overlay directly over/beside the element in the preview.
-	function postRect() {
-		if (trackIndex < 0) { return; }
-		var el = elFor(trackIndex);
-		if (!el) { return; }
-		var r = el.getBoundingClientRect();
-		parentWin.postMessage({
-			source: 'aq-canvas', type: 'secrect', index: trackIndex,
-			rect: { top: r.top, left: r.left, width: r.width, height: r.height },
-			view: { w: window.innerWidth, h: window.innerHeight }
-		}, ORIGIN);
-	}
 	function reposition() {
 		if (selectedIndex >= 0) { position(selBox, elFor(selectedIndex)); }
 		if (editingEl) { position(selBox, elFor(selectedIndex)); }
-		postRect();
 	}
 
 	// Resolve a field's editor type from the schema (text/textarea/richtext are
@@ -370,17 +355,95 @@
 		reposition();
 	}
 
+	// --- gallery drag-to-reorder (on the real tiles in the canvas) ---
+	// Only the SELECTED aq_gallery whose order_by is "manual" is reorderable; the
+	// renderer marks the container [data-aq-gallery] + tiles [data-aq-gallery-item].
+	var galFrom = null;      // original image index currently being dragged
+	function galleryOf(node) {
+		while (node && node !== document.body) {
+			if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-aq-gallery')) { return node; }
+			node = node.parentNode;
+		}
+		return null;
+	}
+	function galTileOf(node, galEl) {
+		while (node && node !== galEl) {
+			if (node.nodeType === 1 && node.hasAttribute && node.hasAttribute('data-aq-gallery-item')) { return node; }
+			node = node.parentNode;
+		}
+		return null;
+	}
+	// Drag is live only on the selected gallery in manual order.
+	function galleryDraggable(galEl) {
+		if (!galEl) { return false; }
+		if ((galEl.getAttribute('data-aq-gallery-order') || 'manual') !== 'manual') { return false; }
+		return indexOf(galEl) === selectedIndex;
+	}
+	function galTiles(galEl) { return galEl ? galEl.querySelectorAll('[data-aq-gallery-item]') : []; }
+	function galClearOver(galEl) {
+		var t = galTiles(galEl);
+		for (var i = 0; i < t.length; i++) { t[i].classList.remove('aqg-over'); }
+	}
+	// Current DOM order of original indices, then move `fromVal` to `toVal`'s slot.
+	function galReorder(galEl, fromVal, toVal) {
+		var tiles = galTiles(galEl), order = [], i;
+		for (i = 0; i < tiles.length; i++) { order.push(parseInt(tiles[i].getAttribute('data-aq-gallery-item'), 10)); }
+		var fi = order.indexOf(fromVal);
+		if (fi < 0) { return order; }
+		order.splice(fi, 1);
+		if (toVal == null) { order.push(fromVal); return order; }
+		var ti = order.indexOf(toVal);
+		if (ti < 0) { order.push(fromVal); } else { order.splice(ti, 0, fromVal); }
+		return order;
+	}
+	function galEnd() {
+		if (galFrom != null) {
+			var tiles = document.querySelectorAll('.aq-gallery__item.aqg-dragging');
+			for (var i = 0; i < tiles.length; i++) { tiles[i].classList.remove('aqg-dragging'); }
+		}
+		var overs = document.querySelectorAll('.aq-gallery__item.aqg-over');
+		for (var j = 0; j < overs.length; j++) { overs[j].classList.remove('aqg-over'); }
+		galFrom = null;
+	}
+	document.addEventListener('dragstart', function (e) {
+		var gal = galleryOf(e.target);
+		if (!gal || !galleryDraggable(gal)) { return; }
+		var tile = galTileOf(e.target, gal);
+		if (!tile) { return; }
+		galFrom = parseInt(tile.getAttribute('data-aq-gallery-item'), 10);
+		tile.classList.add('aqg-dragging');
+		try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(galFrom)); } catch (err) { /* noop */ }
+	}, true);
+	document.addEventListener('dragover', function (e) {
+		if (galFrom == null) { return; }
+		var gal = galleryOf(e.target);
+		if (!gal || !galleryDraggable(gal)) { return; }
+		e.preventDefault();
+		try { e.dataTransfer.dropEffect = 'move'; } catch (err) { /* noop */ }
+		galClearOver(gal);
+		var tile = galTileOf(e.target, gal);
+		if (tile) { tile.classList.add('aqg-over'); }
+	}, true);
+	document.addEventListener('drop', function (e) {
+		if (galFrom == null) { return; }
+		var gal = galleryOf(e.target);
+		if (!gal || !galleryDraggable(gal)) { galEnd(); return; }
+		e.preventDefault();
+		var tile = galTileOf(e.target, gal);
+		var toVal = tile ? parseInt(tile.getAttribute('data-aq-gallery-item'), 10) : null;
+		if (toVal !== galFrom) {
+			var order = galReorder(gal, galFrom, toVal);
+			parentWin.postMessage({ source: 'aq-canvas', type: 'gallery-reorder', index: indexOf(gal), order: order }, ORIGIN);
+		}
+		galEnd();
+	}, true);
+	document.addEventListener('dragend', galEnd, true);
+
 	// --- messages from the builder ---
 	window.addEventListener('message', function (e) {
 		if (e.origin !== ORIGIN || !e.data || e.data.source !== 'aq-builder') { return; }
 		var m = e.data;
 		if (m.type === 'schema') { schema = m.schema || null; }
-		else if (m.type === 'trackrect') {
-			// Builder is opening (index>=0) or closing (index<0) the in-place gallery
-			// editor; start/stop reporting that section's rect and emit one now.
-			trackIndex = (typeof m.index === 'number') ? m.index : -1;
-			postRect();
-		}
 		else if (m.type === 'highlight') {
 			select(m.index, true);
 			if (m.field || m.repeater) { setTimeout(function () { flashField(m); }, 60); }

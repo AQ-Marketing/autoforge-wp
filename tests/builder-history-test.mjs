@@ -21,8 +21,9 @@ function eq(expected, actual, msg) {
 }
 function ok(cond, msg) { if (!cond) { throw new Error(msg || 'expected truthy'); } }
 
-t('module loaded and exposes the three helpers', function () {
-	ok(H && typeof H.historyPush === 'function' && typeof H.historyUndo === 'function' && typeof H.historyRedo === 'function');
+t('module loaded and exposes the helpers', function () {
+	ok(H && typeof H.historyPush === 'function' && typeof H.historyUndo === 'function'
+		&& typeof H.historyRedo === 'function' && typeof H.reorder === 'function');
 });
 
 t('historyPush appends within cap', function () {
@@ -95,6 +96,41 @@ t('single-entry stack: both undo and redo are no-ops', function () {
 	const st = { stack: ['only'], ptr: 0 };
 	ok(H.historyUndo(st).changed === false);
 	ok(H.historyRedo(st).changed === false);
+});
+
+/* ---- reorder (gallery tile drag) ---- */
+t('reorder applies a full permutation', function () {
+	eq(['c', 'a', 'b'], H.reorder(['a', 'b', 'c'], [2, 0, 1]));
+});
+
+t('reorder identity order returns the same sequence', function () {
+	eq(['a', 'b', 'c'], H.reorder(['a', 'b', 'c'], [0, 1, 2]));
+});
+
+t('reorder moving one item to the front', function () {
+	// order built by canvas when dragging index 2 before index 0
+	eq(['c', 'a', 'b'], H.reorder(['a', 'b', 'c'], [2, 0, 1]));
+});
+
+t('reorder appends items missing from the index list (nothing dropped)', function () {
+	eq(['b', 'a', 'c'], H.reorder(['a', 'b', 'c'], [1, 0]));
+});
+
+t('reorder ignores out-of-range and duplicate indices', function () {
+	eq(['b', 'a', 'c'], H.reorder(['a', 'b', 'c'], [1, 9, 1, 0]));
+});
+
+t('reorder is pure (input list untouched)', function () {
+	const src = ['a', 'b', 'c'];
+	H.reorder(src, [2, 1, 0]);
+	eq(['a', 'b', 'c'], src);
+});
+
+t('reorder with a non-array order returns a copy of the list', function () {
+	const src = ['a', 'b'];
+	const out = H.reorder(src, null);
+	eq(['a', 'b'], out);
+	ok(out !== src, 'returns a new array');
 });
 
 console.log('\n' + pass + ' passed, ' + fail + ' failed');

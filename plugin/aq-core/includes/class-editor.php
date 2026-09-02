@@ -365,7 +365,7 @@ class AQ_Editor {
 			'columns' => 'Columns (equal rich-text columns)',
 			'video' => 'Video (responsive embed)',
 			'gallery' => 'Image Gallery (grid)',
-			'aq_gallery' => 'Gallery',
+			'aq_gallery' => 'Image Gallery',
 			'accordion' => 'Accordion (expandable items)',
 			'button_group' => 'Button Group',
 			'callout' => 'Callout (alert / notice)',
