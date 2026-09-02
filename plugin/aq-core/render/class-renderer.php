@@ -36,6 +36,11 @@ class AQ_Renderer {
 			add_image_size('ka-480', 480, 9999);
 			add_image_size('ka-768', 768, 9999);
 			add_image_size('ka-1280', 1280, 9999);
+			// Gallery display derivative for the aq_gallery section. Width-capped,
+			// height free, no hard crop — the section's CSS handles the 4/3 frame.
+			// The upload optimizer already caps masters at 1960; this just serves a
+			// lighter 1600 derivative. Filterable so a site can tune it.
+			add_image_size('aq_gallery', (int) apply_filters('aq_gallery_image_width', 1600), 0, false);
 		});
 
 		// Take over rendering. Priority 50 so it runs after most theme filters.

@@ -92,6 +92,7 @@ require_once AQ_CORE_DIR . 'includes/class-redirects.php';
 require_once AQ_CORE_DIR . 'includes/class-redirects-admin.php';
 require_once AQ_CORE_DIR . 'includes/class-content-seo-gate.php';
 require_once AQ_CORE_DIR . 'includes/class-content-sync.php';
+require_once AQ_CORE_DIR . 'includes/class-gallery.php'; // pure helpers for the aq_gallery section
 require_once AQ_CORE_DIR . 'includes/class-admin-hub.php';
 require_once AQ_CORE_DIR . 'includes/class-help.php';
 require_once AQ_CORE_DIR . 'includes/class-seo-manager.php';

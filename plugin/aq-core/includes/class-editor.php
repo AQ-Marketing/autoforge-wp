@@ -159,7 +159,40 @@ class AQ_Editor {
 			'permalink' => get_permalink($post),
 			'sections'  => $sections,
 			'images'    => self::image_previews($sections),
+			'galleryImages' => self::gallery_previews($sections),
 		]);
+	}
+
+	/**
+	 * Build an { attachmentId: {id,url,thumb,alt} } map for every image already
+	 * referenced by an aq_gallery section, so the in-place gallery editor can
+	 * show real thumbnails for images that were set on a previous save (freshly
+	 * picked ones come straight from wp.media with their own URLs).
+	 */
+	private static function gallery_previews(array $sections): array {
+		$out = [];
+		foreach ($sections as $s) {
+			if (($s['type'] ?? '') !== 'aq_gallery' || empty($s['images']) || !is_array($s['images'])) {
+				continue;
+			}
+			foreach ($s['images'] as $img) {
+				$id = is_array($img) ? (int) ($img['id'] ?? 0) : 0;
+				if ($id <= 0 || isset($out[$id])) {
+					continue;
+				}
+				$thumb = (string) wp_get_attachment_image_url($id, 'thumbnail');
+				if ($thumb === '') {
+					continue;
+				}
+				$out[$id] = [
+					'id'    => $id,
+					'url'   => (string) wp_get_attachment_image_url($id, 'large'),
+					'thumb' => $thumb,
+					'alt'   => (string) get_post_meta($id, '_wp_attachment_image_alt', true),
+				];
+			}
+		}
+		return $out;
 	}
 
 	/**
@@ -262,6 +295,7 @@ class AQ_Editor {
 			'columns' => 'Columns (equal rich-text columns)',
 			'video' => 'Video (responsive embed)',
 			'gallery' => 'Image Gallery (grid)',
+			'aq_gallery' => 'Gallery',
 			'accordion' => 'Accordion (expandable items)',
 			'button_group' => 'Button Group',
 			'callout' => 'Callout (alert / notice)',
@@ -521,6 +555,18 @@ class AQ_Editor {
 			]],
 
 			'gallery' => ['fields' => [['name' => 'eyebrow', 'label' => 'Eyebrow', 'type' => 'text'], ['name' => 'heading', 'label' => 'Heading', 'type' => 'text'], ['name' => 'subheading', 'label' => 'Subheading', 'type' => 'text'], ['name' => 'intro', 'label' => 'Intro', 'type' => 'textarea'], ['name' => 'bg', 'label' => 'Background', 'type' => 'select'], ['name' => 'columns', 'label' => 'Columns', 'type' => 'select'], ['name' => 'items', 'label' => 'Images', 'type' => 'repeater', 'subfields' => [['name' => 'image', 'label' => 'Image', 'type' => 'image'], ['name' => 'caption', 'label' => 'Caption', 'type' => 'text']]]]],
+			// aq_gallery is edited IN-PLACE on the canvas (builder.js opens a gallery
+			// overlay when this type is selected — see the 'inplace' flag). The field
+			// list here is the persistence contract + generic-inspector fallback.
+			'aq_gallery' => ['inplace' => 'gallery', 'fields' => [
+				['name' => 'columns', 'label' => 'Columns', 'type' => 'select', 'options' => ['2' => '2', '3' => '3', '4' => '4', '5' => '5'], 'group' => 'design'],
+				['name' => 'gap', 'label' => 'Gap', 'type' => 'select', 'options' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large'], 'group' => 'design'],
+				['name' => 'order_by', 'label' => 'Order by', 'type' => 'select', 'options' => ['manual' => 'Manual (drag order)', 'title' => 'Title A–Z', 'date_desc' => 'Newest first', 'date_asc' => 'Oldest first', 'filename' => 'Filename A–Z', 'random' => 'Random'], 'group' => 'design'],
+				['name' => 'lightbox', 'label' => 'Click to enlarge (lightbox)', 'type' => 'toggle', 'group' => 'design'],
+				['name' => 'filters_enabled', 'label' => 'Show category filter bar', 'type' => 'toggle', 'group' => 'design'],
+				['name' => 'categories', 'label' => 'Categories', 'type' => 'repeater', 'subfields' => [['name' => 'label', 'label' => 'Label', 'type' => 'text']]],
+				['name' => 'images', 'label' => 'Images', 'type' => 'repeater', 'subfields' => [['name' => 'id', 'label' => 'Attachment ID', 'type' => 'text'], ['name' => 'caption', 'label' => 'Caption', 'type' => 'text'], ['name' => 'category', 'label' => 'Category', 'type' => 'text']]],
+			]],
 
 			'video' => ['fields' => [['name' => 'eyebrow', 'label' => 'Eyebrow', 'type' => 'text'], ['name' => 'heading', 'label' => 'Heading', 'type' => 'text'], ['name' => 'subheading', 'label' => 'Subheading', 'type' => 'text'], ['name' => 'intro', 'label' => 'Intro', 'type' => 'textarea'], ['name' => 'provider', 'label' => 'Provider', 'type' => 'select', 'options' => ['youtube' => 'YouTube', 'vimeo' => 'Vimeo', 'file' => 'File URL (self-hosted)']], ['name' => 'video_id', 'label' => 'Video ID (YouTube/Vimeo)', 'type' => 'text'], ['name' => 'file_url', 'label' => 'File URL (.mp4/.webm)', 'type' => 'url'], ['name' => 'poster', 'label' => 'Poster image (file only)', 'type' => 'image'], ['name' => 'aspect', 'label' => 'Aspect ratio', 'type' => 'select', 'options' => ['16/9' => '16:9 (widescreen)', '4/3' => '4:3 (standard)']], ['name' => 'max_width', 'label' => 'Max width', 'type' => 'select', 'options' => ['4xl' => 'max-w-4xl', '3xl' => 'max-w-3xl', '5xl' => 'max-w-5xl', 'full' => 'Full width']], ['name' => 'caption', 'label' => 'Caption', 'type' => 'text'], ['name' => 'bg', 'label' => 'Background', 'type' => 'select', 'options' => ['white' => 'bg-white', 'brand-50' => 'bg-brand-50']], ['name' => 'section_class', 'label' => 'Section class (overrides bg)', 'type' => 'text']]],
 

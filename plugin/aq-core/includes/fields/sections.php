@@ -574,6 +574,36 @@ $layouts['contact_form'] = [
 	],
 ];
 
+/* aq_gallery — client-agnostic media gallery: bulk-add images, ordering, an
+ * optional category filter bar, and a self-contained lightbox. Managed IN-PLACE
+ * in the builder preview (not the sidebar). Nested image rows store the media
+ * attachment ID in `id` (resolved at render); `category` is a free label matched
+ * against the section's `categories` list to build the tab bar. */
+$layouts['aq_gallery'] = [
+	'key' => 'layout_aq_aq_gallery',
+	'name' => 'aq_gallery',
+	'label' => 'Gallery',
+	'sub_fields' => [
+		aq_field('aqgal', 'columns', 'number', ['default_value' => 3, 'min' => 2, 'max' => 5, 'instructions' => 'Columns on desktop (2–5). Stacks to fewer on tablet/mobile.']),
+		aq_field('aqgal', 'gap', 'select', ['choices' => ['sm' => 'Small', 'md' => 'Medium', 'lg' => 'Large'], 'default_value' => 'md']),
+		aq_field('aqgal', 'order_by', 'select', ['choices' => ['manual' => 'Manual (drag order)', 'title' => 'Title A–Z', 'date_desc' => 'Newest first', 'date_asc' => 'Oldest first', 'filename' => 'Filename A–Z', 'random' => 'Random'], 'default_value' => 'manual']),
+		aq_field('aqgal', 'lightbox', 'true_false', ['default_value' => 1, 'instructions' => 'Click an image to enlarge it (self-contained, no external library).']),
+		aq_field('aqgal', 'filters_enabled', 'true_false', ['default_value' => 0, 'instructions' => 'Show a category filter/tab bar above the grid (needs 2+ categories in use).']),
+		aq_field('aqgal', 'categories', 'repeater', [
+			'instructions' => 'Category labels for the filter bar, in the order they should appear (e.g. House, Roof, Deck). An "All" tab is always shown first.',
+			'sub_fields' => [aq_field('aqgal_cat', 'label')],
+		]),
+		aq_field('aqgal', 'images', 'repeater', [
+			'instructions' => 'Managed in-place on the page preview: bulk add, drag to reorder, set each image\'s category.',
+			'sub_fields' => [
+				aq_field('aqgal_img', 'id', 'number', ['instructions' => 'Media library attachment ID.']),
+				aq_field('aqgal_img', 'caption'),
+				aq_field('aqgal_img', 'category', 'text', ['instructions' => 'Category label (must match one in the categories list).']),
+			],
+		]),
+	],
+];
+
 // Per-site extensibility: a theme registers its own section layouts via this
 // filter (add_filter('aq_section_layouts', ...)) WITHOUT editing the shared
 // plugin. Critical: an unregistered flexible-content layout makes ACF DROP the

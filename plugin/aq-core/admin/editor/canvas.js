@@ -102,9 +102,24 @@
 	var editingEl = null;       // element currently being edited in place
 	var editInfo = null;        // { index, field, repeater, rindex, type, mode }
 	var lastClick = { x: 0, y: 0 };
+	var trackIndex = -1;        // section whose on-screen rect the builder wants (in-place gallery editor)
+	// Report a tracked section's viewport rect so the builder can anchor its
+	// in-place editor overlay directly over/beside the element in the preview.
+	function postRect() {
+		if (trackIndex < 0) { return; }
+		var el = elFor(trackIndex);
+		if (!el) { return; }
+		var r = el.getBoundingClientRect();
+		parentWin.postMessage({
+			source: 'aq-canvas', type: 'secrect', index: trackIndex,
+			rect: { top: r.top, left: r.left, width: r.width, height: r.height },
+			view: { w: window.innerWidth, h: window.innerHeight }
+		}, ORIGIN);
+	}
 	function reposition() {
 		if (selectedIndex >= 0) { position(selBox, elFor(selectedIndex)); }
 		if (editingEl) { position(selBox, elFor(selectedIndex)); }
+		postRect();
 	}
 
 	// Resolve a field's editor type from the schema (text/textarea/richtext are
@@ -360,6 +375,12 @@
 		if (e.origin !== ORIGIN || !e.data || e.data.source !== 'aq-builder') { return; }
 		var m = e.data;
 		if (m.type === 'schema') { schema = m.schema || null; }
+		else if (m.type === 'trackrect') {
+			// Builder is opening (index>=0) or closing (index<0) the in-place gallery
+			// editor; start/stop reporting that section's rect and emit one now.
+			trackIndex = (typeof m.index === 'number') ? m.index : -1;
+			postRect();
+		}
 		else if (m.type === 'highlight') {
 			select(m.index, true);
 			if (m.field || m.repeater) { setTimeout(function () { flashField(m); }, 60); }

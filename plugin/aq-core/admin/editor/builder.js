@@ -18,7 +18,7 @@
 	// agency admin). Gated users get "Review & Publish"; bypass users keep "Save".
 	var GATED = !!CFG.reviewEnabled && !CFG.canBypass;
 
-	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, review: null, decisions: {}, confirmed: {} };
+	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, galleryRect: null, review: null, decisions: {}, confirmed: {} };
 	var uid = 0;
 	var els = {};
 	function clone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -165,11 +165,19 @@
 		var body = ce('div', 'aqb-body');
 		els.structure = ce('div', 'aqb-pane aqb-structure');
 		var canvasWrap = ce('div', 'aqb-canvaswrap');
+		canvasWrap.style.position = 'relative'; // anchor point for the in-place gallery editor
+		els.canvasWrap = canvasWrap;
 		els.canvasInner = ce('div', 'aqb-canvasinner');
 		els.iframe = ce('iframe', 'aqb-canvas');
 		els.iframe.src = CFG.canvasUrl;
 		els.canvasInner.appendChild(els.iframe);
 		canvasWrap.appendChild(els.canvasInner);
+		// In-place gallery editor: a floating panel over the canvas, anchored to the
+		// selected aq_gallery section (NOT the right sidebar). Hidden until a gallery
+		// section is selected.
+		els.galleryPanel = ce('div', 'aqb-gpanel');
+		els.galleryPanel.hidden = true;
+		canvasWrap.appendChild(els.galleryPanel);
 		els.inspector = ce('div', 'aqb-pane aqb-inspector');
 
 		body.appendChild(els.structure);
@@ -384,6 +392,7 @@
 		Array.prototype.forEach.call(els.dev.children, function (b) {
 			b.classList.toggle('is-active', b.getAttribute('data-dev') === d);
 		});
+		positionGalleryPanel();
 	}
 
 	/* ---------------- structure pane ---------------- */
@@ -434,6 +443,33 @@
 		renderStructure();
 		renderInspector();
 		if (tellCanvas) { postCanvas({ type: 'highlight', index: i }); }
+		syncGalleryPanel();
+	}
+
+	// Whether a section type is edited in place on the canvas (gallery overlay).
+	function inplaceOf(type) { return (CFG.schema && CFG.schema[type] && CFG.schema[type].inplace) || ''; }
+
+	// Open the in-place gallery editor when an aq_gallery section is selected;
+	// close it (and stop rect tracking) otherwise.
+	function syncGalleryPanel() {
+		var s = state.sections[state.selected];
+		var isGallery = s && inplaceOf(s.type) === 'gallery';
+		if (isGallery) {
+			postCanvas({ type: 'trackrect', index: state.selected });
+			openGalleryPanel();
+		} else {
+			postCanvas({ type: 'trackrect', index: -1 });
+			closeGalleryPanel();
+		}
+	}
+	function closeGalleryPanel() {
+		if (els.galleryPanel) { els.galleryPanel.hidden = true; }
+	}
+	function openGalleryPanel() {
+		if (!els.galleryPanel) { return; }
+		els.galleryPanel.hidden = false;
+		renderGalleryPanel();
+		positionGalleryPanel();
 	}
 
 	/**
@@ -480,6 +516,16 @@
 		}
 		var s = state.sections[state.selected];
 		p.appendChild(ce('h3', 'aqb-h', labelFor(s.type)));
+		// In-place sections (aq_gallery) are edited on the canvas via a floating
+		// overlay, not here. Show a short pointer + a re-open button instead of the
+		// raw persistence fields (which would surface attachment IDs as text boxes).
+		if (inplaceOf(s.type)) {
+			p.appendChild(ce('p', 'aqb-muted', 'This gallery is edited directly on the page. Use the panel over the gallery to add images, reorder them, and set categories.'));
+			var openBtn = ce('button', 'aqb-btn aqb-btn--ghost', 'Edit gallery on page');
+			openBtn.addEventListener('click', function () { postCanvas({ type: 'highlight', index: state.selected }); openGalleryPanel(); });
+			p.appendChild(openBtn);
+			return;
+		}
 		var fields = schemaFor(s.type);
 		var inferred = false;
 		if (!fields.length) { fields = inferFields(s); inferred = true; }
@@ -733,6 +779,221 @@
 		state.selected = at; setDirty(true); renderStructure(); renderInspector();
 	}
 
+	/* ---------------- in-place gallery editor ---------------- */
+	function galSec() { return state.sections[state.selected]; }
+	function catLabel(row) { return typeof row === 'string' ? row : ((row && row.label) || ''); }
+	function galEnsure(sec) {
+		if (!Array.isArray(sec.images)) { sec.images = []; }
+		if (!Array.isArray(sec.categories)) { sec.categories = []; }
+		if (sec.columns == null || sec.columns === '') { sec.columns = '3'; }
+		if (sec.gap == null || sec.gap === '') { sec.gap = 'md'; }
+		if (sec.order_by == null || sec.order_by === '') { sec.order_by = 'manual'; }
+		if (sec.lightbox == null) { sec.lightbox = true; }
+		if (sec.filters_enabled == null) { sec.filters_enabled = false; }
+	}
+	function galThumb(id) {
+		var m = state.galleryImages[String(id)] || state.galleryImages[id];
+		return m && m.thumb ? m.thumb : '';
+	}
+	// Keep the floating panel pinned to the gallery on the canvas (rect reported by
+	// canvas.js). Falls back to a top-right drawer when no rect is known yet.
+	function positionGalleryPanel() {
+		var panel = els.galleryPanel;
+		if (!panel || panel.hidden || !els.canvasWrap) { return; }
+		var wrapRect = els.canvasWrap.getBoundingClientRect();
+		var ifr = els.iframe.getBoundingClientRect();
+		var pw = 340, r = state.galleryRect, top, left;
+		if (r) {
+			top = (ifr.top - wrapRect.top) + Math.max(8, r.top) + 8;
+			left = (ifr.left - wrapRect.left) + r.left + r.width - pw - 12;
+			if (left < (ifr.left - wrapRect.left) + 8) { left = (ifr.left - wrapRect.left) + r.left + 12; }
+		} else {
+			top = 12; left = wrapRect.width - pw - 12;
+		}
+		left = Math.max(8, Math.min(left, wrapRect.width - pw - 8));
+		top = Math.max(8, Math.min(top, Math.max(8, wrapRect.height - 90)));
+		panel.style.top = top + 'px';
+		panel.style.left = left + 'px';
+	}
+	function gRow(label, control) {
+		var row = ce('div', 'aqb-grow');
+		row.appendChild(ce('label', 'aqb-glabel', label));
+		row.appendChild(control);
+		return row;
+	}
+	function gSelect(value, options, onchange) {
+		var sel = ce('select', 'aqb-ginput');
+		Object.keys(options).forEach(function (v) { sel.appendChild(new Option(options[v], v)); });
+		sel.value = value;
+		sel.addEventListener('change', function () { onchange(sel.value); });
+		return sel;
+	}
+	function gToggle(checked, onchange) {
+		var lab = ce('label', 'aqb-gtoggle');
+		var cb = ce('input'); cb.type = 'checkbox'; cb.checked = !!checked;
+		cb.addEventListener('change', function () { onchange(cb.checked); });
+		lab.appendChild(cb);
+		return lab;
+	}
+
+	function renderGalleryPanel() {
+		var panel = els.galleryPanel, sec = galSec();
+		if (!panel) { return; }
+		if (!sec) { panel.hidden = true; return; }
+		galEnsure(sec);
+		panel.innerHTML = '';
+
+		var head = ce('div', 'aqb-ghead');
+		head.appendChild(ce('span', 'aqb-gtitle', 'Gallery'));
+		var close = ce('button', 'aqb-icon', '✕'); close.title = 'Close (edit later from the sidebar)';
+		close.addEventListener('click', closeGalleryPanel);
+		head.appendChild(close);
+		panel.appendChild(head);
+
+		var body = ce('div', 'aqb-gbody');
+
+		// Add images (bulk upload + bulk select from the media library).
+		var add = ce('button', 'aqb-btn aqb-btn--primary aqb-gadd', '+ Add images');
+		add.addEventListener('click', addGalleryImages);
+		body.appendChild(add);
+
+		// Thumbnail grid (drag to reorder, remove, per-image category).
+		var grid = ce('div', 'aqb-ggrid');
+		if (!sec.images.length) {
+			grid.appendChild(ce('p', 'aqb-muted', 'No images yet. Use “Add images” to bulk-add from the media library.'));
+		}
+		sec.images.forEach(function (img, idx) {
+			grid.appendChild(galThumbCard(sec, img, idx));
+		});
+		body.appendChild(grid);
+
+		// Ordering + layout controls.
+		body.appendChild(gRow('Order by', gSelect(String(sec.order_by), {
+			manual: 'Manual (drag order)', title: 'Title A–Z', date_desc: 'Newest first',
+			date_asc: 'Oldest first', filename: 'Filename A–Z', random: 'Random'
+		}, function (v) { sec.order_by = v; setDirty(true); })));
+		body.appendChild(gRow('Columns', gSelect(String(sec.columns), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec.columns = v; setDirty(true); })));
+		body.appendChild(gRow('Gap', gSelect(String(sec.gap), { sm: 'Small', md: 'Medium', lg: 'Large' }, function (v) { sec.gap = v; setDirty(true); })));
+		body.appendChild(gRow('Click to enlarge', gToggle(sec.lightbox, function (v) { sec.lightbox = v; setDirty(true); })));
+		body.appendChild(gRow('Category filter bar', gToggle(sec.filters_enabled, function (v) { sec.filters_enabled = v; setDirty(true); renderGalleryPanel(); })));
+
+		// Categories manager (only meaningful when the filter bar is on).
+		if (sec.filters_enabled) {
+			body.appendChild(galCategories(sec));
+		}
+
+		panel.appendChild(body);
+	}
+
+	function galThumbCard(sec, img, idx) {
+		var card = ce('div', 'aqb-gcard');
+		card.setAttribute('draggable', 'true');
+		card.addEventListener('dragstart', function (e) { state.galDrag = idx; try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(idx)); } catch (er) {} });
+		card.addEventListener('dragover', function (e) { e.preventDefault(); card.classList.add('is-over'); });
+		card.addEventListener('dragleave', function () { card.classList.remove('is-over'); });
+		card.addEventListener('drop', function (e) {
+			e.preventDefault(); card.classList.remove('is-over');
+			var from = state.galDrag;
+			if (from == null || from === idx) { return; }
+			var moved = sec.images.splice(from, 1)[0];
+			sec.images.splice(idx, 0, moved);
+			sec.order_by = 'manual'; // dragging defines the manual order
+			state.galDrag = null;
+			setDirty(true); renderGalleryPanel();
+		});
+
+		var thumb = ce('div', 'aqb-gthumb');
+		var url = galThumb(img.id);
+		if (url) { var im = ce('img'); im.src = url; im.alt = ''; thumb.appendChild(im); }
+		else { thumb.appendChild(ce('span', 'aqb-gthumb__id', '#' + (img.id || '?'))); }
+		var rm = ce('button', 'aqb-gremove', '×'); rm.title = 'Remove';
+		rm.addEventListener('click', function () { sec.images.splice(idx, 1); setDirty(true); renderGalleryPanel(); });
+		thumb.appendChild(rm);
+		card.appendChild(thumb);
+
+		// Per-image category selector (from the section's list, + inline "New…").
+		card.appendChild(galCatSelect(sec, img));
+		return card;
+	}
+
+	function galCatSelect(sec, img) {
+		var sel = ce('select', 'aqb-gcatsel');
+		sel.appendChild(new Option('— category —', ''));
+		(sec.categories || []).forEach(function (row) {
+			var l = catLabel(row); if (l) { sel.appendChild(new Option(l, l)); }
+		});
+		sel.appendChild(new Option('＋ New…', '__new'));
+		var cur = img.category || '';
+		if (cur && !Array.prototype.some.call(sel.options, function (o) { return o.value === cur; })) {
+			sel.insertBefore(new Option(cur, cur), sel.options[sel.options.length - 1]);
+		}
+		sel.value = cur;
+		sel.addEventListener('change', function () {
+			if (sel.value === '__new') {
+				var nv = window.prompt('New category label:', '');
+				nv = nv ? nv.trim() : '';
+				if (nv) {
+					if (!sec.categories.some(function (r) { return catLabel(r) === nv; })) { sec.categories.push({ label: nv }); }
+					img.category = nv;
+				} else { sel.value = img.category || ''; return; }
+			} else { img.category = sel.value; }
+			setDirty(true); renderGalleryPanel();
+		});
+		return sel;
+	}
+
+	function galCategories(sec) {
+		var wrap = ce('div', 'aqb-gcats');
+		wrap.appendChild(ce('div', 'aqb-glabel', 'Categories (tab order)'));
+		var list = ce('div', 'aqb-gcatlist');
+		sec.categories.forEach(function (row, i) {
+			var chip = ce('span', 'aqb-gchip', catLabel(row));
+			var x = ce('button', 'aqb-gchip__x', '×'); x.title = 'Remove';
+			x.addEventListener('click', function () { sec.categories.splice(i, 1); setDirty(true); renderGalleryPanel(); });
+			chip.appendChild(x);
+			list.appendChild(chip);
+		});
+		wrap.appendChild(list);
+		var addWrap = ce('div', 'aqb-gcatadd');
+		var input = ce('input', 'aqb-ginput'); input.type = 'text'; input.placeholder = 'Add category…';
+		function commit() {
+			var v = input.value.trim();
+			if (v && !sec.categories.some(function (r) { return catLabel(r) === v; })) { sec.categories.push({ label: v }); setDirty(true); renderGalleryPanel(); }
+			else { input.value = ''; }
+		}
+		input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
+		var addBtn = ce('button', 'aqb-btn aqb-btn--ghost', 'Add');
+		addBtn.addEventListener('click', commit);
+		addWrap.appendChild(input); addWrap.appendChild(addBtn);
+		wrap.appendChild(addWrap);
+		return wrap;
+	}
+
+	function addGalleryImages() {
+		var sec = galSec();
+		if (!sec) { return; }
+		galEnsure(sec);
+		if (!window.wp || !wp.media) {
+			var raw = window.prompt('Media library attachment IDs (comma-separated):', '');
+			if (raw) {
+				raw.split(',').forEach(function (x) { var id = parseInt(String(x).trim(), 10); if (id > 0) { sec.images.push({ id: id, caption: '', category: '' }); } });
+				setDirty(true); renderGalleryPanel();
+			}
+			return;
+		}
+		var frame = wp.media({ title: 'Add gallery images', button: { text: 'Add to gallery' }, multiple: true, library: { type: 'image' } });
+		frame.on('select', function () {
+			frame.state().get('selection').each(function (att) {
+				var a = att.toJSON();
+				var thumb = (a.sizes && a.sizes.thumbnail && a.sizes.thumbnail.url) ? a.sizes.thumbnail.url : a.url;
+				state.galleryImages[String(a.id)] = { id: a.id, url: a.url, thumb: thumb, alt: a.alt || '' };
+				sec.images.push({ id: a.id, caption: '', category: '' });
+			});
+			setDirty(true); renderGalleryPanel();
+		});
+		frame.open();
+	}
+
 	/* ---------------- save ---------------- */
 	function save() {
 		els.save.disabled = true; els.save.textContent = 'Saving…';
@@ -768,6 +1029,10 @@
 		if (m.type === 'select') {
 			selectSection(m.index, false);
 			if (m.field || m.repeater) { focusField(m); }
+		} else if (m.type === 'secrect') {
+			// Canvas reported the tracked gallery section's on-screen rect → reposition
+			// the in-place editor to stay anchored to it as the canvas scrolls.
+			if (m.index === state.selected) { state.galleryRect = m.rect || null; positionGalleryPanel(); }
 		} else if (m.type === 'edit') {
 			applyEdit(m);
 		} else if (m.type === 'ready') {
@@ -776,6 +1041,7 @@
 				postCanvas({ type: 'highlight', index: state.rehighlight });
 				state.rehighlight = -1;
 			}
+			syncGalleryPanel(); // reopen/reposition the in-place gallery editor after a canvas reload
 		}
 	});
 
@@ -814,6 +1080,7 @@
 		els.inspector.appendChild(ce('div', 'aqb-empty', 'Loading…'));
 		api('/page/' + CFG.pageId).then(function (d) {
 			state.images = (d && d.images) ? d.images : {};
+			state.galleryImages = (d && d.galleryImages) ? d.galleryImages : {};
 			state.sections = (d && d.sections ? d.sections : []).map(function (s) { s._uid = ++uid; return s; });
 			state.base = clone(state.sections); // snapshot the loaded page to diff against at review time
 			renderStructure();
@@ -823,6 +1090,7 @@
 		window.addEventListener('beforeunload', function (e) {
 			if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
 		});
+		window.addEventListener('resize', positionGalleryPanel);
 	}
 	if (document.readyState !== 'loading') { boot(); }
 	else { document.addEventListener('DOMContentLoaded', boot); }
