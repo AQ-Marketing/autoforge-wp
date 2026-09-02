@@ -373,11 +373,14 @@
 		}
 		return null;
 	}
-	// Drag is live only on the selected gallery in manual order.
+	// Drag is live only on the selected gallery in manual order. The [data-aq-gallery]
+	// element may BE the section (engine renderer) or nested inside it (a bespoke
+	// renderer like photo_gallery), so resolve the section index by walking up to the
+	// nearest [data-aq-section] rather than reading it off the gallery element itself.
 	function galleryDraggable(galEl) {
 		if (!galEl) { return false; }
 		if ((galEl.getAttribute('data-aq-gallery-order') || 'manual') !== 'manual') { return false; }
-		return indexOf(galEl) === selectedIndex;
+		return indexOf(sectionOf(galEl)) === selectedIndex;
 	}
 	function galTiles(galEl) { return galEl ? galEl.querySelectorAll('[data-aq-gallery-item]') : []; }
 	function galClearOver(galEl) {
@@ -434,7 +437,7 @@
 		var toVal = tile ? parseInt(tile.getAttribute('data-aq-gallery-item'), 10) : null;
 		if (toVal !== galFrom) {
 			var order = galReorder(gal, galFrom, toVal);
-			parentWin.postMessage({ source: 'aq-canvas', type: 'gallery-reorder', index: indexOf(gal), order: order }, ORIGIN);
+			parentWin.postMessage({ source: 'aq-canvas', type: 'gallery-reorder', index: indexOf(sectionOf(gal)), order: order }, ORIGIN);
 		}
 		galEnd();
 	}, true);
