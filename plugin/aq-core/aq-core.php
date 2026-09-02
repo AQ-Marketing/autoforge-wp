@@ -101,6 +101,7 @@ require_once AQ_CORE_DIR . 'includes/class-editor.php';
 require_once AQ_CORE_DIR . 'includes/class-claude.php';
 require_once AQ_CORE_DIR . 'includes/class-openai.php';
 require_once AQ_CORE_DIR . 'includes/class-alt-text.php';
+require_once AQ_CORE_DIR . 'includes/class-image-optimizer.php';
 require_once AQ_CORE_DIR . 'includes/class-editor-review.php';
 require_once AQ_CORE_DIR . 'includes/class-assistant-rules.php';
 require_once AQ_CORE_DIR . 'includes/class-knowledge.php';
@@ -164,6 +165,7 @@ AQ_Editor::register();
 AQ_Editor_Review::register();
 AQ_Integrations::register();
 AQ_Alt_Text::register();
+AQ_Image_Optimizer::register(); // OFF by default; on-upload resize+compress+WebP (shares the Media screen)
 AQ_Knowledge::register();
 AQ_Ranking_Audit::register(); // 14-day cron schedule + ensure_scheduled() on init
 AQ_Assistant::register();

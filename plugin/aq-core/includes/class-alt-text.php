@@ -971,6 +971,11 @@ class AQ_Alt_Text {
 		})();
 		</script>
 		<?php
+		/**
+		 * Other Media-screen modules (e.g. AQ_Image_Optimizer) append their own
+		 * settings panels here so AutoForge → Media stays one screen.
+		 */
+		do_action('aq_media_admin_after');
 		AQ_Admin_Hub::close();
 	}
 
