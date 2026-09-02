@@ -18,7 +18,8 @@
 	// agency admin). Gated users get "Review & Publish"; bypass users keep "Save".
 	var GATED = !!CFG.reviewEnabled && !CFG.canBypass;
 
-	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, galleryRect: null, review: null, decisions: {}, confirmed: {} };
+	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, galleryRect: null, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null };
+	var HIST = (typeof window !== 'undefined' && window.AQHistory) ? window.AQHistory : null;
 	var uid = 0;
 	var els = {};
 	function clone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -112,6 +113,82 @@
 		if (els.dirty) { els.dirty.style.display = v ? 'inline' : 'none'; }
 	}
 
+	/* ---------------- working-state payload ---------------- */
+	// Strip transient client keys (_uid, etc.) for the save / preview payloads.
+	function stripSections() {
+		return state.sections.map(function (s) { var c = {}; for (var k in s) { if (k.charAt(0) !== '_') { c[k] = s[k]; } } return c; });
+	}
+
+	/* ---------------- undo / redo history ---------------- */
+	function snapshot() { return { sections: clone(state.sections), selected: state.selected }; }
+	function histSeed() { state.hist = { stack: [snapshot()], ptr: 0, cap: 50 }; updateHistButtons(); }
+	// Record the current working state as a new history step (dropping any redo
+	// tail first, then trimming the oldest past the cap). Coalesces rapid typing
+	// via histRecordDebounced().
+	function histRecord() {
+		if (!HIST) { return; }
+		var h = state.hist;
+		h.stack = h.stack.slice(0, h.ptr + 1);
+		h.stack = HIST.historyPush(h.stack, snapshot(), h.cap);
+		h.ptr = h.stack.length - 1;
+		updateHistButtons();
+	}
+	function histRecordDebounced() {
+		clearTimeout(state.histTimer);
+		state.histTimer = setTimeout(histRecord, 500);
+	}
+	function updateHistButtons() {
+		if (els.undo) { els.undo.disabled = !(state.hist.ptr > 0); }
+		if (els.redo) { els.redo.disabled = !(state.hist.ptr < state.hist.stack.length - 1); }
+	}
+	function restoreSnapshot(snap) {
+		if (!snap) { return; }
+		state.sections = (snap.sections || []).map(function (s) { s._uid = ++uid; return s; });
+		state.selected = (snap.selected != null && snap.selected < state.sections.length) ? snap.selected : -1;
+		renderStructure();
+		renderInspector();
+		syncGalleryPanel();
+	}
+	function undo() {
+		if (!HIST) { return; }
+		clearTimeout(state.histTimer);
+		var r = HIST.historyUndo(state.hist);
+		if (!r.changed) { return; }
+		state.hist.ptr = r.ptr;
+		restoreSnapshot(r.snapshot);
+		setDirty(true); updateHistButtons(); livePreview();
+	}
+	function redo() {
+		if (!HIST) { return; }
+		var r = HIST.historyRedo(state.hist);
+		if (!r.changed) { return; }
+		state.hist.ptr = r.ptr;
+		restoreSnapshot(r.snapshot);
+		setDirty(true); updateHistButtons(); livePreview();
+	}
+
+	/* ---------------- live (non-persisting) preview ---------------- */
+	// A discrete change: snapshot history now + refresh the canvas preview.
+	function pushChange() { histRecord(); livePreview(); }
+	// A keystroke-level change: coalesce a history snapshot; the canvas already
+	// reflects text/image edits live, so no full reload here (commit on blur).
+	function pushTyping() { histRecordDebounced(); }
+
+	function livePreview() {
+		clearTimeout(state.previewTimer);
+		state.previewTimer = setTimeout(doLivePreview, 300);
+	}
+	function doLivePreview() {
+		api('/preview', { method: 'POST', body: { id: CFG.pageId, sections: stripSections() } })
+			.then(function (d) { if (d && d.ok) { refreshCanvasPreview(); } })
+			.catch(function () { /* graceful: preview unavailable → leave canvas as-is */ });
+	}
+	function refreshCanvasPreview() {
+		state.rehighlight = state.selected; // canvas re-highlights + re-syncs the gallery panel on ready
+		var sep = CFG.canvasUrl.indexOf('?') > -1 ? '&' : '?';
+		els.iframe.src = CFG.canvasUrl + sep + 'aq_preview=1&t=' + Date.now();
+	}
+
 	/* ---------------- shell ---------------- */
 	function buildShell() {
 		var root = document.getElementById('aq-builder-root');
@@ -141,6 +218,17 @@
 		els.dev = mid;
 
 		var right = ce('div', 'aqb-topbar__r');
+		// Undo / redo — reversible working-state history (not persisted until Save).
+		els.undo = ce('button', 'aqb-btn aqb-btn--ghost', '↶ Undo');
+		els.undo.title = 'Undo (Ctrl/Cmd+Z)';
+		els.undo.disabled = true;
+		els.undo.addEventListener('click', undo);
+		els.redo = ce('button', 'aqb-btn aqb-btn--ghost', '↷ Redo');
+		els.redo.title = 'Redo (Ctrl/Cmd+Shift+Z)';
+		els.redo.disabled = true;
+		els.redo.addEventListener('click', redo);
+		right.appendChild(els.undo);
+		right.appendChild(els.redo);
 		var view = ce('a', 'aqb-btn aqb-btn--ghost', 'View live ↗');
 		view.href = CFG.permalink; view.target = '_blank'; view.rel = 'noopener';
 		right.appendChild(view);
@@ -383,6 +471,8 @@
 		if (state.selected >= state.sections.length) { state.selected = -1; }
 		renderStructure();
 		renderInspector();
+		syncGalleryPanel();
+		histSeed(); // committed state becomes the new undo baseline
 	}
 
 	function setDevice(d) {
@@ -562,7 +652,7 @@
 		if (f.type === 'toggle') {
 			var lab = ce('label', 'aqb-toggle');
 			var cb = ce('input'); cb.type = 'checkbox'; cb.checked = !!obj[f.name];
-			cb.addEventListener('change', function () { obj[f.name] = cb.checked; setDirty(true); });
+			cb.addEventListener('change', function () { obj[f.name] = cb.checked; setDirty(true); pushChange(); });
 			lab.appendChild(cb); lab.appendChild(ce('span', null, f.label));
 			wrap.appendChild(lab);
 			return wrap;
@@ -601,6 +691,12 @@
 			if (f.type === 'text' || f.type === 'textarea' || f.type === 'richtext') {
 				postCanvas({ type: 'settext', index: state.selected, field: info.field, repeater: info.repeater, rindex: info.rindex, value: input.value });
 			}
+			// Selects apply at once (snapshot + preview reload). Typed fields keep the
+			// canvas smooth (live text above, no reload) and commit on blur (change).
+			if (f.type === 'select') { pushChange(); } else { pushTyping(); }
+		});
+		input.addEventListener('change', function () {
+			if (f.type !== 'select') { histRecord(); livePreview(); }
 		});
 		wrap.appendChild(input);
 		if (f.type === 'richtext') { wrap.appendChild(ce('span', 'aqb-hint', 'Basic HTML allowed (links, bold, italic).')); }
@@ -637,7 +733,7 @@
 		btns.appendChild(choose);
 		var clear = ce('button', 'aqb-btn aqb-btn--ghost', 'Remove');
 		clear.type = 'button';
-		clear.addEventListener('click', function () { obj[f.name] = ''; setDirty(true); paint(); });
+		clear.addEventListener('click', function () { obj[f.name] = ''; setDirty(true); paint(); pushChange(); });
 		btns.appendChild(clear);
 		box.appendChild(btns);
 		box.appendChild(ce('span', 'aqb-hint', 'Pick from the media library.'));
@@ -661,7 +757,7 @@
 		Object.keys(icons).forEach(function (name) {
 			var sw = ce('button', 'aqb-iconsw'); sw.type = 'button'; sw.title = name;
 			sw.innerHTML = icons[name];
-			sw.addEventListener('click', function () { obj[f.name] = icons[name]; setDirty(true); paint(); grid.style.display = 'none'; });
+			sw.addEventListener('click', function () { obj[f.name] = icons[name]; setDirty(true); paint(); grid.style.display = 'none'; pushChange(); });
 			grid.appendChild(sw);
 		});
 
@@ -670,7 +766,7 @@
 		choose.addEventListener('click', function () { grid.style.display = grid.style.display === 'none' ? 'grid' : 'none'; });
 		btns.appendChild(choose);
 		var clear = ce('button', 'aqb-btn aqb-btn--ghost', 'Remove'); clear.type = 'button';
-		clear.addEventListener('click', function () { obj[f.name] = ''; setDirty(true); paint(); });
+		clear.addEventListener('click', function () { obj[f.name] = ''; setDirty(true); paint(); pushChange(); });
 		btns.appendChild(clear);
 		box.appendChild(btns);
 		box.appendChild(grid);
@@ -679,7 +775,8 @@
 		adv.appendChild(ce('summary', null, 'Paste custom SVG'));
 		var ta = ce('textarea', 'aqb-input aqb-textarea aqb-code'); ta.rows = 4;
 		ta.value = obj[f.name] != null ? obj[f.name] : '';
-		ta.addEventListener('input', function () { obj[f.name] = ta.value; setDirty(true); paint(); });
+		ta.addEventListener('input', function () { obj[f.name] = ta.value; setDirty(true); paint(); pushTyping(); });
+		ta.addEventListener('change', function () { histRecord(); livePreview(); });
 		adv.appendChild(ta);
 		box.appendChild(adv);
 		return box;
@@ -693,6 +790,7 @@
 				obj[f.name] = fn; setDirty(true); paint();
 				var metap = state.images[fn];
 				postImage(ctx, f.name, oldp, fn, metap && metap.url ? metap.url : '');
+				pushChange();
 			}
 			return;
 		}
@@ -708,6 +806,7 @@
 			setDirty(true);
 			paint();
 			postImage(ctx, f.name, old, name, url);
+			pushChange();
 		});
 		frame.open();
 	}
@@ -735,9 +834,9 @@
 			var head = ce('div', 'aqb-rephead');
 			head.appendChild(ce('span', 'aqb-repnum', '#' + (ri + 1)));
 			var tools = ce('div', 'aqb-sectools');
-			tools.appendChild(iconBtn('↑', 'Up', function () { if (ri > 0) { rows.splice(ri - 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderInspector(); } }));
-			tools.appendChild(iconBtn('↓', 'Down', function () { if (ri < rows.length - 1) { rows.splice(ri + 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderInspector(); } }));
-			tools.appendChild(iconBtn('✕', 'Remove', function () { rows.splice(ri, 1); setDirty(true); renderInspector(); }, true));
+			tools.appendChild(iconBtn('↑', 'Up', function () { if (ri > 0) { rows.splice(ri - 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderInspector(); pushChange(); } }));
+			tools.appendChild(iconBtn('↓', 'Down', function () { if (ri < rows.length - 1) { rows.splice(ri + 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderInspector(); pushChange(); } }));
+			tools.appendChild(iconBtn('✕', 'Remove', function () { rows.splice(ri, 1); setDirty(true); renderInspector(); pushChange(); }, true));
 			head.appendChild(tools);
 			card.appendChild(head);
 			(f.subfields || []).forEach(function (sf) { card.appendChild(renderField(row, sf, { repeater: f.name, rindex: ri })); });
@@ -747,7 +846,7 @@
 		add.addEventListener('click', function () {
 			var blank = {};
 			(f.subfields || []).forEach(function (sf) { blank[sf.name] = sf.type === 'toggle' ? false : ''; });
-			rows.push(blank); setDirty(true); renderInspector();
+			rows.push(blank); setDirty(true); renderInspector(); pushChange();
 		});
 		box.appendChild(add);
 		return box;
@@ -758,25 +857,29 @@
 		var j = i + dir;
 		if (j < 0 || j >= state.sections.length) { return; }
 		var tmp = state.sections[i]; state.sections[i] = state.sections[j]; state.sections[j] = tmp;
-		state.selected = j; setDirty(true); renderStructure(); renderInspector();
+		state.selected = j; setDirty(true); renderStructure(); renderInspector(); syncGalleryPanel(); pushChange();
 	}
 	function duplicate(i) {
 		var copy = JSON.parse(JSON.stringify(state.sections[i]));
 		copy._uid = ++uid;
 		state.sections.splice(i + 1, 0, copy);
-		state.selected = i + 1; setDirty(true); renderStructure(); renderInspector();
+		state.selected = i + 1; setDirty(true); renderStructure(); renderInspector(); syncGalleryPanel(); pushChange();
 	}
 	function removeSection(i) {
 		if (!window.confirm('Remove this ' + labelFor(state.sections[i].type) + ' section?')) { return; }
 		state.sections.splice(i, 1);
 		if (state.selected >= state.sections.length) { state.selected = state.sections.length - 1; }
-		setDirty(true); renderStructure(); renderInspector();
+		setDirty(true); renderStructure(); renderInspector(); syncGalleryPanel(); pushChange();
 	}
 	function addSection(type) {
 		var s = { type: type, v: 1, _uid: ++uid };
 		var at = state.selected >= 0 ? state.selected + 1 : state.sections.length;
 		state.sections.splice(at, 0, s);
-		state.selected = at; setDirty(true); renderStructure(); renderInspector();
+		// Select the new section so the inspector shows it AND, for a gallery, the
+		// in-place editor opens (syncGalleryPanel via selectSection). Then snapshot
+		// history + push a live preview so the new (possibly empty) section appears.
+		selectSection(at, true);
+		setDirty(true); pushChange();
 	}
 
 	/* ---------------- in-place gallery editor ---------------- */
@@ -871,11 +974,11 @@
 		body.appendChild(gRow('Order by', gSelect(String(sec.order_by), {
 			manual: 'Manual (drag order)', title: 'Title A–Z', date_desc: 'Newest first',
 			date_asc: 'Oldest first', filename: 'Filename A–Z', random: 'Random'
-		}, function (v) { sec.order_by = v; setDirty(true); })));
-		body.appendChild(gRow('Columns', gSelect(String(sec.columns), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec.columns = v; setDirty(true); })));
-		body.appendChild(gRow('Gap', gSelect(String(sec.gap), { sm: 'Small', md: 'Medium', lg: 'Large' }, function (v) { sec.gap = v; setDirty(true); })));
-		body.appendChild(gRow('Click to enlarge', gToggle(sec.lightbox, function (v) { sec.lightbox = v; setDirty(true); })));
-		body.appendChild(gRow('Category filter bar', gToggle(sec.filters_enabled, function (v) { sec.filters_enabled = v; setDirty(true); renderGalleryPanel(); })));
+		}, function (v) { sec.order_by = v; setDirty(true); pushChange(); })));
+		body.appendChild(gRow('Columns', gSelect(String(sec.columns), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec.columns = v; setDirty(true); pushChange(); })));
+		body.appendChild(gRow('Gap', gSelect(String(sec.gap), { sm: 'Small', md: 'Medium', lg: 'Large' }, function (v) { sec.gap = v; setDirty(true); pushChange(); })));
+		body.appendChild(gRow('Click to enlarge', gToggle(sec.lightbox, function (v) { sec.lightbox = v; setDirty(true); pushChange(); })));
+		body.appendChild(gRow('Category filter bar', gToggle(sec.filters_enabled, function (v) { sec.filters_enabled = v; setDirty(true); renderGalleryPanel(); pushChange(); })));
 
 		// Categories manager (only meaningful when the filter bar is on).
 		if (sec.filters_enabled) {
@@ -899,7 +1002,7 @@
 			sec.images.splice(idx, 0, moved);
 			sec.order_by = 'manual'; // dragging defines the manual order
 			state.galDrag = null;
-			setDirty(true); renderGalleryPanel();
+			setDirty(true); renderGalleryPanel(); pushChange();
 		});
 
 		var thumb = ce('div', 'aqb-gthumb');
@@ -907,7 +1010,7 @@
 		if (url) { var im = ce('img'); im.src = url; im.alt = ''; thumb.appendChild(im); }
 		else { thumb.appendChild(ce('span', 'aqb-gthumb__id', '#' + (img.id || '?'))); }
 		var rm = ce('button', 'aqb-gremove', '×'); rm.title = 'Remove';
-		rm.addEventListener('click', function () { sec.images.splice(idx, 1); setDirty(true); renderGalleryPanel(); });
+		rm.addEventListener('click', function () { sec.images.splice(idx, 1); setDirty(true); renderGalleryPanel(); pushChange(); });
 		thumb.appendChild(rm);
 		card.appendChild(thumb);
 
@@ -937,7 +1040,7 @@
 					img.category = nv;
 				} else { sel.value = img.category || ''; return; }
 			} else { img.category = sel.value; }
-			setDirty(true); renderGalleryPanel();
+			setDirty(true); renderGalleryPanel(); pushChange();
 		});
 		return sel;
 	}
@@ -949,7 +1052,7 @@
 		sec.categories.forEach(function (row, i) {
 			var chip = ce('span', 'aqb-gchip', catLabel(row));
 			var x = ce('button', 'aqb-gchip__x', '×'); x.title = 'Remove';
-			x.addEventListener('click', function () { sec.categories.splice(i, 1); setDirty(true); renderGalleryPanel(); });
+			x.addEventListener('click', function () { sec.categories.splice(i, 1); setDirty(true); renderGalleryPanel(); pushChange(); });
 			chip.appendChild(x);
 			list.appendChild(chip);
 		});
@@ -958,7 +1061,7 @@
 		var input = ce('input', 'aqb-ginput'); input.type = 'text'; input.placeholder = 'Add category…';
 		function commit() {
 			var v = input.value.trim();
-			if (v && !sec.categories.some(function (r) { return catLabel(r) === v; })) { sec.categories.push({ label: v }); setDirty(true); renderGalleryPanel(); }
+			if (v && !sec.categories.some(function (r) { return catLabel(r) === v; })) { sec.categories.push({ label: v }); setDirty(true); renderGalleryPanel(); pushChange(); }
 			else { input.value = ''; }
 		}
 		input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
@@ -977,7 +1080,7 @@
 			var raw = window.prompt('Media library attachment IDs (comma-separated):', '');
 			if (raw) {
 				raw.split(',').forEach(function (x) { var id = parseInt(String(x).trim(), 10); if (id > 0) { sec.images.push({ id: id, caption: '', category: '' }); } });
-				setDirty(true); renderGalleryPanel();
+				setDirty(true); renderGalleryPanel(); pushChange();
 			}
 			return;
 		}
@@ -989,7 +1092,7 @@
 				state.galleryImages[String(a.id)] = { id: a.id, url: a.url, thumb: thumb, alt: a.alt || '' };
 				sec.images.push({ id: a.id, caption: '', category: '' });
 			});
-			setDirty(true); renderGalleryPanel();
+			setDirty(true); renderGalleryPanel(); pushChange();
 		});
 		frame.open();
 	}
@@ -997,12 +1100,12 @@
 	/* ---------------- save ---------------- */
 	function save() {
 		els.save.disabled = true; els.save.textContent = 'Saving…';
-		var payload = state.sections.map(function (s) { var c = {}; for (var k in s) { if (k.charAt(0) !== '_') { c[k] = s[k]; } } return c; });
-		api('/save', { method: 'POST', body: { id: CFG.pageId, sections: payload } })
+		api('/save', { method: 'POST', body: { id: CFG.pageId, sections: stripSections() } })
 			.then(function (d) {
 				if (d && d.ok) {
 					setDirty(false);
 					state.base = clone(state.sections); // committed → next (optional) review diffs from here
+					histSeed(); // saved state becomes the new undo baseline
 					state.rehighlight = state.selected;
 					els.iframe.src = CFG.canvasUrl; // reload to show the true render
 				} else {
@@ -1059,6 +1162,9 @@
 		}
 		setDirty(true);
 		syncInspectorInput(m); // keep the inspector field in step (no re-render → no focus loss)
+		// The canvas already shows this text live. Snapshot history (coalesced while
+		// typing); on commit (blur/Enter → m.done) refresh the true render too.
+		if (m.done) { histRecord(); livePreview(); } else { histRecordDebounced(); }
 	}
 	function syncInspectorInput(m) {
 		if (state.selected !== m.index) { return; }
@@ -1086,11 +1192,20 @@
 			renderStructure();
 			renderInspector();
 			setDirty(false);
+			histSeed(); // baseline history step (undo returns here)
 		});
 		window.addEventListener('beforeunload', function (e) {
 			if (state.dirty) { e.preventDefault(); e.returnValue = ''; }
 		});
 		window.addEventListener('resize', positionGalleryPanel);
+		// Keyboard: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z or Ctrl+Y = redo.
+		window.addEventListener('keydown', function (e) {
+			var mod = e.ctrlKey || e.metaKey;
+			if (!mod) { return; }
+			var k = (e.key || '').toLowerCase();
+			if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+			else if ((k === 'z' && e.shiftKey) || k === 'y') { e.preventDefault(); redo(); }
+		});
 	}
 	if (document.readyState !== 'loading') { boot(); }
 	else { document.addEventListener('DOMContentLoaded', boot); }

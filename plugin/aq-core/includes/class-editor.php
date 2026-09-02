@@ -55,6 +55,26 @@ class AQ_Editor {
 		add_filter('aq_render_section_markers', '__return_true');
 		add_filter('show_admin_bar', '__return_false'); // no WP toolbar inside the editor canvas iframe
 
+		// Live preview: when aq_preview=1 and this user has an unsaved working
+		// snapshot for this page, render FROM that transient instead of saved meta
+		// — real-time, non-persisting. Force noindex + no-cache on preview renders.
+		if (isset($_GET['aq_preview']) && $_GET['aq_preview'] === '1') {
+			$pid     = (int) get_queried_object_id();
+			$preview = $pid ? get_transient(self::preview_key($pid)) : false;
+			if (is_array($preview) && current_user_can('edit_post', $pid) && class_exists('AQ_Content_Sync')) {
+				$rows = AQ_Content_Sync::sections_for_render($preview);
+				add_filter('aq_render_sections', static function ($default, $post_id) use ($rows, $pid) {
+					return ((int) $post_id === $pid) ? $rows : $default;
+				}, 10, 2);
+				nocache_headers();
+				add_filter('wp_robots', static function ($robots) {
+					$robots['noindex']  = true;
+					$robots['nofollow'] = true;
+					return $robots;
+				});
+			}
+		}
+
 		$base = plugins_url('admin/editor/', AQ_CORE_DIR . 'aq-core.php');
 		$dir  = AQ_CORE_DIR . 'admin/editor/';
 		wp_enqueue_style('aq-canvas', $base . 'canvas.css', [], self::ver($dir . 'canvas.css'));
@@ -105,7 +125,8 @@ class AQ_Editor {
 		wp_enqueue_media(); // WordPress media-library picker (wp.media) for image fields.
 		wp_enqueue_style('aq-fonts', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap', [], null);
 		wp_enqueue_style('aq-builder', $base . 'builder.css', [], self::ver($dir . 'builder.css'));
-		wp_enqueue_script('aq-builder', $base . 'builder.js', ['jquery'], self::ver($dir . 'builder.js'), true);
+		wp_enqueue_script('aq-history', $base . 'history.js', [], self::ver($dir . 'history.js'), true);
+		wp_enqueue_script('aq-builder', $base . 'builder.js', ['jquery', 'aq-history'], self::ver($dir . 'builder.js'), true);
 		wp_localize_script('aq-builder', 'AQ_EDITOR', [
 			'restRoot'  => esc_url_raw(rest_url('aq/v1/editor')),
 			'nonce'     => wp_create_nonce('wp_rest'),
@@ -143,6 +164,64 @@ class AQ_Editor {
 			'permission_callback' => $can,
 			'callback'            => [__CLASS__, 'rest_save'],
 		]);
+
+		register_rest_route('aq/v1', '/editor/preview', [
+			'methods'             => 'POST',
+			'permission_callback' => $can,
+			'callback'            => [__CLASS__, 'rest_preview'],
+		]);
+	}
+
+	/** Transient key for a user+page live-preview snapshot (non-persisting). */
+	public static function preview_key(int $id, ?int $uid = null): string {
+		$uid = $uid ?? get_current_user_id();
+		return 'aq_editor_preview_' . $uid . '_' . $id;
+	}
+
+	/**
+	 * Keep only known layouts and drop transient client keys (_uid, etc.). Shared
+	 * by Save and the live Preview so the two see an identical working set.
+	 */
+	private static function clean_sections(array $secs): array {
+		$allowed = array_keys(self::field_schema());
+		$clean   = [];
+		foreach ($secs as $s) {
+			if (!is_array($s) || empty($s['type']) || !in_array($s['type'], $allowed, true)) {
+				continue;
+			}
+			foreach (array_keys($s) as $k) {
+				if (is_string($k) && isset($k[0]) && $k[0] === '_') {
+					unset($s[$k]);
+				}
+			}
+			$clean[] = $s;
+		}
+		return $clean;
+	}
+
+	/**
+	 * Live, NON-PERSISTING preview: sanitize the working sections and stash them
+	 * in a short-lived user+page transient. The canvas render path picks them up
+	 * (aq_preview=1) so every edit is visible in real time WITHOUT touching post
+	 * meta or the SEO review/commit gate. Nothing here writes the page.
+	 */
+	public static function rest_preview(WP_REST_Request $req) {
+		$body = $req->get_json_params();
+		$id   = (int) ($body['id'] ?? 0);
+		$secs = $body['sections'] ?? null;
+		$post = $id ? get_post($id) : null;
+
+		if (!$post || $post->post_type !== 'page') {
+			return new WP_Error('aq_not_found', 'Page not found.', ['status' => 404]);
+		}
+		if (!is_array($secs)) {
+			return new WP_Error('aq_bad_body', 'Missing sections array.', ['status' => 400]);
+		}
+		if (!current_user_can('edit_post', $id)) {
+			return new WP_Error('aq_forbidden', 'You cannot edit this page.', ['status' => 403]);
+		}
+		set_transient(self::preview_key($id), self::clean_sections($secs), 15 * MINUTE_IN_SECONDS);
+		return rest_ensure_response(['ok' => true]);
 	}
 
 	public static function rest_get_page(WP_REST_Request $req) {
@@ -239,19 +318,10 @@ class AQ_Editor {
 		}
 
 		// Only keep known layouts + drop any client-only keys.
-		$allowed = array_keys(self::field_schema());
-		$clean   = [];
-		foreach ($secs as $s) {
-			if (!is_array($s) || empty($s['type']) || !in_array($s['type'], $allowed, true)) {
-				continue;
-			}
-			foreach (array_keys($s) as $k) { // drop transient client keys (_uid, etc.)
-				if (is_string($k) && isset($k[0]) && $k[0] === '_') {
-					unset($s[$k]);
-				}
-			}
-			$clean[] = $s;
-		}
+		$clean = self::clean_sections($secs);
+
+		// A successful save supersedes any pending live-preview snapshot.
+		delete_transient(self::preview_key($id));
 
 		AQ_Content_Sync::update_sections($id, $clean);
 

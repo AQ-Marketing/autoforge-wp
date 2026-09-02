@@ -910,6 +910,31 @@ class AQ_Content_Sync {
 		update_field('field_aq_seo_jsonld_services', $services, $id);
 	}
 
+	/**
+	 * Convert working/JSON-shape sections (type + top-level fields) into the row
+	 * shape AQ_Renderer::render_sections consumes (acf_fc_layout + a resolved
+	 * top-level image ID), WITHOUT writing anything. Mirrors apply_sections()'s
+	 * per-row mapping so the editor's live preview renders exactly like a save
+	 * would — it just never persists. Nested repeater images (e.g. aq_gallery)
+	 * already carry attachment IDs and are resolved at render time.
+	 */
+	public static function sections_for_render(array $sections): array {
+		$rows = [];
+		foreach ($sections as $section) {
+			if (!is_array($section) || empty($section['type'])) {
+				continue;
+			}
+			$row = $section;
+			unset($row['type'], $row['v']);
+			$row['acf_fc_layout'] = $section['type'];
+			if (isset($row['image']) && is_string($row['image'])) {
+				$row['image'] = self::resolve_image($row['image']);
+			}
+			$rows[] = $row;
+		}
+		return $rows;
+	}
+
 	private static function apply_sections(int $id, array $sections): void {
 		if (!function_exists('update_field')) {
 			return;

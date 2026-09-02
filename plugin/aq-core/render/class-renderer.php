@@ -213,7 +213,13 @@ window.addEventListener('pageshow',function(ev){if(ev.persisted)revealAll();});
 		if (!function_exists('get_field')) {
 			return;
 		}
-		$sections = get_field('sections', $post_id);
+		// Allow a non-persisting override of the section list (the visual editor's
+		// live preview substitutes the user's unsaved working sections here). Returns
+		// null by default → fall back to the saved ACF meta.
+		$sections = apply_filters('aq_render_sections', null, $post_id);
+		if (!is_array($sections)) {
+			$sections = get_field('sections', $post_id);
+		}
 		if (!is_array($sections)) {
 			return;
 		}

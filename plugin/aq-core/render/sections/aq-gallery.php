@@ -46,8 +46,27 @@ foreach ($conf['images'] as $img) {
 	];
 }
 
-// Zero output when there is nothing to show.
+// Zero output when there is nothing to show — EXCEPT in the visual editor, where
+// an empty gallery renders a visible placeholder so a freshly-added section is
+// obvious and clickable (the in-place editor opens on it). On the public site
+// (not editing) an empty gallery still outputs nothing.
 if (!$resolved) {
+	if (function_exists('ka_is_editing') && ka_is_editing()) {
+		?>
+		<section class="aq-gallery aq-gallery--empty py-12 md:py-16 lg:py-20">
+			<div class="container-edge container-edge--wide">
+				<div class="aq-gallery__placeholder">
+					<strong>Gallery</strong>
+					<span>Add images from the panel to build this gallery.</span>
+				</div>
+			</div>
+			<style>
+			.aq-gallery__placeholder{border:2px dashed rgba(0,0,0,.2);border-radius:.75rem;padding:3rem 1.5rem;text-align:center;color:#5b6471;display:flex;flex-direction:column;gap:.35rem}
+			.aq-gallery__placeholder strong{font-size:1.05rem;color:#15191f;letter-spacing:.02em;text-transform:uppercase}
+			</style>
+		</section>
+		<?php
+	}
 	return;
 }
 
