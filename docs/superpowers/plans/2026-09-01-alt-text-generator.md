@@ -1960,3 +1960,47 @@ Deployed the 5 changed files from `feat/alt-text` @ `3c5c7d1` to ACME staging vi
 - Test files removed from the server afterward (`cleaned`).
 
 **Still to verify (blocked on a credential):** the real image→alt generation (Step 7 upload→alt, Step 8 backfill of the 223, Step 9 decorative). These need an Anthropic key set on ACME staging (AutoForge → Integrations, or the `AQ_ANTHROPIC_KEY` wp-config constant). An API key is a credential Claude must not enter — Justin sets it, then the backfill + a test upload confirm end-to-end generation before the fleet release.
+
+---
+
+# Addendum: OpenAI (ChatGPT) as an alternative alt-text provider (2026-09-01)
+
+Justin asked for a **ChatGPT model option** for alt text. Fold into the same v0.3.49
+branch/release (not yet cut). The alt-text prompt (`system_prompt`, `user_text`) and result
+shape (`parse_result` takes `{alt,decorative,confidence}`) are already provider-neutral, so
+this is a contained addition: a second client (`AQ_OpenAI`), an OpenAI key in Integrations,
+and provider routing in `AQ_Alt_Text`. Claude stays the default; the SEO Agent / editor gate
+stay Claude-only. Default OpenAI model **`gpt-4o-mini`**, with `gpt-4o` also offered; the list
+is filterable (`aq_openai_models`). OpenAI call is hand-written `wp_remote_post` to Chat
+Completions with JSON-schema structured output (the claude-api skill is Anthropic-only).
+
+## Task A: `AQ_OpenAI` client + Integrations field + wiring
+New `plugin/aq-core/includes/class-openai.php` (models() default gpt-4o-mini + gpt-4o,
+filterable; api_key() via AQ_Integrations::get('openai_key') or AQ_OPENAI_KEY; is_ready();
+resolve_model(); build_payload() pure — model + vision image_url data-URI + json_schema
+strict + max_completion_tokens:300; parse_response() pure → {alt,decorative,confidence} |
+WP_Error, handles refusal + non-JSON; describe_image() reads file → data URI → POST → parse;
+test()). Integrations: add the `openai` service (label "OpenAI (ChatGPT)", field openai_key,
+constant AQ_OPENAI_KEY), openai_key() accessor, and an `openai` case in rest_test() calling
+AQ_OpenAI::test(). aq-core.php: require class-openai.php after class-claude.php (no register).
+Tests tests/openai-test.php (build_payload, parse_response, models, resolve_model) → 6 passed.
+**Full verbatim code for this task is in the committed spec discussion / build subagent prompt.**
+
+## Task B: route AQ_Alt_Text by provider
+Add all_models() (Claude + OpenAI), provider($model) ("claude" prefix → claude else openai),
+model() (validate against all_models, unknown → claude-opus-5), provider_ready($model),
+ready(). enabled() gates on ready(). generate() computes $model early, checks
+provider_ready($model), and dispatches: openai → AQ_OpenAI::describe_image(...), claude →
+existing AQ_Claude flow; both normalize to $desc (assoc|WP_Error) → parse_result. Tests add
+provider()/all_models()/model() cases → 16 passed.
+
+## Task C: Media screen + settings provider-aware
+render(): $model/$prov/$ready/$models from the provider helpers; not-ready banner names the
+provider and says "or pick a different model below"; model <select> lists all_models(); a
+hint line under it. save() validates against all_models(). rest_run()/cli() gate on ready()
+with a provider-named message. Help topic mentions both keys.
+
+## Task D: staging re-verify + docs
+Redeploy (add class-openai.php to the deploy list), confirm class_exists("AQ_OpenAI"),
+all_models() lists both, no-key path clean; run all four suites on host (5/10/16/6). Full
+generation still needs a provider key on staging. Append a verification note; commit; push.
