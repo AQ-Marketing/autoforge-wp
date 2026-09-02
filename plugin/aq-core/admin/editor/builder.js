@@ -1168,18 +1168,8 @@
 			? 'Drag the images on the page to reorder them.'
 			: 'Images are auto-sorted. Switch “Order by” to Manual to drag-reorder on the page.'));
 
-		// Bulk toolbar (multi-select → set/clear category, bulk remove).
-		if (items.length) { p.appendChild(galBulkBar(sec, cfg)); }
-
-		// Per-image rows: checkbox + thumbnail + category + caption + remove.
-		var list = ce('div', 'aqb-gimglist');
-		if (!items.length) {
-			list.appendChild(ce('p', 'aqb-muted', 'No images yet. Use “Add images” to bulk-add from the media library.'));
-		}
-		items.forEach(function (img, idx) { list.appendChild(galImageRow(sec, cfg, img, idx, sel)); });
-		p.appendChild(list);
-
-		// Layout controls — each rendered ONLY when its config maps to a real field.
+		// Layout controls (Order by, etc.) render UP TOP so they're visible without
+		// scrolling past every image. Each renders ONLY when its config maps to a real field.
 		if (cfg.order_by) {
 			p.appendChild(gRow('Order by', gSelect(String(sec[cfg.order_by]), {
 				manual: 'Manual (drag on page)', title: 'Title A–Z', date_desc: 'Newest first',
@@ -1200,12 +1190,22 @@
 		if (galHasCats(cfg) && filtersField) {
 			p.appendChild(gRow('Category filter bar', gToggle(sec[cfg.filters], function (v) { sec[cfg.filters] = v; setDirty(true); renderInspector(); pushChange(); })));
 		}
-
 		// Categories manager (tab-order editor) — only for a STORED categories field,
 		// and only when the bar is on. In 'derive' mode categories come from items.
 		if (galHasCats(cfg) && cfg.categories && cfg.categories !== 'derive' && galFiltersOn(sec, cfg)) {
 			p.appendChild(galCategories(sec, cfg));
 		}
+
+		// Bulk toolbar (multi-select → set/clear category, bulk remove).
+		if (items.length) { p.appendChild(galBulkBar(sec, cfg)); }
+
+		// Per-image rows: checkbox + thumbnail + category + caption + remove.
+		var list = ce('div', 'aqb-gimglist');
+		if (!items.length) {
+			list.appendChild(ce('p', 'aqb-muted', 'No images yet. Use “Add images” to bulk-add from the media library.'));
+		}
+		items.forEach(function (img, idx) { list.appendChild(galImageRow(sec, cfg, img, idx, sel)); });
+		p.appendChild(list);
 	}
 
 	// Bulk toolbar: shown above the image list; the category + action buttons act
