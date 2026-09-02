@@ -25,12 +25,12 @@ t('build_payload(): model, vision image_url, json_schema, max_completion_tokens'
 	eq(false, $p['response_format']['json_schema']['schema']['additionalProperties']);
 });
 t('parse_response(): valid JSON content -> assoc {alt,decorative,confidence}', function () {
-	$r = AQ_OpenAI::parse_response(['choices' => [['message' => ['content' => '{"alt":"A red truck","decorative":false,"confidence":"high"}']]]]);
-	eq(['alt' => 'A red truck', 'decorative' => false, 'confidence' => 'high'], $r);
+	$r = AQ_OpenAI::parse_response(['choices' => [['message' => ['content' => '{"alt":"A red truck","decorative":false,"confidence":"high"}']]], 'usage' => ['prompt_tokens' => 1200, 'completion_tokens' => 25]]);
+	eq(['alt' => 'A red truck', 'decorative' => false, 'confidence' => 'high', '_usage' => ['in' => 1200, 'out' => 25]], $r);
 });
-t('parse_response(): decorative true survives; missing confidence -> medium', function () {
+t('parse_response(): decorative true survives; missing confidence -> medium; usage defaults to 0', function () {
 	$r = AQ_OpenAI::parse_response(['choices' => [['message' => ['content' => '{"alt":"","decorative":true}']]]]);
-	eq(true, $r['decorative']); eq('medium', $r['confidence']);
+	eq(true, $r['decorative']); eq('medium', $r['confidence']); eq(['in' => 0, 'out' => 0], $r['_usage']);
 });
 t('parse_response(): a refusal is a WP_Error aq_refusal', function () {
 	$r = AQ_OpenAI::parse_response(['choices' => [['message' => ['refusal' => 'no', 'content' => null]]]]);

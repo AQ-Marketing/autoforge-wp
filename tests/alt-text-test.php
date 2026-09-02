@@ -140,6 +140,34 @@ t('model(): a saved OpenAI id is honoured, an unknown id falls back to Claude', 
 	eq('claude-opus-5', AQ_Alt_Text::model());
 	if ($saved === null) { delete_option(AQ_Alt_Text::OPTION); } else { update_option(AQ_Alt_Text::OPTION, $saved, false); }
 });
+t('prices(): every offered model has an [in,out] price', function () {
+	$p = AQ_Alt_Text::prices();
+	foreach (['claude-opus-5', 'claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5', 'gpt-4o-mini', 'gpt-4o'] as $m) {
+		ok(isset($p[$m][0], $p[$m][1]), "missing price for $m");
+	}
+});
+t('cost_for(): input+output priced per 1M tokens; unknown model -> Opus tier', function () {
+	// Haiku: $1/M in, $5/M out. 1,000,000 in + 200,000 out = $1.00 + $1.00 = $2.00
+	eq(2.0, AQ_Alt_Text::cost_for('claude-haiku-4-5', ['in' => 1000000, 'out' => 200000]));
+	// gpt-4o-mini: $0.15/M in, $0.60/M out. 2000 in + 40 out.
+	eq(round((2000 * 0.15 + 40 * 0.60) / 1000000, 10), round(AQ_Alt_Text::cost_for('gpt-4o-mini', ['in' => 2000, 'out' => 40]), 10));
+	// Unknown model falls back to Opus tier ($5/$25): 1,000,000 in = $5.00
+	eq(5.0, AQ_Alt_Text::cost_for('made-up', ['in' => 1000000, 'out' => 0]));
+	eq(0.0, AQ_Alt_Text::cost_for('claude-haiku-4-5', []));
+});
+t('cost_totals()/cost_bump()/cost_reset(): accumulate then clear', function () {
+	$saved = get_option(AQ_Alt_Text::COST, null);
+	AQ_Alt_Text::cost_reset();
+	eq(['count' => 0, 'in' => 0, 'out' => 0, 'cost' => 0.0], AQ_Alt_Text::cost_totals());
+	$c1 = AQ_Alt_Text::cost_bump('claude-haiku-4-5', ['in' => 1000, 'out' => 100]); // 0.001 + 0.0005 = 0.0015
+	eq(round(0.0015, 10), round($c1, 10));
+	AQ_Alt_Text::cost_bump('claude-haiku-4-5', ['in' => 1000, 'out' => 100]);
+	$t = AQ_Alt_Text::cost_totals();
+	eq(2, $t['count']); eq(2000, $t['in']); eq(200, $t['out']); eq(round(0.003, 10), round($t['cost'], 10));
+	AQ_Alt_Text::cost_reset();
+	eq(0, AQ_Alt_Text::cost_totals()['count']);
+	if ($saved !== null) { update_option(AQ_Alt_Text::COST, $saved, false); }
+});
 
 foreach (glob($tmp . '/*') as $f) { @unlink($f); }
 @rmdir($tmp);

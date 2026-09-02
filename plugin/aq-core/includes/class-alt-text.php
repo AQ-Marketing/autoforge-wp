@@ -37,6 +37,7 @@ class AQ_Alt_Text {
 	const OPTION   = 'aq_alt_text';
 	const QUEUE    = 'aq_alt_queue';
 	const DAILY    = 'aq_alt_daily';
+	const COST     = 'aq_alt_cost';       // cumulative API spend {count, in, out, cost}
 	const LAST_RUN = 'aq_alt_last_run';
 	const HOOK     = 'aq_alt_text_run';
 
@@ -196,6 +197,59 @@ class AQ_Alt_Text {
 	/** Retry delay (seconds) after the Nth failed attempt: 2 min, 10 min, then 1 h. */
 	public static function backoff_for(int $attempts): int {
 		return [1 => 120, 2 => 600][$attempts] ?? 3600;
+	}
+
+	/* ============================================================
+	 * API cost estimate (pure arithmetic)
+	 * ============================================================ */
+
+	/** Published price per 1,000,000 tokens, [input, output], per model. Filterable. */
+	public static function prices(): array {
+		return (array) apply_filters('aq_alt_prices', [
+			'claude-opus-5'    => [5.0, 25.0],
+			'claude-opus-4-8'  => [5.0, 25.0],
+			'claude-sonnet-5'  => [2.0, 10.0],
+			'claude-haiku-4-5' => [1.0, 5.0],
+			'gpt-4o-mini'      => [0.15, 0.60],
+			'gpt-4o'           => [2.50, 10.0],
+		]);
+	}
+
+	/** Dollar cost of one call from its token usage {in,out}. Unknown model → Opus-tier. */
+	public static function cost_for(string $model, array $usage): float {
+		$p   = self::prices()[$model] ?? [5.0, 25.0];
+		$in  = (int) ($usage['in'] ?? 0);
+		$out = (int) ($usage['out'] ?? 0);
+		return ($in * (float) $p[0] + $out * (float) $p[1]) / 1000000.0;
+	}
+
+	/** Cumulative API spend since the last reset. @return array{count:int,in:int,out:int,cost:float} */
+	public static function cost_totals(): array {
+		$c = get_option(self::COST, []);
+		$c = is_array($c) ? $c : [];
+		return [
+			'count' => (int) ($c['count'] ?? 0),
+			'in'    => (int) ($c['in'] ?? 0),
+			'out'   => (int) ($c['out'] ?? 0),
+			'cost'  => (float) ($c['cost'] ?? 0),
+		];
+	}
+
+	/** Add one call's usage+cost to the running total; returns this call's dollar cost. */
+	public static function cost_bump(string $model, array $usage): float {
+		$cost = self::cost_for($model, $usage);
+		$t    = self::cost_totals();
+		update_option(self::COST, [
+			'count' => $t['count'] + 1,
+			'in'    => $t['in'] + (int) ($usage['in'] ?? 0),
+			'out'   => $t['out'] + (int) ($usage['out'] ?? 0),
+			'cost'  => $t['cost'] + $cost,
+		], false);
+		return $cost;
+	}
+
+	public static function cost_reset(): void {
+		delete_option(self::COST);
 	}
 
 	/* ============================================================
@@ -412,8 +466,12 @@ class AQ_Alt_Text {
 		$system   = self::system_prompt();
 		$user     = self::user_text(self::context_for($id));
 
+		$usage = ['in' => 0, 'out' => 0];
 		if (self::provider($model) === 'openai') {
 			$desc = AQ_OpenAI::describe_image($model, $source['path'], $src_mime, $system, $user);
+			if (!is_wp_error($desc) && is_array($desc['_usage'] ?? null)) {
+				$usage = $desc['_usage'];
+			}
 		} else {
 			$image = AQ_Claude::image_block($source['path'], $src_mime);
 			if ($image === null) {
@@ -429,7 +487,12 @@ class AQ_Alt_Text {
 				'tools'       => [self::tool_def()],
 				'tool_choice' => ['type' => 'tool', 'name' => 'set_alt_text'],
 			]);
-			$desc = is_wp_error($res) ? $res : ($res['tool_input'] ?? null);
+			if (is_wp_error($res)) {
+				$desc = $res;
+			} else {
+				$desc  = $res['tool_input'] ?? null;
+				$usage = ['in' => (int) ($res['usage']['input_tokens'] ?? 0), 'out' => (int) ($res['usage']['output_tokens'] ?? 0)];
+			}
 		}
 		if (is_wp_error($desc)) {
 			return ['ok' => false, 'status' => 'failed', 'reason' => $desc->get_error_message()];
@@ -439,6 +502,9 @@ class AQ_Alt_Text {
 			return ['ok' => false, 'status' => 'failed', 'reason' => 'no usable alt text returned'];
 		}
 		self::daily_bump();
+		// The API call succeeded and cost money regardless of the write-race check below,
+		// so record its cost now (cumulative total on the Media screen).
+		$cost = self::cost_bump($model, $usage);
 
 		// A human may have typed an alt while this sat in the queue — re-check right before writing.
 		if (trim((string) get_post_meta($id, '_wp_attachment_image_alt', true)) !== '') {
@@ -454,9 +520,10 @@ class AQ_Alt_Text {
 		update_post_meta($id, '_aq_alt_at', time());
 		update_post_meta($id, '_aq_alt_model', $model);
 		update_post_meta($id, '_aq_alt_confidence', $parsed['confidence']);
+		update_post_meta($id, '_aq_alt_cost', (int) round($cost * 1000000)); // micro-dollars
 		delete_post_meta($id, '_aq_alt_fail');
 		delete_post_meta($id, '_aq_alt_skip');
-		return ['ok' => true, 'status' => $parsed['decorative'] ? 'decorative' : 'written', 'alt' => $parsed['alt']];
+		return ['ok' => true, 'status' => $parsed['decorative'] ? 'decorative' : 'written', 'alt' => $parsed['alt'], 'cost' => $cost];
 	}
 
 	/**
@@ -468,13 +535,14 @@ class AQ_Alt_Text {
 	public static function process_queue(int $limit, float $budget): array {
 		$start = microtime(true);
 		$q     = self::queue();
-		$out   = ['processed' => 0, 'remaining' => 0, 'deferred' => false, 'results' => []];
+		$out   = ['processed' => 0, 'remaining' => 0, 'deferred' => false, 'cost' => 0.0, 'results' => []];
 		foreach (self::due_ids($q) as $id) {
 			if ($out['processed'] >= $limit || (microtime(true) - $start) > $budget) {
 				break;
 			}
 			$r = self::generate($id);
 			$out['results'][] = ['id' => $id] + $r;
+			$out['cost'] += (float) ($r['cost'] ?? 0);
 			$out['processed']++;
 			if ($r['status'] === 'deferred') {
 				$out['deferred'] = true;
@@ -528,13 +596,14 @@ class AQ_Alt_Text {
 	 */
 	public static function process_missing(int $limit, float $budget): array {
 		$start = microtime(true);
-		$out   = ['processed' => 0, 'remaining' => 0, 'deferred' => false, 'results' => []];
+		$out   = ['processed' => 0, 'remaining' => 0, 'deferred' => false, 'cost' => 0.0, 'results' => []];
 		foreach (self::missing_ids($limit) as $id) {
 			if ((microtime(true) - $start) > $budget) {
 				break;
 			}
 			$r = self::generate($id);
 			$out['results'][] = ['id' => $id] + $r;
+			$out['cost'] += (float) ($r['cost'] ?? 0);
 			$out['processed']++;
 			if ($r['status'] === 'deferred') {
 				$out['deferred'] = true;
@@ -656,6 +725,7 @@ class AQ_Alt_Text {
 		$r = $mode === 'queue' ? self::process_queue($limit, self::REST_BUDGET) : self::process_missing($limit, self::REST_BUDGET);
 		$r['ok']              = true;
 		$r['daily_remaining'] = self::daily_remaining();
+		$r['cost_total']      = round(self::cost_totals()['cost'], 4);
 		$r['results']         = array_map([__CLASS__, 'result_row'], $r['results']);
 		return rest_ensure_response($r);
 	}
@@ -667,6 +737,7 @@ class AQ_Alt_Text {
 			'settings'        => self::settings(),
 			'claude_ready'    => self::claude_ready(),
 			'daily_remaining' => self::daily_remaining(),
+			'cost'            => self::cost_totals(),
 		]);
 	}
 
@@ -703,7 +774,12 @@ class AQ_Alt_Text {
 		foreach ($r['results'] as $row) {
 			\WP_CLI::log(sprintf('%-6d %-10s %s', $row['id'], $row['status'], (string) ($row['alt'] ?? ($row['reason'] ?? ''))));
 		}
-		\WP_CLI::success(sprintf('%d processed, %d remaining%s.', $r['processed'], $r['remaining'], $r['deferred'] ? ' (daily cap reached)' : ''));
+		$totals = self::cost_totals();
+		\WP_CLI::success(sprintf(
+			'%d processed, %d remaining%s. This run ~$%.4f; total so far ~$%.2f over %d image(s).',
+			$r['processed'], $r['remaining'], $r['deferred'] ? ' (daily cap reached)' : '',
+			(float) ($r['cost'] ?? 0), $totals['cost'], $totals['count']
+		));
 	}
 
 	/* ============================================================
@@ -717,6 +793,9 @@ class AQ_Alt_Text {
 	public static function render(): void {
 		if (!current_user_can(self::CAP)) {
 			return;
+		}
+		if (isset($_GET['aq_cost_reset']) && check_admin_referer('aq_alt_cost_reset')) {
+			self::cost_reset();
 		}
 		$s      = self::settings();
 		$c      = self::counts();
@@ -774,6 +853,8 @@ class AQ_Alt_Text {
 			<div class="aq-alt-stat"><b id="aq-alt-missing"><?php echo (int) $c['missing']; ?></b><span>missing alt text</span></div>
 			<div class="aq-alt-stat"><b id="aq-alt-ai"><?php echo (int) $c['ai']; ?></b><span>written by AutoForge</span></div>
 			<div class="aq-alt-stat"><b><?php echo (int) $c['decorative']; ?></b><span>marked decorative</span></div>
+			<?php $cost = self::cost_totals(); ?>
+			<div class="aq-alt-stat"><b>$<?php echo esc_html(number_format($cost['cost'], 2)); ?></b><span>est. API cost<?php if ($cost['count']) : ?> &middot; <?php echo (int) $cost['count']; ?> calls &middot; <a href="<?php echo esc_url(wp_nonce_url(add_query_arg(['page' => self::SLUG, 'aq_cost_reset' => 1], admin_url('admin.php')), 'aq_alt_cost_reset')); ?>">reset</a><?php endif; ?></span></div>
 			<?php if ($c['failed'] || $c['queued']) : ?>
 				<div class="aq-alt-stat"><b><?php echo (int) $c['failed']; ?></b><span>failed · <?php echo (int) $c['queued']; ?> queued</span></div>
 			<?php endif; ?>
@@ -878,7 +959,8 @@ class AQ_Alt_Text {
 							if (d.deferred) { run.disabled = false; st.textContent = '⏸ Daily allowance reached — ' + done + ' done today; the rest continue tomorrow.'; st.style.color = '#b26a00'; return; }
 							if ((d.remaining || 0) > 0 && (d.processed || 0) > 0) { st.textContent = 'Writing alt text… ' + done + ' done, ' + d.remaining + ' to go'; step(); return; }
 							run.disabled = (d.remaining || 0) === 0; if (retry) { retry.disabled = false; }
-							st.textContent = '✓ Done — ' + done + ' image(s) described.'; st.style.color = '#1a8f4f';
+							var costNote = (typeof d.cost_total === 'number') ? ' Total API cost so far ~$' + d.cost_total.toFixed(2) + '.' : '';
+							st.textContent = '✓ Done — ' + done + ' image(s) described.' + costNote; st.style.color = '#1a8f4f';
 						})
 						.catch(function (e) { fail('Interrupted (' + e.message + '). Click again to continue — finished work is saved.'); });
 				}

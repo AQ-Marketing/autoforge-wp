@@ -81,9 +81,12 @@ class AQ_OpenAI {
 
 	/**
 	 * Normalize a decoded Chat Completions response to the alt-text assoc
-	 * {alt, decorative, confidence}, or a WP_Error. Pure.
+	 * {alt, decorative, confidence, _usage:{in,out}}, or a WP_Error. Pure.
+	 * `_usage` carries the prompt/completion token counts for cost tracking;
+	 * AQ_Alt_Text::parse_result reads only alt/decorative/confidence, so the
+	 * extra key passes through harmlessly and is never written to meta.
 	 *
-	 * @return array{alt:string,decorative:bool,confidence:string}|WP_Error
+	 * @return array{alt:string,decorative:bool,confidence:string,_usage:array}|WP_Error
 	 */
 	public static function parse_response(array $data) {
 		$msg = $data['choices'][0]['message'] ?? null;
@@ -97,10 +100,12 @@ class AQ_OpenAI {
 		if (!is_array($parsed)) {
 			return new WP_Error('aq_openai_json', 'OpenAI did not return valid JSON.', ['status' => 502]);
 		}
+		$u = is_array($data['usage'] ?? null) ? $data['usage'] : [];
 		return [
 			'alt'        => (string) ($parsed['alt'] ?? ''),
 			'decorative' => !empty($parsed['decorative']) && $parsed['decorative'] !== 'false',
 			'confidence' => (string) ($parsed['confidence'] ?? 'medium'),
+			'_usage'     => ['in' => (int) ($u['prompt_tokens'] ?? 0), 'out' => (int) ($u['completion_tokens'] ?? 0)],
 		];
 	}
 
