@@ -104,6 +104,7 @@ require_once AQ_CORE_DIR . 'includes/class-alt-text.php';
 require_once AQ_CORE_DIR . 'includes/class-editor-review.php';
 require_once AQ_CORE_DIR . 'includes/class-assistant-rules.php';
 require_once AQ_CORE_DIR . 'includes/class-knowledge.php';
+require_once AQ_CORE_DIR . 'includes/class-ranking-audit.php';
 require_once AQ_CORE_DIR . 'includes/class-assistant.php';
 require_once AQ_CORE_DIR . 'includes/class-integrations.php';
 require_once AQ_CORE_DIR . 'includes/class-importer.php';
@@ -141,6 +142,8 @@ register_activation_hook(__FILE__, static function () {
 
 // Clear the SEO Agent's scheduled scan when the plugin is deactivated.
 register_deactivation_hook(__FILE__, ['AQ_SEO_Agent', 'deactivate']);
+// Clear the 14-day supplementary ranking audit when the plugin is deactivated.
+register_deactivation_hook(__FILE__, ['AQ_Ranking_Audit', 'unschedule']);
 
 AQ_Cleanup::register();
 AQ_Comments::register();
@@ -162,6 +165,7 @@ AQ_Editor_Review::register();
 AQ_Integrations::register();
 AQ_Alt_Text::register();
 AQ_Knowledge::register();
+AQ_Ranking_Audit::register(); // 14-day cron schedule + ensure_scheduled() on init
 AQ_Assistant::register();
 AQ_Importer::register();
 AQ_Global_Styles::register();

@@ -101,6 +101,20 @@ class AQ_Assistant {
 		register_rest_route('aq/v1', '/assistant/message', ['methods' => 'POST', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_message']]);
 		register_rest_route('aq/v1', '/assistant/apply', ['methods' => 'POST', 'permission_callback' => $can, 'callback' => [__CLASS__, 'rest_apply']]);
 		register_rest_route('aq/v1', '/assistant/undo', ['methods' => 'POST', 'permission_callback' => function () { return current_user_can(self::CAP); }, 'callback' => [__CLASS__, 'rest_undo']]);
+		// Agency-only manual trigger for the supplementary ranking audit.
+		register_rest_route('aq/v1', '/ranking/scan', [
+			'methods'             => 'POST',
+			'permission_callback' => function () { return class_exists('AQ_Knowledge') ? AQ_Knowledge::can_edit() : current_user_can(self::CAP); },
+			'callback'            => [__CLASS__, 'rest_ranking_scan'],
+		]);
+	}
+
+	/** POST /ranking/scan — run the DataForSEO ranking audit now (agency admins only). */
+	public static function rest_ranking_scan(WP_REST_Request $req) {
+		if (!class_exists('AQ_Ranking_Audit')) {
+			return rest_ensure_response(['ok' => false, 'error' => 'Ranking audit unavailable.']);
+		}
+		return rest_ensure_response(AQ_Ranking_Audit::run_scan());
 	}
 
 	/** GET /assistant/context/{id} — page SEO values, plan status, field labels. */
@@ -265,6 +279,19 @@ class AQ_Assistant {
 	private static function run_guardian(int $id, WP_Post $post, array $sections, array $sel, string $message, array $thread): array {
 		$system = self::system_prompt($id, $post);
 		$user   = self::user_prompt($sections, $sel, $message, $thread, $id);
+		// Supplementary ranking signal: loaded ONLY when this edit is
+		// ranking-relevant AND a cached snapshot exists — and only the rows for
+		// THIS page's target keywords. Appended to the USER prompt (never the
+		// system prompt). It can only break a tie between acceptable wordings; it
+		// never feeds the deterministic rules and is never a reason on its own.
+		if (self::ranking_relevant($id, $sel, $message)
+			&& class_exists('AQ_Ranking_Audit') && AQ_Ranking_Audit::snapshot() !== null) {
+			$rows = AQ_Ranking_Audit::rows_for_page($id);
+			if ($rows) {
+				$user .= "\n\n" . self::rankings_block($rows, AQ_Ranking_Audit::age_days());
+			}
+			AQ_Ranking_Audit::refresh_async(); // quietly top up a stale snapshot for next time
+		}
 		$tools  = [self::tool_propose(), self::tool_answer(), self::tool_need_selection()];
 
 		$res = AQ_Claude::message([
@@ -457,8 +484,6 @@ class AQ_Assistant {
 			wp_json_encode($company, JSON_UNESCAPED_SLASHES),
 			'== TRACKED KEYWORDS ==',
 			wp_json_encode($seo['trackedKeywords'] ?? [], JSON_UNESCAPED_SLASHES),
-			'== CURRENT SEARCH RANKINGS (from the SEO Agent; use to prioritise — protect strong positions, push weak ones. Empty means no scan has run yet) ==',
-			wp_json_encode($seo['rankingSnapshot'] ?? null, JSON_UNESCAPED_SLASHES),
 			'== ALL PAGES (watch for two pages targeting the same thing) ==',
 			wp_json_encode($inv, JSON_UNESCAPED_SLASHES),
 		];
@@ -503,6 +528,65 @@ class AQ_Assistant {
 		$out[] = '';
 		$out[] = 'USER REQUEST: ' . $message;
 		return implode("\n", $out);
+	}
+
+	/**
+	 * Is this edit ranking-relevant? True when it targets a heading, the page SEO
+	 * title or meta description, or otherwise changes keyword-bearing copy. Used to
+	 * decide whether to load the supplementary rankings at all — for a plain
+	 * body/paragraph rewrite that carries none of the page's keywords, we load
+	 * nothing about rankings.
+	 */
+	private static function ranking_relevant(int $id, array $sel, string $message): bool {
+		$headingFields = class_exists('AQ_Assistant_Rules') ? AQ_Assistant_Rules::HEADING_FIELDS : ['heading', 'title', 'subheading', 'sub', 'h1'];
+		if ($sel) {
+			if (($sel['kind'] ?? '') === 'seo') { return true; } // seo.title / seo.description
+			$fk = (string) ($sel['fieldKind'] ?? '');
+			if (strpos($fk, 'seo.') === 0) { return true; }
+			if (in_array((string) ($sel['field'] ?? ''), $headingFields, true)) { return true; }
+			// A body/paragraph edit is ranking-relevant if the field carries a keyword.
+			if (self::text_has_page_keyword($id, (string) ($sel['value'] ?? ''))) { return true; }
+		}
+		// Plain chat (no click): use the request wording.
+		$m = strtolower($message);
+		foreach (['seo title', 'page title', 'meta title', 'meta description', 'description', 'heading', 'headline', 'title tag', 'h1', 'subheading'] as $needle) {
+			if (strpos($m, $needle) !== false) { return true; }
+		}
+		return self::text_has_page_keyword($id, $message);
+	}
+
+	/** True when $text covers this page's primary or a secondary keyword. */
+	private static function text_has_page_keyword(int $id, string $text): bool {
+		if (trim($text) === '' || !class_exists('AQ_Knowledge')) { return false; }
+		$plan    = AQ_Knowledge::page_plan($id);
+		$primary = (string) ($plan['primary_intent'] ?? '');
+		if (class_exists('AQ_Assistant_Rules')) {
+			if ($primary !== '' && AQ_Assistant_Rules::has_kw($text, $primary)) { return true; }
+			foreach (AQ_Assistant_Rules::str_list($plan['secondary_keywords'] ?? []) as $kw) {
+				if (AQ_Assistant_Rules::has_kw($text, $kw)) { return true; }
+			}
+			return false;
+		}
+		// Fallback: simple case-insensitive contains on the primary keyword.
+		return $primary !== '' && stripos($text, $primary) !== false;
+	}
+
+	/**
+	 * The compact supplementary rankings block appended to the user prompt. One
+	 * line per keyword row, followed by the fixed guardrail instruction.
+	 */
+	private static function rankings_block(array $rows, ?int $ageDays): string {
+		$age   = $ageDays === null ? 'unknown' : (string) $ageDays;
+		$lines = ['== RANKINGS (supplementary only; snapshot ' . $age . ' days old) =='];
+		foreach ($rows as $r) {
+			$kw  = (string) ($r['keyword'] ?? '');
+			if ($kw === '') { continue; }
+			$pos = ($r['position'] ?? null) !== null ? (string) (int) $r['position'] : 'not ranking';
+			$vol = ($r['volume'] ?? null) !== null ? (string) (int) $r['volume'] : 'n/a';
+			$lines[] = '"' . $kw . '": position ' . $pos . ', volume ' . $vol;
+		}
+		$lines[] = 'Use these ONLY to choose between wordings that are already acceptable — protect phrasing that holds a strong position, allow more change where ranking is weak or absent. Rankings NEVER override the audit, plan, or brief, and are NEVER on their own a reason to approve or block.';
+		return implode("\n", $lines);
 	}
 
 	private static function tool_propose(): array {
@@ -791,8 +875,62 @@ class AQ_Assistant {
 			<?php endforeach; ?>
 			</tbody></table>
 		<?php endif; ?>
+		<?php self::render_rankings_card(); ?>
 		<?php
 		AQ_Admin_Hub::close();
+	}
+
+	/** Read-only "Search rankings" card: snapshot age, credential status, next run, manual run (agency only). */
+	private static function render_rankings_card(): void {
+		if (!class_exists('AQ_Ranking_Audit')) { return; }
+		$age      = AQ_Ranking_Audit::age_days();
+		$hasCred  = AQ_Ranking_Audit::has_credentials();
+		$next     = (int) wp_next_scheduled('aq_ranking_audit_event');
+		$canRun   = class_exists('AQ_Knowledge') ? AQ_Knowledge::can_edit() : current_user_can(self::CAP);
+		$ageText  = $age === null ? 'No audit yet' : ('Last audit: ' . (int) $age . ' day' . ($age === 1 ? '' : 's') . ' ago');
+		$credText = $hasCred ? 'DataForSEO connected' : 'Add DataForSEO login in Integrations';
+		$nextText = $next ? ('Next scheduled run: ' . esc_html(human_time_diff(time(), $next)) . ' from now') : 'Not scheduled';
+		?>
+		<h2 style="margin-top:26px">Search rankings <span style="font-weight:400;color:#8a9099;font-size:13px">(supplementary signal)</span></h2>
+		<div class="aq-panel">
+			<p class="aq-int-hint" style="margin:0 0 12px;color:#5b6471;font-size:12.5px">A background audit refreshes this site's Google positions for its target keywords every 14 days. The assistant consults them only when an edit touches a heading, the SEO title, the meta description, or keyword-bearing copy — and only to break a tie between wordings. They never override the plan.</p>
+			<div class="aq-as-lights">
+				<div class="aq-as-light"><span class="aq-as-dot aq-as-dot--<?php echo $age === null ? 'warn' : ($age >= AQ_Ranking_Audit::TTL_DAYS ? 'warn' : 'ok'); ?>"></span><?php echo esc_html($ageText); ?></div>
+				<div class="aq-as-light"><span class="aq-as-dot aq-as-dot--<?php echo $hasCred ? 'ok' : 'no'; ?>"></span><?php echo esc_html($credText); ?></div>
+				<div class="aq-as-light"><span class="aq-as-dot aq-as-dot--<?php echo $next ? 'ok' : 'warn'; ?>"></span><?php echo $nextText; ?></div>
+			</div>
+			<?php if ($canRun) : ?>
+				<div style="display:flex;align-items:center;gap:12px;margin-top:6px">
+					<button type="button" class="button" id="aq-rank-run" <?php disabled(!$hasCred); ?>>Run audit now</button>
+					<span id="aq-rank-msg" role="status" aria-live="polite" style="font-size:12.5px;color:#5b6471"><?php echo $hasCred ? '' : 'Add DataForSEO credentials first.'; ?></span>
+				</div>
+				<script>
+				(function () {
+					var btn = document.getElementById('aq-rank-run'), msg = document.getElementById('aq-rank-msg');
+					if (!btn) { return; }
+					var url = '<?php echo esc_url_raw(rest_url('aq/v1/ranking/scan')); ?>';
+					var nonce = '<?php echo esc_js(wp_create_nonce('wp_rest')); ?>';
+					btn.addEventListener('click', function () {
+						btn.disabled = true; msg.textContent = 'Running audit…'; msg.style.color = '#5b6471';
+						fetch(url, { method: 'POST', credentials: 'same-origin', headers: { 'X-WP-Nonce': nonce } })
+							.then(function (r) { return r.json(); })
+							.then(function (d) {
+								btn.disabled = false;
+								if (d && d.ok) {
+									msg.textContent = '✓ Audit complete — ' + d.count + ' keywords checked, ' + d.ranked + ' ranking.';
+									msg.style.color = '#1a8f4f';
+								} else {
+									msg.textContent = '✕ ' + ((d && d.error) || 'Audit failed.');
+									msg.style.color = '#a30d25';
+								}
+							})
+							.catch(function (e) { btn.disabled = false; msg.textContent = '✕ ' + e.message; msg.style.color = '#a30d25'; });
+					});
+				})();
+				</script>
+			<?php endif; ?>
+		</div>
+		<?php
 	}
 
 	public static function save_settings(): void {
