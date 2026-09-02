@@ -39,6 +39,13 @@ class AQ_Integrations {
 					'anthropic_key' => ['label' => 'API key', 'constant' => 'AQ_ANTHROPIC_KEY', 'hint' => 'Starts with "sk-ant-". Create one at console.anthropic.com.', 'tip' => 'Secret key that lets the site use Claude for its AI features.'],
 				],
 			],
+			'openai' => [
+				'label'  => 'OpenAI (ChatGPT)',
+				'desc'   => 'Optional alternative provider for automatic image alt text (AutoForge → Media). Claude is used unless a Media page model from OpenAI is selected.',
+				'fields' => [
+					'openai_key' => ['label' => 'API key', 'constant' => 'AQ_OPENAI_KEY', 'hint' => 'Starts with "sk-". Create one at platform.openai.com.', 'tip' => 'Secret key that lets the site use OpenAI (ChatGPT) for image alt text.'],
+				],
+			],
 			'dataforseo' => [
 				'label'  => 'DataForSEO',
 				'desc'   => 'Keyword & SERP data API (HTTP Basic auth: login + password).',
@@ -98,6 +105,10 @@ class AQ_Integrations {
 
 	public static function anthropic_key(): string {
 		return self::get('anthropic_key');
+	}
+
+	public static function openai_key(): string {
+		return self::get('openai_key');
 	}
 
 	/** ['login' => ..., 'password' => ...] for DataForSEO HTTP Basic auth. */
@@ -327,6 +338,11 @@ class AQ_Integrations {
 			return rest_ensure_response(class_exists('AQ_Claude')
 				? AQ_Claude::test()
 				: ['ok' => false, 'message' => 'Claude client unavailable.']);
+		}
+		if ($svc === 'openai') {
+			return rest_ensure_response(class_exists('AQ_OpenAI')
+				? AQ_OpenAI::test()
+				: ['ok' => false, 'message' => 'OpenAI client unavailable.']);
 		}
 		if ($svc === 'dataforseo') {
 			$cred = self::dataforseo();

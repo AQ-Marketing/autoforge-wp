@@ -99,6 +99,7 @@ require_once AQ_CORE_DIR . 'includes/class-locations.php';
 require_once AQ_CORE_DIR . 'includes/class-performance.php';
 require_once AQ_CORE_DIR . 'includes/class-editor.php';
 require_once AQ_CORE_DIR . 'includes/class-claude.php';
+require_once AQ_CORE_DIR . 'includes/class-openai.php';
 require_once AQ_CORE_DIR . 'includes/class-alt-text.php';
 require_once AQ_CORE_DIR . 'includes/class-editor-review.php';
 require_once AQ_CORE_DIR . 'includes/class-integrations.php';
