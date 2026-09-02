@@ -579,11 +579,24 @@ class AQ_Assistant {
 		$age   = $ageDays === null ? 'unknown' : (string) $ageDays;
 		$lines = ['== RANKINGS (supplementary only; snapshot ' . $age . ' days old) =='];
 		foreach ($rows as $r) {
-			$kw  = (string) ($r['keyword'] ?? '');
+			$kw = (string) ($r['keyword'] ?? '');
 			if ($kw === '') { continue; }
-			$pos = ($r['position'] ?? null) !== null ? (string) (int) $r['position'] : 'not ranking';
+			$gsc = $r['gsc_position'] ?? null;
+			$imp = (int) ($r['impressions'] ?? 0);
+			$clk = (int) ($r['clicks'] ?? 0);
 			$vol = ($r['volume'] ?? null) !== null ? (string) (int) $r['volume'] : 'n/a';
-			$lines[] = '"' . $kw . '": position ' . $pos . ', volume ' . $vol;
+			// Observed extra: a real query the page gets impressions for, not a target keyword.
+			if (!empty($r['observed'])) {
+				$pos = $gsc !== null ? (string) round((float) $gsc, 1) : 'n/a';
+				$lines[] = 'also showing for "' . $kw . '": GSC avg position ' . $pos . ' (' . $imp . ' impressions)';
+				continue;
+			}
+			// Prefer GSC ground truth; fall back to "not ranking" when GSC has no impressions.
+			if ($gsc !== null) {
+				$lines[] = '"' . $kw . '": GSC avg position ' . round((float) $gsc, 1) . ' (' . $imp . ' impressions, ' . $clk . ' clicks); volume ' . $vol;
+			} else {
+				$lines[] = '"' . $kw . '": not ranking (no GSC impressions); volume ' . $vol;
+			}
 		}
 		$lines[] = 'Use these ONLY to choose between wordings that are already acceptable — protect phrasing that holds a strong position, allow more change where ranking is weak or absent. Rankings NEVER override the audit, plan, or brief, and are NEVER on their own a reason to approve or block.';
 		return implode("\n", $lines);
@@ -885,24 +898,39 @@ class AQ_Assistant {
 		if (!class_exists('AQ_Ranking_Audit')) { return; }
 		$age      = AQ_Ranking_Audit::age_days();
 		$hasCred  = AQ_Ranking_Audit::has_credentials();
+		$hasGsc   = AQ_Ranking_Audit::has_gsc_credentials();
 		$next     = (int) wp_next_scheduled('aq_ranking_audit_event');
 		$canRun   = class_exists('AQ_Knowledge') ? AQ_Knowledge::can_edit() : current_user_can(self::CAP);
 		$ageText  = $age === null ? 'No audit yet' : ('Last audit: ' . (int) $age . ' day' . ($age === 1 ? '' : 's') . ' ago');
 		$credText = $hasCred ? 'DataForSEO connected' : 'Add DataForSEO login in Integrations';
 		$nextText = $next ? ('Next scheduled run: ' . esc_html(human_time_diff(time(), $next)) . ' from now') : 'Not scheduled';
+		// GSC sub-block: connection, its own snapshot age, and the configured property.
+		$snap     = AQ_Ranking_Audit::snapshot();
+		$gscSite  = class_exists('AQ_Integrations') ? (string) (AQ_Integrations::gsc()['site_url'] ?? '') : '';
+		$gscGen   = (is_array($snap) && !empty($snap['gsc']['generated_at'])) ? (int) $snap['gsc']['generated_at'] : 0;
+		$gscAge   = $gscGen ? AQ_Ranking_Audit::age_days_from($gscGen, time()) : null;
+		if ($hasGsc) {
+			$gscText = 'Google Search Console connected'
+				. ($gscSite !== '' ? ' (' . $gscSite . ')' : '')
+				. ' — ' . ($gscAge === null ? 'no data yet' : ('data ' . (int) $gscAge . ' day' . ($gscAge === 1 ? '' : 's') . ' old'));
+		} else {
+			$gscText = 'Add Google service account in Integrations';
+		}
 		?>
 		<h2 style="margin-top:26px">Search rankings <span style="font-weight:400;color:#8a9099;font-size:13px">(supplementary signal)</span></h2>
 		<div class="aq-panel">
-			<p class="aq-int-hint" style="margin:0 0 12px;color:#5b6471;font-size:12.5px">A background audit refreshes this site's Google positions for its target keywords every 14 days. The assistant consults them only when an edit touches a heading, the SEO title, the meta description, or keyword-bearing copy — and only to break a tie between wordings. They never override the plan.</p>
+			<p class="aq-int-hint" style="margin:0 0 12px;color:#5b6471;font-size:12.5px">A background audit refreshes this site's Google performance every 14 days from two sources merged together — Google Search Console (real average position, impressions and clicks, preferred as ground truth) and DataForSEO (search volume, plus positions for keywords not yet showing in GSC). The assistant consults them only when an edit touches a heading, the SEO title, the meta description, or keyword-bearing copy — and only to break a tie between wordings. They never override the plan.</p>
 			<div class="aq-as-lights">
 				<div class="aq-as-light"><span class="aq-as-dot aq-as-dot--<?php echo $age === null ? 'warn' : ($age >= AQ_Ranking_Audit::TTL_DAYS ? 'warn' : 'ok'); ?>"></span><?php echo esc_html($ageText); ?></div>
+				<div class="aq-as-light"><span class="aq-as-dot aq-as-dot--<?php echo $hasGsc ? 'ok' : 'no'; ?>"></span><?php echo esc_html($gscText); ?></div>
 				<div class="aq-as-light"><span class="aq-as-dot aq-as-dot--<?php echo $hasCred ? 'ok' : 'no'; ?>"></span><?php echo esc_html($credText); ?></div>
 				<div class="aq-as-light"><span class="aq-as-dot aq-as-dot--<?php echo $next ? 'ok' : 'warn'; ?>"></span><?php echo $nextText; ?></div>
 			</div>
 			<?php if ($canRun) : ?>
+				<?php $canScan = $hasCred || $hasGsc; ?>
 				<div style="display:flex;align-items:center;gap:12px;margin-top:6px">
-					<button type="button" class="button" id="aq-rank-run" <?php disabled(!$hasCred); ?>>Run audit now</button>
-					<span id="aq-rank-msg" role="status" aria-live="polite" style="font-size:12.5px;color:#5b6471"><?php echo $hasCred ? '' : 'Add DataForSEO credentials first.'; ?></span>
+					<button type="button" class="button" id="aq-rank-run" <?php disabled(!$canScan); ?>>Run audit now</button>
+					<span id="aq-rank-msg" role="status" aria-live="polite" style="font-size:12.5px;color:#5b6471"><?php echo $canScan ? 'Runs both sources.' : 'Add DataForSEO or Google Search Console credentials first.'; ?></span>
 				</div>
 				<script>
 				(function () {
@@ -917,7 +945,10 @@ class AQ_Assistant {
 							.then(function (d) {
 								btn.disabled = false;
 								if (d && d.ok) {
-									msg.textContent = '✓ Audit complete — ' + d.count + ' keywords checked, ' + d.ranked + ' ranking.';
+									var parts = [];
+									if (typeof d.count === 'number') { parts.push(d.count + ' keywords checked, ' + (d.ranked || 0) + ' ranking (DataForSEO)'); }
+									if (typeof d.gsc_count === 'number') { parts.push(d.gsc_count + ' query rows (Search Console)'); }
+									msg.textContent = '✓ Audit complete — ' + (parts.join('; ') || 'done') + '.';
 									msg.style.color = '#1a8f4f';
 								} else {
 									msg.textContent = '✕ ' + ((d && d.error) || 'Audit failed.');

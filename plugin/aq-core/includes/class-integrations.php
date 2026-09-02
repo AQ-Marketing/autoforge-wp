@@ -54,6 +54,15 @@ class AQ_Integrations {
 					'dataforseo_password' => ['label' => 'Password', 'constant' => 'AQ_DATAFORSEO_PASSWORD', 'hint' => 'Your DataForSEO API password (the API password, not your account password). Kept hidden.', 'tip' => 'Your DataForSEO API password, not your account password.'],
 				],
 			],
+			'gsc' => [
+				'label'  => 'Google Search Console',
+				'desc'   => 'Service-account access to your Search Console property. Feeds the site\'s REAL Google performance (average position, impressions, clicks) into the same 14-day ranking audit as DataForSEO.',
+				'fields' => [
+					'gsc_client_email' => ['label' => 'Service account email', 'constant' => 'AQ_GSC_CLIENT_EMAIL', 'hint' => 'The client_email from the service-account JSON, e.g. name@project.iam.gserviceaccount.com. Add this account as a user of the Search Console property.', 'visible' => true, 'tip' => 'The service-account email that reads your Search Console data.'],
+					'gsc_private_key'  => ['label' => 'Service account private key (PEM)', 'constant' => 'AQ_GSC_PRIVATE_KEY', 'hint' => 'The private_key value from the service-account JSON — the whole -----BEGIN PRIVATE KEY----- … -----END PRIVATE KEY----- block, newlines and all. Kept encrypted; paste to replace.', 'multiline' => true, 'tip' => 'The private key from the service-account JSON. Multi-line; paste it exactly.'],
+					'gsc_site_url'     => ['label' => 'Search Console property', 'constant' => 'AQ_GSC_SITE_URL', 'hint' => 'The exact property as shown in Search Console, e.g. sc-domain:example.com or https://example.com/.', 'visible' => true, 'tip' => 'The Search Console property to read, e.g. sc-domain:example.com.'],
+				],
+			],
 			'github' => [
 				'label'  => 'GitHub',
 				'desc'   => 'Used by the Import tool to pull a site from a private GitHub repo. Public repos need no token.',
@@ -114,6 +123,15 @@ class AQ_Integrations {
 	/** ['login' => ..., 'password' => ...] for DataForSEO HTTP Basic auth. */
 	public static function dataforseo(): array {
 		return ['login' => self::get('dataforseo_login'), 'password' => self::get('dataforseo_password')];
+	}
+
+	/** ['client_email' => ..., 'private_key' => ..., 'site_url' => ...] for the GSC service account. */
+	public static function gsc(): array {
+		return [
+			'client_email' => self::get('gsc_client_email'),
+			'private_key'  => self::get('gsc_private_key'),
+			'site_url'     => self::get('gsc_site_url'),
+		];
 	}
 
 	public static function github_token(): string {
@@ -222,7 +240,17 @@ class AQ_Integrations {
 						<div class="aq-int-field">
 							<label for="aq-int-<?php echo esc_attr($key); ?>"><?php echo esc_html($def['label']); ?><?php echo AQ_Admin_Hub::tip($def['tip'] ?? ''); ?></label>
 							<div class="aq-int-row">
-								<?php if ($visible) : // username/email — shown by default, with a Hide/Show toggle ?>
+								<?php if (!empty($def['multiline'])) : // multi-line secret (PEM) — textarea, value never prefilled ?>
+										<textarea
+											id="aq-int-<?php echo esc_attr($key); ?>"
+											name="<?php echo esc_attr($key); ?>"
+											autocomplete="off"
+											rows="4"
+											spellcheck="false"
+											style="width:100%;max-width:480px;padding:8px 11px;border:1px solid #c9cfd6;border-radius:8px;font-size:12px;font-family:monospace;color:#0d1014;"
+											placeholder="<?php echo $set ? 'Saved — leave blank to keep, or paste to replace' : 'Not set'; ?>"
+											<?php disabled($locked); ?>></textarea>
+									<?php elseif ($visible) : // username/email — shown by default, with a Hide/Show toggle ?>
 									<input
 										type="text"
 										id="aq-int-<?php echo esc_attr($key); ?>"
@@ -314,7 +342,10 @@ class AQ_Integrations {
 			}
 			$val = isset($_POST[$key]) ? trim((string) wp_unslash($_POST[$key])) : '';
 			if ($val !== '') {
-				$opts[$key] = self::encrypt(sanitize_text_field($val));
+				// Multi-line secrets (a PEM private key) must keep their newlines —
+				// sanitize_text_field would collapse them and corrupt the key.
+				$clean = !empty($def['multiline']) ? sanitize_textarea_field($val) : sanitize_text_field($val);
+				$opts[$key] = self::encrypt($clean);
 			}
 		}
 		update_option(self::OPTION, $opts, false); // autoload=false: never on the public page load
@@ -354,6 +385,18 @@ class AQ_Integrations {
 				'headers' => ['Authorization' => 'Basic ' . base64_encode($cred['login'] . ':' . $cred['password'])],
 			]);
 			return rest_ensure_response(self::eval_http($resp, 'DataForSEO'));
+		}
+		if ($svc === 'gsc') {
+			if (!class_exists('AQ_Ranking_Audit')) {
+				return rest_ensure_response(['ok' => false, 'message' => 'Ranking audit unavailable.']);
+			}
+			if (!AQ_Ranking_Audit::has_gsc_credentials()) {
+				return rest_ensure_response(['ok' => false, 'message' => 'Add the service account email, private key, and property URL (and enable PHP OpenSSL).']);
+			}
+			$tok = AQ_Ranking_Audit::gsc_access_token();
+			return rest_ensure_response($tok['ok']
+				? ['ok' => true, 'message' => 'Google Search Console authorized.']
+				: ['ok' => false, 'message' => 'Google rejected the service account: ' . ($tok['error'] !== '' ? $tok['error'] : 'unknown error')]);
 		}
 		if ($svc === 'github') {
 			$token = self::get('github_token');
