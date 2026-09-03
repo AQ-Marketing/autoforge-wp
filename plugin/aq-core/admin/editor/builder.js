@@ -1667,19 +1667,32 @@
 	function applyEdit(m) {
 		var s = state.sections[m.index];
 		if (!s) { return; }
+		var cur;
 		if (m.repeater != null && m.rindex != null) {
 			if (!Array.isArray(s[m.repeater]) || !s[m.repeater][m.rindex]) { return; }
-			s[m.repeater][m.rindex][m.field] = m.value;
+			cur = s[m.repeater][m.rindex][m.field];
 		} else if (m.field) {
-			s[m.field] = m.value;
+			cur = s[m.field];
 		} else {
 			return;
 		}
+		// Ignore a commit that didn't actually change the value. endEdit() posts a
+		// done-commit on EVERY blur/click-away, even when the user only clicked in and
+		// out without typing — without this guard that would mark the page "unsaved"
+		// and (below) reload the canvas for nothing.
+		var a = (cur == null) ? '' : String(cur);
+		var b = (m.value == null) ? '' : String(m.value);
+		if (a === b) { return; }
+		if (m.repeater != null && m.rindex != null) { s[m.repeater][m.rindex][m.field] = m.value; }
+		else { s[m.field] = m.value; }
 		setDirty(true);
 		syncInspectorInput(m); // keep the inspector field in step (no re-render → no focus loss)
-		// The canvas already shows this text live. Snapshot history (coalesced while
-		// typing); on commit (blur/Enter → m.done) refresh the true render too.
-		if (m.done) { histRecord(); livePreview(); } else { histRecordDebounced(); }
+		// The canvas already shows this text live via contentEditable, so DON'T reload
+		// the iframe here — a reload flashes the canvas and scrolls it back to the top,
+		// then re-scrolls to the element (the "page refresh" jump). Record for undo
+		// only; the true server render refreshes on the next discrete change or on Save.
+		// Mirrors the gallery-reorder decision in applyGalleryReorder().
+		if (m.done) { histRecord(); } else { histRecordDebounced(); }
 	}
 	function syncInspectorInput(m) {
 		if (state.selected !== m.index) { return; }
