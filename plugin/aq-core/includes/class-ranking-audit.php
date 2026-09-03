@@ -596,13 +596,98 @@ class AQ_Ranking_Audit {
 
 	/** All three GSC fields present AND openssl_sign available to build the JWT. */
 	public static function has_gsc_credentials(): bool {
+		if (!self::has_gsc_connection()) {
+			return false;
+		}
+		$c = AQ_Integrations::gsc();
+		return (string) ($c['site_url'] ?? '') !== '';
+	}
+
+	/**
+	 * Enough to AUTHENTICATE and list properties. Two supported ways in:
+	 *   1. Agency OAuth (preferred) — one Google login that already sees every
+	 *      client property, so there is ZERO per-client Google setup. The three
+	 *      values live in wp-config-level constants (via a private Pressable
+	 *      mu-plugin), never in the DB, the public repo, or the browser.
+	 *   2. Service account — a per-property grant; the original method, kept as a
+	 *      fallback for a site not run under the agency account.
+	 * Deliberately does NOT require a chosen property — discovering the property
+	 * (sites.list) is what happens BEFORE one is picked.
+	 */
+	public static function has_gsc_connection(): bool {
+		if (self::has_gsc_oauth()) {
+			return true;
+		}
 		if (!class_exists('AQ_Integrations') || !function_exists('openssl_sign')) {
 			return false;
 		}
 		$c = AQ_Integrations::gsc();
 		return (string) ($c['client_email'] ?? '') !== ''
-			&& (string) ($c['private_key'] ?? '') !== ''
-			&& (string) ($c['site_url'] ?? '') !== '';
+			&& (string) ($c['private_key'] ?? '') !== '';
+	}
+
+	/**
+	 * The agency OAuth login, read ONLY from constants (never the DB). Set by the
+	 * private Pressable mu-plugin. Returns empty strings when not configured.
+	 * @return array{client_id:string,client_secret:string,refresh_token:string}
+	 */
+	public static function gsc_oauth(): array {
+		if (!class_exists('AQ_Integrations')) {
+			return ['client_id' => '', 'client_secret' => '', 'refresh_token' => ''];
+		}
+		// AQ_Integrations::get() returns the wp-config constant if defined, else the
+		// AES-encrypted DB value — so a pasted login and a constant both work, and the
+		// secret is never autoloaded, never REST-exposed, never sent to the browser.
+		return [
+			'client_id'     => AQ_Integrations::get('gsc_oauth_client_id'),
+			'client_secret' => AQ_Integrations::get('gsc_oauth_client_secret'),
+			'refresh_token' => AQ_Integrations::get('gsc_oauth_refresh_token'),
+		];
+	}
+
+	/** True when all three agency-OAuth constants are present. */
+	public static function has_gsc_oauth(): bool {
+		$o = self::gsc_oauth();
+		return $o['client_id'] !== '' && $o['client_secret'] !== '' && $o['refresh_token'] !== '';
+	}
+
+	/**
+	 * Exchange the agency refresh token for a short-lived access token. Cached in
+	 * memory for THIS request only — the read-only access token is never written to
+	 * the database, and the refresh token never leaves the constant. Never throws.
+	 * @return array{ok:bool,token:string,error:string}
+	 */
+	public static function gsc_oauth_access_token(): array {
+		static $cache = null; // per-request memo; no DB persistence of the credential
+		if (is_array($cache)) {
+			return $cache;
+		}
+		$o = self::gsc_oauth();
+		if ($o['client_id'] === '' || $o['client_secret'] === '' || $o['refresh_token'] === '') {
+			return ['ok' => false, 'token' => '', 'error' => 'no agency OAuth credentials'];
+		}
+		$resp = wp_remote_post('https://oauth2.googleapis.com/token', [
+			'timeout' => 30,
+			'headers' => ['Content-Type' => 'application/x-www-form-urlencoded'],
+			'body'    => [
+				'grant_type'    => 'refresh_token',
+				'client_id'     => $o['client_id'],
+				'client_secret' => $o['client_secret'],
+				'refresh_token' => $o['refresh_token'],
+			],
+		]);
+		if (is_wp_error($resp)) {
+			return ['ok' => false, 'token' => '', 'error' => 'transport: ' . $resp->get_error_message()];
+		}
+		$code = (int) wp_remote_retrieve_response_code($resp);
+		$data = json_decode((string) wp_remote_retrieve_body($resp), true);
+		if ($code !== 200 || !is_array($data) || empty($data['access_token'])) {
+			// error_description may name the failure but never contains the refresh token.
+			$err = is_array($data) ? (string) ($data['error_description'] ?? ($data['error'] ?? ('HTTP ' . $code))) : ('HTTP ' . $code);
+			return ['ok' => false, 'token' => '', 'error' => $err];
+		}
+		$cache = ['ok' => true, 'token' => (string) $data['access_token'], 'error' => ''];
+		return $cache;
 	}
 
 	/** base64url (no padding) — for JWT segments. Pure. */
@@ -616,7 +701,12 @@ class AQ_Ranking_Audit {
 	 * @return array{ok:bool,token:string,error:string}
 	 */
 	public static function gsc_access_token(): array {
-		if (!self::has_gsc_credentials()) {
+		// Prefer the agency OAuth login when present — one account that already sees
+		// every property, so no per-client Google setup and no service-account JWT.
+		if (self::has_gsc_oauth()) {
+			return self::gsc_oauth_access_token();
+		}
+		if (!self::has_gsc_connection()) {
 			return ['ok' => false, 'token' => '', 'error' => 'no GSC credentials'];
 		}
 		$c   = AQ_Integrations::gsc();
@@ -656,6 +746,114 @@ class AQ_Ranking_Audit {
 			return ['ok' => false, 'token' => '', 'error' => $err];
 		}
 		return ['ok' => true, 'token' => (string) $data['access_token'], 'error' => ''];
+	}
+
+	/** Transient holding the last sites.list result (per client_email). ~10 min. */
+	const SITES_CACHE = 'aq_gsc_sites_cache';
+
+	/**
+	 * List every Search Console property this service account can READ, via the
+	 * Search Console `sites.list` endpoint. Powers the property dropdown so an
+	 * admin picks a real property instead of hand-typing the exact string.
+	 *
+	 * Unverified properties (permissionLevel 'siteUnverifiedUser') are dropped —
+	 * they can't be queried, so offering them would only produce silent failures.
+	 * Cached for 10 minutes keyed by the service-account email; pass $fresh=true
+	 * (the "Refresh properties" action) to bypass and re-fetch. Never throws.
+	 *
+	 * @return array{ok:bool,error?:string,sites?:array<int,array{url:string,permission:string}>}
+	 */
+	public static function gsc_sites(bool $fresh = false): array {
+		if (!self::has_gsc_connection()) {
+			return ['ok' => false, 'error' => 'Add the service account email and private key first.'];
+		}
+		$c        = AQ_Integrations::gsc();
+		$cacheKey = self::SITES_CACHE . '_' . md5((string) $c['client_email']);
+
+		if (!$fresh) {
+			$cached = get_transient($cacheKey);
+			if (is_array($cached)) {
+				return $cached;
+			}
+		}
+
+		$tok = self::gsc_access_token();
+		if (empty($tok['ok'])) {
+			// Do NOT cache an auth failure — creds may be mid-setup.
+			return ['ok' => false, 'error' => 'auth: ' . ($tok['error'] !== '' ? $tok['error'] : 'no token')];
+		}
+
+		$resp = wp_remote_get('https://searchconsole.googleapis.com/webmasters/v3/sites', [
+			'timeout' => 30,
+			'headers' => ['Authorization' => 'Bearer ' . $tok['token']],
+		]);
+		if (is_wp_error($resp)) {
+			return ['ok' => false, 'error' => 'transport: ' . $resp->get_error_message()];
+		}
+		$code = (int) wp_remote_retrieve_response_code($resp);
+		$data = json_decode((string) wp_remote_retrieve_body($resp), true);
+		if ($code !== 200 || !is_array($data)) {
+			$msg = is_array($data) ? (string) ($data['error']['message'] ?? ('HTTP ' . $code)) : ('HTTP ' . $code);
+			return ['ok' => false, 'error' => $msg];
+		}
+
+		$sites = [];
+		foreach ((array) ($data['siteEntry'] ?? []) as $entry) {
+			if (!is_array($entry)) {
+				continue;
+			}
+			$url  = trim((string) ($entry['siteUrl'] ?? ''));
+			$perm = (string) ($entry['permissionLevel'] ?? '');
+			if ($url === '' || $perm === 'siteUnverifiedUser') {
+				continue; // can't query an unverified property
+			}
+			$sites[] = ['url' => $url, 'permission' => $perm];
+		}
+		usort($sites, static function ($a, $b) {
+			return strcmp($a['url'], $b['url']);
+		});
+
+		$out = ['ok' => true, 'sites' => $sites];
+		set_transient($cacheKey, $out, 10 * MINUTE_IN_SECONDS);
+		return $out;
+	}
+
+	/** Clear the sites.list cache (call after credentials change). */
+	public static function flush_gsc_sites_cache(): void {
+		if (!class_exists('AQ_Integrations')) {
+			return;
+		}
+		$c = AQ_Integrations::gsc();
+		delete_transient(self::SITES_CACHE . '_' . md5((string) ($c['client_email'] ?? '')));
+	}
+
+	/**
+	 * Given this WordPress site's own domain and the list of property URLs the
+	 * service account can see, return the property URL that best matches — the one
+	 * the UI marks "Suggested". Returns null when nothing is a confident match
+	 * (the UI then suggests nothing rather than pointing at the wrong site).
+	 *
+	 * Search Console properties come in two shapes:
+	 *   - Domain property:      "sc-domain:example.com"      (covers all subdomains/schemes)
+	 *   - URL-prefix property:  "https://example.com/"       (exact scheme+host+path)
+	 * and a domain often has several (www vs non-www, http vs https). Picking the
+	 * wrong one silently routes the wrong site's data for weeks, so this only
+	 * suggests — the admin still confirms with the dropdown.
+	 *
+	 * @param string             $siteDomain bare host of THIS site, lowercased, no "www." (e.g. "example.com")
+	 * @param array<int,string>  $propertyUrls every siteUrl from gsc_sites()
+	 * @return string|null the best-match property URL, or null if none is confident
+	 */
+	public static function suggest_gsc_property(string $siteDomain, array $propertyUrls): ?string {
+		$siteDomain = strtolower(trim($siteDomain));
+		if ($siteDomain === '' || !$propertyUrls) {
+			return null;
+		}
+
+		// TODO(human): rank $propertyUrls against $siteDomain and return the single
+		// best match (or null if none is confident). See the tiering table in the
+		// docblock above and the AQ_GSC matching brain note.
+		return null;
 	}
 
 	/**

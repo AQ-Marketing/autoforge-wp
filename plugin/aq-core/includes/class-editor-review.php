@@ -232,7 +232,14 @@ class AQ_Editor_Review {
 		if (!class_exists('AQ_Content_Sync')) {
 			return new WP_Error('aq_no_sync', 'Content sync unavailable.', ['status' => 500]);
 		}
-		AQ_Content_Sync::update_sections($id, $final);
+		// The write path aborts (throws) rather than wipe or shrink the page; on
+		// abort the page is left unchanged (rolled back) and the review stays valid
+		// so the editor can surface the reason and retry.
+		try {
+			AQ_Content_Sync::update_sections($id, $final);
+		} catch (\Throwable $e) {
+			return new WP_Error('aq_save_blocked', $e->getMessage(), ['status' => 409]);
+		}
 		delete_transient(self::TRANSIENT_PREFIX . $reviewId);
 
 		return rest_ensure_response([
