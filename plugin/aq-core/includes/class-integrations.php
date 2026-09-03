@@ -60,7 +60,7 @@ class AQ_Integrations {
 				'fields' => [
 					'gsc_client_email' => ['label' => 'Service account email', 'constant' => 'AQ_GSC_CLIENT_EMAIL', 'hint' => 'The client_email from the service-account JSON, e.g. name@project.iam.gserviceaccount.com. Add this account as a user of the Search Console property.', 'visible' => true, 'tip' => 'The service-account email that reads your Search Console data.'],
 					'gsc_private_key'  => ['label' => 'Service account private key (PEM)', 'constant' => 'AQ_GSC_PRIVATE_KEY', 'hint' => 'The private_key value from the service-account JSON — the whole -----BEGIN PRIVATE KEY----- … -----END PRIVATE KEY----- block, newlines and all. Kept encrypted; paste to replace.', 'multiline' => true, 'tip' => 'The private key from the service-account JSON. Multi-line; paste it exactly.'],
-					'gsc_site_url'     => ['label' => 'Search Console property', 'constant' => 'AQ_GSC_SITE_URL', 'hint' => 'The exact property as shown in Search Console, e.g. sc-domain:example.com or https://example.com/.', 'visible' => true, 'tip' => 'The Search Console property to read, e.g. sc-domain:example.com.'],
+					'gsc_site_url'     => ['label' => 'Search Console property', 'constant' => 'AQ_GSC_SITE_URL', 'hint' => 'Pick the property this site should read. The list is pulled live from the properties the service account can access — save the email + key above first, then choose here.', 'choices' => 'gsc_sites', 'tip' => 'The Search Console property to read — chosen from a live list, not typed.'],
 				],
 			],
 			'github' => [
@@ -199,6 +199,11 @@ class AQ_Integrations {
 		if (!current_user_can(self::CAP)) {
 			return;
 		}
+		// "Refresh list" on the GSC property picker: drop the cached sites.list so
+		// this render re-pulls it live. Cap-gated above; only clears a transient.
+		if (isset($_GET['refresh_gsc']) && class_exists('AQ_Ranking_Audit')) {
+			AQ_Ranking_Audit::flush_gsc_sites_cache();
+		}
 		$no_openssl = !function_exists('openssl_encrypt');
 		AQ_Admin_Hub::open('Integrations', 'Connect third-party services. Keys are encrypted at rest and never shown to the public.', 'aq-integrations');
 		?>
@@ -240,7 +245,33 @@ class AQ_Integrations {
 						<div class="aq-int-field">
 							<label for="aq-int-<?php echo esc_attr($key); ?>"><?php echo esc_html($def['label']); ?><?php echo AQ_Admin_Hub::tip($def['tip'] ?? ''); ?></label>
 							<div class="aq-int-row">
-								<?php if (!empty($def['multiline'])) : // multi-line secret (PEM) — textarea, value never prefilled ?>
+								<?php if (!empty($def['choices']) && $def['choices'] === 'gsc_sites') :
+									// Live property dropdown, populated by the service account's sites.list.
+									$list       = class_exists('AQ_Ranking_Audit') ? AQ_Ranking_Audit::gsc_sites() : ['ok' => false, 'error' => 'Ranking audit unavailable.'];
+									$sites      = !empty($list['ok']) ? (array) $list['sites'] : [];
+									$urls       = array_column($sites, 'url');
+									$host       = strtolower((string) wp_parse_url(home_url(), PHP_URL_HOST));
+									$host       = preg_replace('/^www\./', '', $host);
+									$suggested  = ($sites && class_exists('AQ_Ranking_Audit')) ? AQ_Ranking_Audit::suggest_gsc_property($host, $urls) : null;
+									$refreshUrl = esc_url(add_query_arg(['page' => 'aq-integrations', 'refresh_gsc' => '1']));
+									?>
+									<?php if ($locked) : ?>
+										<input type="text" id="aq-int-<?php echo esc_attr($key); ?>" value="<?php echo esc_attr($cur); ?>" disabled>
+									<?php elseif (!empty($list['ok'])) : ?>
+										<select id="aq-int-<?php echo esc_attr($key); ?>" name="<?php echo esc_attr($key); ?>" style="width:100%;max-width:480px;padding:8px 11px;border:1px solid #c9cfd6;border-radius:8px;font-size:13px;color:#0d1014;">
+											<option value="">— Select a property —</option>
+											<?php if ($cur !== '' && !in_array($cur, $urls, true)) : ?>
+												<option value="<?php echo esc_attr($cur); ?>" selected><?php echo esc_html($cur); ?> (current — not in list)</option>
+											<?php endif; ?>
+											<?php foreach ($sites as $s) : ?>
+												<option value="<?php echo esc_attr($s['url']); ?>" <?php selected($cur, $s['url']); ?>><?php echo esc_html($s['url']); ?></option>
+											<?php endforeach; ?>
+										</select>
+										<button type="button" class="button aq-int-refresh" data-href="<?php echo $refreshUrl; ?>">Refresh list</button>
+									<?php else : // connected creds missing or the list call failed — hand-typed fallback ?>
+										<input type="text" id="aq-int-<?php echo esc_attr($key); ?>" name="<?php echo esc_attr($key); ?>" autocomplete="off" value="<?php echo esc_attr($cur); ?>" placeholder="sc-domain:example.com or https://example.com/">
+									<?php endif; ?>
+								<?php elseif (!empty($def['multiline'])) : // multi-line secret (PEM) — textarea, value never prefilled ?>
 										<textarea
 											id="aq-int-<?php echo esc_attr($key); ?>"
 											name="<?php echo esc_attr($key); ?>"
@@ -278,6 +309,14 @@ class AQ_Integrations {
 								<?php endif; ?>
 							</div>
 							<p class="aq-int-hint"><?php echo esc_html($def['hint']); ?></p>
+							<?php if (!empty($def['choices']) && $def['choices'] === 'gsc_sites' && !$locked && class_exists('AQ_Ranking_Audit')) : ?>
+								<?php if (!empty($list['ok']) && $suggested && $suggested !== $cur) : ?>
+									<p class="aq-int-hint">Suggested for this site: <code><?php echo esc_html($suggested); ?></code>
+										<button type="button" class="button-link aq-int-use-suggested" data-target="aq-int-<?php echo esc_attr($key); ?>" data-value="<?php echo esc_attr($suggested); ?>" style="margin-left:6px;">Use this</button></p>
+								<?php elseif (empty($list['ok']) && AQ_Ranking_Audit::has_gsc_connection()) : ?>
+									<p class="aq-int-hint" style="color:#a30d25;">Couldn't load the property list: <?php echo esc_html((string) ($list['error'] ?? 'unknown error')); ?> — you can type the property manually above, then Save.</p>
+								<?php endif; ?>
+							<?php endif; ?>
 						</div>
 					<?php endforeach; ?>
 					<div class="aq-int-test">
@@ -318,6 +357,16 @@ class AQ_Integrations {
 					else { inp.type = 'password'; b.textContent = 'Show'; }
 				});
 			});
+			// GSC property picker: apply the suggested property, and refresh the live list.
+			document.querySelectorAll('.aq-int-use-suggested').forEach(function (b) {
+				b.addEventListener('click', function () {
+					var sel = document.getElementById(b.getAttribute('data-target'));
+					if (sel) { sel.value = b.getAttribute('data-value'); }
+				});
+			});
+			document.querySelectorAll('.aq-int-refresh').forEach(function (b) {
+				b.addEventListener('click', function () { window.location.href = b.getAttribute('data-href'); });
+			});
 		})();
 		</script>
 		<?php
@@ -349,6 +398,11 @@ class AQ_Integrations {
 			}
 		}
 		update_option(self::OPTION, $opts, false); // autoload=false: never on the public page load
+		// Service-account creds may have changed — drop the cached property list so
+		// the dropdown re-pulls against the new credentials on the next view.
+		if (class_exists('AQ_Ranking_Audit')) {
+			AQ_Ranking_Audit::flush_gsc_sites_cache();
+		}
 		wp_safe_redirect(add_query_arg(['page' => 'aq-integrations', 'updated' => '1'], admin_url('admin.php')));
 		exit;
 	}
@@ -390,13 +444,18 @@ class AQ_Integrations {
 			if (!class_exists('AQ_Ranking_Audit')) {
 				return rest_ensure_response(['ok' => false, 'message' => 'Ranking audit unavailable.']);
 			}
-			if (!AQ_Ranking_Audit::has_gsc_credentials()) {
-				return rest_ensure_response(['ok' => false, 'message' => 'Add the service account email, private key, and property URL (and enable PHP OpenSSL).']);
+			if (!AQ_Ranking_Audit::has_gsc_connection()) {
+				return rest_ensure_response(['ok' => false, 'message' => 'Add the service account email and private key (and enable PHP OpenSSL).']);
 			}
-			$tok = AQ_Ranking_Audit::gsc_access_token();
-			return rest_ensure_response($tok['ok']
-				? ['ok' => true, 'message' => 'Google Search Console authorized.']
-				: ['ok' => false, 'message' => 'Google rejected the service account: ' . ($tok['error'] !== '' ? $tok['error'] : 'unknown error')]);
+			// Authorize AND list — a live property count is far more useful than a bare "authorized".
+			$list = AQ_Ranking_Audit::gsc_sites(true); // fresh: reflect just-saved creds
+			if (empty($list['ok'])) {
+				return rest_ensure_response(['ok' => false, 'message' => 'Google rejected the service account: ' . (string) ($list['error'] ?? 'unknown error')]);
+			}
+			$n = count((array) $list['sites']);
+			return rest_ensure_response(['ok' => true, 'message' => $n === 0
+				? 'Authorized, but this service account has access to 0 properties. In Search Console → Settings → Users and permissions, add the service-account email to your property, then Refresh the list.'
+				: 'Authorized — ' . $n . ' propert' . ($n === 1 ? 'y' : 'ies') . ' available. Pick yours from the dropdown, then Save.']);
 		}
 		if ($svc === 'github') {
 			$token = self::get('github_token');
