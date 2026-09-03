@@ -18,8 +18,38 @@
 	// agency admin). Gated users get "Review & Publish"; bypass users keep "Save".
 	var GATED = !!CFG.reviewEnabled && !CFG.canBypass;
 
-	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null, gallerySel: null, gallerySelUid: null, galleryBulkCat: '' };
+	var state = { sections: [], base: [], selected: -1, node: null, tree: { expanded: {} }, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null, gallerySel: null, gallerySelUid: null, galleryBulkCat: '' };
 	var HIST = (typeof window !== 'undefined' && window.AQHistory) ? window.AQHistory : null;
+	// --- element-tree helpers ---
+	function schemaEntry(type) { return (CFG.schema && CFG.schema[type]) || null; }
+	function fieldsForType(type, s) {
+		var e = schemaEntry(type);
+		var f = (e && e.fields) ? e.fields : [];
+		return f.length ? f : inferFields(s);
+	}
+	function elementsHintFor(type) { var e = schemaEntry(type); return (e && e.elements) ? e.elements : null; }
+	function nodesForSection(i) {
+		var s = state.sections[i];
+		if (!s) { return []; }
+		return window.AQTree.deriveNodes(fieldsForType(s.type, s), elementsHintFor(s.type), s);
+	}
+	function samePath(a, b) {
+		a = a || {}; b = b || {};
+		return a.field === b.field && a.repeater === b.repeater &&
+			(a.rindex == null ? b.rindex == null : a.rindex === b.rindex) && a.group === b.group;
+	}
+	// Find the node in section i whose path matches m {field,repeater,rindex}. Falls back to null.
+	function findNodePath(i, m) {
+		var want = { field: m && m.field, repeater: m && m.repeater, rindex: (m && m.rindex != null) ? m.rindex : null, group: undefined };
+		var hit = null;
+		nodesForSection(i).forEach(function (n) {
+			if (!hit && samePath(n.path, want)) { hit = n.path; }
+			(n.children || []).forEach(function (c) { if (!hit && samePath(c.path, want)) { hit = c.path; } });
+			// a field that lives inside a group node
+			if (!hit && n.fields) { n.fields.forEach(function (f) { if (want.field && f.name === want.field) { hit = n.path; } }); }
+		});
+		return hit;
+	}
 	var uid = 0;
 	var els = {};
 	function clone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -120,7 +150,7 @@
 	}
 
 	/* ---------------- undo / redo history ---------------- */
-	function snapshot() { return { sections: clone(state.sections), selected: state.selected }; }
+	function snapshot() { return { sections: clone(state.sections), selected: state.selected, node: state.node }; }
 	function histSeed() { state.hist = { stack: [snapshot()], ptr: 0, cap: 50 }; updateHistButtons(); }
 	// Record the current working state as a new history step (dropping any redo
 	// tail first, then trimming the oldest past the cap). Coalesces rapid typing
@@ -145,8 +175,9 @@
 		if (!snap) { return; }
 		state.sections = (snap.sections || []).map(function (s) { s._uid = ++uid; return s; });
 		state.selected = (snap.selected != null && snap.selected < state.sections.length) ? snap.selected : -1;
-		renderStructure();
-		renderInspector();
+		state.node = (snap.node && snap.node.section === state.selected) ? snap.node : (state.selected >= 0 ? { section: state.selected } : null);
+		renderTree();
+		renderNodeInspector();
 	}
 	function undo() {
 		if (!HIST) { return; }
@@ -729,6 +760,15 @@
 		renderStructure();
 		renderInspector();
 		if (tellCanvas) { postCanvas({ type: 'highlight', index: i }); }
+	}
+
+	function selectNode(i, path) {
+		state.selected = i;
+		state.node = Object.assign({ section: i }, path || {});
+		renderTree();
+		renderNodeInspector();
+		postCanvas({ type: 'highlight', index: i, field: state.node.field || null,
+			repeater: state.node.repeater || null, rindex: (state.node.rindex != null) ? state.node.rindex : null });
 	}
 
 	// Whether a section type is edited via bespoke inspector controls (aq_gallery).
@@ -1480,7 +1520,8 @@
 		if (e.origin !== ORIGIN || !e.data || e.data.source !== 'aq-canvas') { return; }
 		var m = e.data;
 		if (m.type === 'select') {
-			selectSection(m.index, false);
+			var np = findNodePath(m.index, m);
+			selectNode(m.index, np || {});
 			if (m.field || m.repeater) { focusField(m); }
 		} else if (m.type === 'gallery-reorder') {
 			// Tiles were drag-reordered on the canvas → apply the new image order.
