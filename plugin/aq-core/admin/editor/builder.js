@@ -695,7 +695,7 @@
 		state.review = null; state.decisions = {}; state.confirmed = {};
 		if (state.selected >= state.sections.length) { state.selected = -1; }
 		renderTree();
-		renderInspector();
+		renderNodeInspector();
 		histSeed(); // committed state becomes the new undo baseline
 	}
 
@@ -809,9 +809,7 @@
 
 	/* ---------------- inspector ---------------- */
 	function selectSection(i, tellCanvas) {
-		state.selected = i;
-		renderTree();
-		renderInspector();
+		selectNode(i, {});
 		if (tellCanvas) { postCanvas({ type: 'highlight', index: i }); }
 	}
 
@@ -862,7 +860,29 @@
 		return String(s).replace(/["\\\]\[]/g, '\\$&');
 	}
 
-	function renderInspector() {
+	// Find the active node object (not just its path) for the current selection.
+	function activeNode() {
+		if (state.selected < 0 || !state.node) { return null; }
+		var found = null, want = state.node;
+		nodesForSection(state.selected).forEach(function (n) {
+			if (!found && samePath(n.path, want)) { found = n; }
+			(n.children || []).forEach(function (c) { if (!found && samePath(c.path, want)) { found = c; } });
+		});
+		return found;
+	}
+
+	function collapsibleGroup(title, fieldsArr, s, ctx) {
+		var grp = ce('div', 'aqb-group is-open');
+		var head = ce('button', 'aqb-grouph', title);
+		head.addEventListener('click', function () { grp.classList.toggle('is-open'); });
+		grp.appendChild(head);
+		var bodyEl = ce('div', 'aqb-groupbody');
+		fieldsArr.forEach(function (f) { bodyEl.appendChild(renderField(s, f, ctx)); });
+		grp.appendChild(bodyEl);
+		return grp;
+	}
+
+	function renderNodeInspector() {
 		var p = els.inspector;
 		p.innerHTML = '';
 		if (state.selected < 0 || !state.sections[state.selected]) {
@@ -870,34 +890,45 @@
 			return;
 		}
 		var s = state.sections[state.selected];
-		p.appendChild(ce('h3', 'aqb-h', labelFor(s.type)));
-		// In-place sections (aq_gallery) are edited on the canvas via a floating
-		// overlay, not here. Show a short pointer + a re-open button instead of the
-		// raw persistence fields (which would surface attachment IDs as text boxes).
-		if (inplaceOf(s.type) === 'gallery') {
-			renderGalleryInspector(p, s);
+
+		// aq_gallery stays on-canvas (unchanged behavior).
+		if (inplaceOf(s.type) === 'gallery') { p.appendChild(ce('h3', 'aqb-h', labelFor(s.type))); renderGalleryInspector(p, s); return; }
+
+		var node = activeNode();
+
+		// Section root: summary only.
+		if (!node) {
+			p.appendChild(ce('h3', 'aqb-h', labelFor(s.type)));
+			var count = nodesForSection(state.selected).length;
+			p.appendChild(ce('p', 'aqb-muted', count + (count === 1 ? ' element' : ' elements') + ' — pick one from the tree on the left to edit it.'));
 			return;
 		}
-		var fields = schemaFor(s.type);
-		var inferred = false;
-		if (!fields.length) { fields = inferFields(s); inferred = true; }
-		if (!fields.length) {
-			p.appendChild(ce('p', 'aqb-muted', 'This section has no editable fields.'));
+
+		p.appendChild(ce('h3', 'aqb-h', node.label));
+
+		if (node.kind === 'fixed') {
+			p.appendChild(ce('p', 'aqb-muted', 'This element is built in code and maintained by your developer. It has no editable settings here.'));
 			return;
 		}
-		if (inferred) {
-			var note = ce('p', 'aqb-muted aqb-auto-note', 'Fields detected automatically from this section.');
-			p.appendChild(note);
+		if (node.kind === 'repeater') {
+			p.appendChild(ce('p', 'aqb-muted', node.children.length + ' item(s). Expand this in the tree to edit each one.'));
+			var add = ce('button', 'aqb-btn', '+ Add item');
+			add.addEventListener('click', function () { addItem(state.selected, node.path.repeater); });
+			p.appendChild(add);
+			return;
 		}
-		var content = fields.filter(function (f) { return f.group !== 'design'; });
-		var design = fields.filter(function (f) { return f.group === 'design'; });
-		content.forEach(function (f) { p.appendChild(renderField(s, f)); });
-		if (design.length) {
-			var grp = ce('div', 'aqb-group');
-			grp.appendChild(ce('h4', 'aqb-grouph', 'Design'));
-			p.appendChild(grp);
-			design.forEach(function (f) { p.appendChild(renderField(s, f)); });
+		if (node.kind === 'item') {
+			collapsibleGroupInto(p, 'Content', node.fields, s, { repeater: node.path.repeater, rindex: node.path.rindex });
+			return;
 		}
+		// field or group node
+		var title = node.path.group === 'design' ? 'Design' : 'Content';
+		collapsibleGroupInto(p, title, node.fields, s, null);
+	}
+
+	function collapsibleGroupInto(p, title, fieldsArr, s, ctx) {
+		if (!fieldsArr.length) { p.appendChild(ce('p', 'aqb-muted', 'No editable settings.')); return; }
+		p.appendChild(collapsibleGroup(title, fieldsArr, s, ctx));
 	}
 
 	function renderField(obj, f, ctx) {
@@ -1118,9 +1149,9 @@
 			var head = ce('div', 'aqb-rephead');
 			head.appendChild(ce('span', 'aqb-repnum', '#' + (ri + 1)));
 			var tools = ce('div', 'aqb-sectools');
-			tools.appendChild(iconBtn('↑', 'Up', function () { if (ri > 0) { rows.splice(ri - 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderInspector(); pushChange(); } }));
-			tools.appendChild(iconBtn('↓', 'Down', function () { if (ri < rows.length - 1) { rows.splice(ri + 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderInspector(); pushChange(); } }));
-			tools.appendChild(iconBtn('✕', 'Remove', function () { rows.splice(ri, 1); setDirty(true); renderInspector(); pushChange(); }, true));
+			tools.appendChild(iconBtn('↑', 'Up', function () { if (ri > 0) { rows.splice(ri - 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderNodeInspector(); pushChange(); } }));
+			tools.appendChild(iconBtn('↓', 'Down', function () { if (ri < rows.length - 1) { rows.splice(ri + 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderNodeInspector(); pushChange(); } }));
+			tools.appendChild(iconBtn('✕', 'Remove', function () { rows.splice(ri, 1); setDirty(true); renderNodeInspector(); pushChange(); }, true));
 			head.appendChild(tools);
 			card.appendChild(head);
 			(f.subfields || []).forEach(function (sf) { card.appendChild(renderField(row, sf, { repeater: f.name, rindex: ri })); });
@@ -1130,7 +1161,7 @@
 		add.addEventListener('click', function () {
 			var blank = {};
 			(f.subfields || []).forEach(function (sf) { blank[sf.name] = sf.type === 'toggle' ? false : ''; });
-			rows.push(blank); setDirty(true); renderInspector(); pushChange();
+			rows.push(blank); setDirty(true); renderNodeInspector(); pushChange();
 		});
 		box.appendChild(add);
 		return box;
@@ -1141,19 +1172,19 @@
 		var j = i + dir;
 		if (j < 0 || j >= state.sections.length) { return; }
 		var tmp = state.sections[i]; state.sections[i] = state.sections[j]; state.sections[j] = tmp;
-		state.selected = j; setDirty(true); renderTree(); renderInspector(); pushChange();
+		state.selected = j; setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function duplicate(i) {
 		var copy = JSON.parse(JSON.stringify(state.sections[i]));
 		copy._uid = ++uid;
 		state.sections.splice(i + 1, 0, copy);
-		state.selected = i + 1; setDirty(true); renderTree(); renderInspector(); pushChange();
+		state.selected = i + 1; setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function removeSection(i) {
 		if (!window.confirm('Remove this ' + labelFor(state.sections[i].type) + ' section?')) { return; }
 		state.sections.splice(i, 1);
 		if (state.selected >= state.sections.length) { state.selected = state.sections.length - 1; }
-		setDirty(true); renderTree(); renderInspector(); pushChange();
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function addSection(type) {
 		var s = { type: type, v: 1, _uid: ++uid };
@@ -1289,7 +1320,7 @@
 			p.appendChild(gRow('Order by', gSelect(String(sec[cfg.order_by]), {
 				manual: 'Manual (drag on page)', title: 'Title A–Z', date_desc: 'Newest first',
 				date_asc: 'Oldest first', filename: 'Filename A–Z', random: 'Random'
-			}, function (v) { sec[cfg.order_by] = v; setDirty(true); renderInspector(); pushChange(); })));
+			}, function (v) { sec[cfg.order_by] = v; setDirty(true); renderNodeInspector(); pushChange(); })));
 		}
 		if (cfg.columns) {
 			p.appendChild(gRow('Columns', gSelect(String(sec[cfg.columns]), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec[cfg.columns] = v; setDirty(true); pushChange(); })));
@@ -1303,7 +1334,7 @@
 		// Filter-bar toggle only when `filters` maps to a real bool field (not always/off).
 		var filtersField = cfg.filters && cfg.filters !== 'always' && cfg.filters !== 'off';
 		if (galHasCats(cfg) && filtersField) {
-			p.appendChild(gRow('Category filter bar', gToggle(sec[cfg.filters], function (v) { sec[cfg.filters] = v; setDirty(true); renderInspector(); pushChange(); })));
+			p.appendChild(gRow('Category filter bar', gToggle(sec[cfg.filters], function (v) { sec[cfg.filters] = v; setDirty(true); renderNodeInspector(); pushChange(); })));
 		}
 		// Categories manager (tab-order editor) — only for a STORED categories field,
 		// and only when the bar is on. In 'derive' mode categories come from items.
@@ -1335,11 +1366,11 @@
 		allBtn.addEventListener('click', function () {
 			state.gallerySel = {};
 			for (var i = 0; i < items.length; i++) { state.gallerySel[i] = true; }
-			renderInspector();
+			renderNodeInspector();
 		});
 		var clrBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-gbulk__sm', 'Clear'); clrBtn.type = 'button';
 		clrBtn.disabled = !count;
-		clrBtn.addEventListener('click', function () { galSelClear(); renderInspector(); });
+		clrBtn.addEventListener('click', function () { galSelClear(); renderNodeInspector(); });
 		top.appendChild(ce('span', 'aqb-gbulk__count', count + ' selected'));
 		top.appendChild(allBtn);
 		top.appendChild(clrBtn);
@@ -1370,7 +1401,7 @@
 							&& !(sec[cfg.categories] || []).some(function (r) { return catLabel(r) === nv; })) {
 							sec[cfg.categories].push({ label: nv });
 						}
-						state.galleryBulkCat = nv; setDirty(true); renderInspector();
+						state.galleryBulkCat = nv; setDirty(true); renderNodeInspector();
 					} else { catSel.value = state.galleryBulkCat || ''; }
 					return;
 				}
@@ -1383,7 +1414,7 @@
 				if (!galSelCount() || !HIST || typeof HIST.applyCategory !== 'function') { return; }
 				sec[cfg.items] = HIST.applyCategory(items, galSelIndices(), state.galleryBulkCat || '', cfg.category);
 				galSelClear();
-				setDirty(true); renderInspector(); pushChange();
+				setDirty(true); renderNodeInspector(); pushChange();
 			});
 			actions.appendChild(catSel);
 			actions.appendChild(applyBtn);
@@ -1397,7 +1428,7 @@
 			var drop = state.gallerySel || {};
 			sec[cfg.items] = items.filter(function (_img, i) { return !drop[i]; });
 			galSelClear();
-			setDirty(true); renderInspector(); pushChange();
+			setDirty(true); renderNodeInspector(); pushChange();
 		});
 		actions.appendChild(rmBtn);
 		bar.appendChild(actions);
@@ -1413,7 +1444,7 @@
 		check.addEventListener('change', function () {
 			var s = galSelSet(sec);
 			if (check.checked) { s[idx] = true; } else { delete s[idx]; }
-			renderInspector();
+			renderNodeInspector();
 		});
 		row.appendChild(check);
 
@@ -1436,7 +1467,7 @@
 		row.appendChild(fields);
 
 		var rm = ce('button', 'aqb-gimgrow__x', '×'); rm.title = 'Remove'; rm.type = 'button';
-		rm.addEventListener('click', function () { galItems(sec, cfg).splice(idx, 1); galSelClear(); setDirty(true); renderInspector(); pushChange(); });
+		rm.addEventListener('click', function () { galItems(sec, cfg).splice(idx, 1); galSelClear(); setDirty(true); renderNodeInspector(); pushChange(); });
 		row.appendChild(rm);
 		return row;
 	}
@@ -1463,7 +1494,7 @@
 					img[cfg.category] = nv;
 				} else { sel.value = img[cfg.category] || ''; return; }
 			} else { img[cfg.category] = sel.value; }
-			setDirty(true); renderInspector(); pushChange();
+			setDirty(true); renderNodeInspector(); pushChange();
 		});
 		return sel;
 	}
@@ -1476,7 +1507,7 @@
 		store.forEach(function (row, i) {
 			var chip = ce('span', 'aqb-gchip', catLabel(row));
 			var x = ce('button', 'aqb-gchip__x', '×'); x.title = 'Remove';
-			x.addEventListener('click', function () { store.splice(i, 1); setDirty(true); renderInspector(); pushChange(); });
+			x.addEventListener('click', function () { store.splice(i, 1); setDirty(true); renderNodeInspector(); pushChange(); });
 			chip.appendChild(x);
 			list.appendChild(chip);
 		});
@@ -1485,7 +1516,7 @@
 		var input = ce('input', 'aqb-ginput'); input.type = 'text'; input.placeholder = 'Add category…';
 		function commit() {
 			var v = input.value.trim();
-			if (v && !store.some(function (r) { return catLabel(r) === v; })) { store.push({ label: v }); setDirty(true); renderInspector(); pushChange(); }
+			if (v && !store.some(function (r) { return catLabel(r) === v; })) { store.push({ label: v }); setDirty(true); renderNodeInspector(); pushChange(); }
 			else { input.value = ''; }
 		}
 		input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
@@ -1520,7 +1551,7 @@
 					var v = basenameFmt ? t : parseInt(t, 10);
 					if (basenameFmt ? !!v : v > 0) { items.push(galNewRow(cfg, v)); }
 				});
-				galSelClear(); setDirty(true); renderInspector(); pushChange();
+				galSelClear(); setDirty(true); renderNodeInspector(); pushChange();
 			}
 			return;
 		}
@@ -1533,7 +1564,7 @@
 				state.galleryImages[String(value)] = { id: a.id, url: a.url, thumb: thumb, alt: a.alt || '' };
 				items.push(galNewRow(cfg, value));
 			});
-			galSelClear(); setDirty(true); renderInspector(); pushChange();
+			galSelClear(); setDirty(true); renderNodeInspector(); pushChange();
 		});
 		frame.open();
 	}
@@ -1548,7 +1579,7 @@
 		sec[cfg.items] = HIST.reorder(sec[cfg.items], m.order);
 		galSelClear(); // indices shifted → drop the transient multi-selection
 		if (state.selected !== m.index) { selectSection(m.index, false); }
-		else { renderInspector(); }
+		else { renderNodeInspector(); }
 		// The canvas already reordered the tiles in place (see canvas.js galApplyDomOrder),
 		// so DON'T livePreview() — a reload here is exactly the "page refresh" we want to
 		// avoid. Just record the change for undo, like text/image edits do.
@@ -1654,7 +1685,7 @@
 			state.sections = (d && d.sections ? d.sections : []).map(function (s) { s._uid = ++uid; return s; });
 			state.base = clone(state.sections); // snapshot the loaded page to diff against at review time
 			renderTree();
-			renderInspector();
+			renderNodeInspector();
 			setDirty(false);
 			histSeed(); // baseline history step (undo returns here)
 		});
