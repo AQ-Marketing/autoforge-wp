@@ -94,5 +94,36 @@ t('fixed node renders no fields', function () {
 	eq(false, fixed.expandable);
 });
 
+t('robust: never throws on malformed field arrays (auto + hint)', function () {
+	const junk = [null, undefined, {}, { name: 'ok', label: 'OK', type: 'text' }, { label: 'noName', type: 'text' }];
+	// auto path
+	let nodes = AQTree.deriveNodes(junk, null, { ok: 'v' });
+	eq(1, nodes.length, 'only the one valid field survives (auto)');
+	eq('ok', nodes[0].path.field);
+	// hint path with a prefix that would hit a nameless field if unguarded
+	nodes = AQTree.deriveNodes(junk, [{ label: 'G', fields: ['ok', 'no*'] }], { ok: 'v' });
+	ok(Array.isArray(nodes), 'hint path returns an array without throwing');
+	// non-array / null fields
+	eq([], AQTree.deriveNodes(null, null, {}), 'null fields → []');
+	eq([], AQTree.deriveNodes(undefined, [{ label: 'X', fields: ['y'] }], {}), 'undefined fields → []');
+});
+
+t('hint: a design field named in a non-design entry is NOT duplicated', function () {
+	// 'bg' is group:design. A hint that names it in a custom entry must not pull it
+	// into that entry AND the Design group — it belongs to Design only.
+	const hint = [
+		{ label: 'Custom', fields: ['heading', 'bg'] },
+		{ label: 'Design', group: 'design' },
+	];
+	const nodes = AQTree.deriveNodes(fields, hint, section);
+	const allFieldNames = nodes.flatMap(n => n.fields.map(f => f.name));
+	const bgCount = allFieldNames.filter(n => n === 'bg').length;
+	eq(1, bgCount, 'bg appears exactly once');
+	const custom = nodes.find(n => n.label === 'Custom');
+	ok(!custom.fields.some(f => f.name === 'bg'), 'bg not in the custom group');
+	const design = nodes.find(n => n.path.group === 'design');
+	ok(design.fields.some(f => f.name === 'bg'), 'bg is under Design');
+});
+
 console.log('\n' + pass + ' passed, ' + fail + ' failed');
 process.exit(fail ? 1 : 0);

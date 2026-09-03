@@ -83,12 +83,18 @@
   }
 
   function deriveNodes(fields, elementsHint, section) {
-    fields = Array.isArray(fields) ? fields : [];
+    // Sanitize: drop null/undefined entries and any field without a usable name,
+    // so nothing downstream can throw. `fields` may come from inferFields() or
+    // arbitrary theme schema, and this ships to every AutoForge site.
+    fields = (Array.isArray(fields) ? fields : []).filter(function (f) { return f && f.name; });
     var keyBase = 'sec';
-    var byName = {};
-    fields.forEach(function (f) { if (f && f.name) { byName[f.name] = f; } });
     var content = fields.filter(function (f) { return f.group !== 'design'; });
     var design = fields.filter(function (f) { return f.group === 'design'; });
+    // byName maps CONTENT fields only. Design fields are surfaced solely through
+    // the Design group node, so a hint's fields/prefix can never pull a design
+    // field into a second node (which would make it editable from two places).
+    var byName = {};
+    content.forEach(function (f) { byName[f.name] = f; });
 
     // ---- Curated (hint) ----
     if (Array.isArray(elementsHint) && elementsHint.length) {
@@ -113,7 +119,7 @@
           return;
         }
         if (Array.isArray(h.fields)) {
-          var matched = resolveFields(h.fields, byName, fields, consumed);
+          var matched = resolveFields(h.fields, byName, content, consumed);
           if (matched.length === 1) { nodes.push(fieldNode(matched[0], keyBase, h.label, h.icon)); }
           else if (matched.length > 1) { nodes.push(groupNode(matched, keyBase, h.label || 'Group', h.icon)); }
         }
@@ -142,6 +148,7 @@
   var AQTree = { deriveNodes: deriveNodes, humanize: humanize };
   // Browser reads window.AQTree; Node tests import for the globalThis side effect
   // (mirrors history.js → globalThis.AQHistory). window === globalThis in browsers.
+  if (typeof module !== 'undefined' && module.exports) { module.exports = AQTree; }
   if (typeof globalThis !== 'undefined') { globalThis.AQTree = AQTree; }
   if (typeof window !== 'undefined') { window.AQTree = AQTree; }
 })();
