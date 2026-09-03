@@ -229,3 +229,20 @@
 	padding: 3px 8px; border-radius: 999px; font-size: 12px; }
 .aqb-gchip__x { border: 0; background: none; color: #8a94a1; font-size: 14px; line-height: 1; cursor: pointer; padding: 0; }
 .aqb-gcatadd { display: flex; gap: 6px; }
+
+/* ---- element tree ---- */
+.aqb-node { display:flex; align-items:center; gap:6px; padding:5px 8px; cursor:default; border-radius:6px; }
+.aqb-node:hover { background:rgba(0,0,0,.05); }
+.aqb-node.is-active { background:rgba(20,120,80,.14); }
+.aqb-node.is-fixed { opacity:.72; }
+.aqb-nodename { flex:1; text-align:left; background:none; border:0; font:inherit; cursor:pointer; color:inherit; padding:0; }
+.aqb-nodeico { width:15px; height:15px; flex:0 0 auto; opacity:.7; }
+.aqb-tw { width:16px; height:16px; line-height:16px; text-align:center; background:none; border:0; cursor:pointer; color:inherit; transition:transform .12s; }
+.aqb-tw.is-open { transform:rotate(90deg); }
+.aqb-tw--leaf { visibility:hidden; }
+.aqb-secrow .aqb-tw { opacity:.8; }
+/* ---- collapsible inspector groups ---- */
+.aqb-group .aqb-grouph { display:block; width:100%; text-align:left; background:none; border:0; font-weight:600; padding:8px 0; cursor:pointer; color:inherit; }
+.aqb-group .aqb-grouph::before { content:'▾ '; }
+.aqb-group:not(.is-open) .aqb-grouph::before { content:'▸ '; }
+.aqb-group:not(.is-open) .aqb-groupbody { display:none; }
