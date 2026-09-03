@@ -140,6 +140,8 @@
   }
 
   var AQTree = { deriveNodes: deriveNodes, humanize: humanize };
-  if (typeof module !== 'undefined' && module.exports) { module.exports = AQTree; }
+  // Browser reads window.AQTree; Node tests import for the globalThis side effect
+  // (mirrors history.js → globalThis.AQHistory). window === globalThis in browsers.
+  if (typeof globalThis !== 'undefined') { globalThis.AQTree = AQTree; }
   if (typeof window !== 'undefined') { window.AQTree = AQTree; }
 })();
