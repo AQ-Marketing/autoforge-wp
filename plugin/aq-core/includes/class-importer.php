@@ -25,8 +25,10 @@ class AQ_Importer {
 	const OPT = 'aq_importer'; // remembers the last repo + branch (convenience only)
 
 	public static function register(): void {
-		add_action('admin_menu', [__CLASS__, 'menu'], 22);
-		add_action('rest_api_init', [__CLASS__, 'rest_routes']);
+		// Import tool retired — not used. AutoForge sites are built by the engine from
+		// their own data, not pulled from a GitHub repo, so neither the admin menu page
+		// nor its REST route is registered. The class is kept only so the accessors it
+		// shares stay defined; re-add these two hooks to bring the feature back.
 	}
 
 	public static function menu(): void {

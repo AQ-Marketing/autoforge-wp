@@ -66,13 +66,6 @@ class AQ_Integrations {
 					'gsc_site_url'     => ['label' => 'Search Console property', 'constant' => 'AQ_GSC_SITE_URL', 'hint' => 'Pick the property this site should read. The list is pulled live from your connected Google account — paste the OAuth login above and Save first, then choose here.', 'choices' => 'gsc_sites', 'tip' => 'The Search Console property to read — chosen from a live list, not typed.'],
 				],
 			],
-			'github' => [
-				'label'  => 'GitHub',
-				'desc'   => 'Used by the Import tool to pull a site from a private GitHub repo. Public repos need no token.',
-				'fields' => [
-					'github_token' => ['label' => 'Personal access token', 'constant' => 'AQ_GITHUB_TOKEN', 'hint' => 'A fine-grained or classic PAT with read access to the repo. Leave empty if you only import public repos.', 'tip' => 'A GitHub token that lets the Import tool read a private repo.'],
-				],
-			],
 		];
 	}
 
@@ -251,6 +244,13 @@ class AQ_Integrations {
 					<?php foreach ($ig['fields'] as $key => $def) :
 						if ($key === 'gsc_client_email' || $key === 'gsc_private_key') {
 							continue; // legacy service-account path — settable via wp-config constant only, not shown in the UI
+						}
+						// Agency OAuth login: when the three GSC credential fields are locked by
+						// wp-config constants (the fleet mu-plugin), hide their rows entirely — they
+						// are identical on every site and not editable here. Only the property picker
+						// is per-site, so leave just that (plus the "Connected" note + Test).
+						if (in_array($key, ['gsc_oauth_client_id', 'gsc_oauth_client_secret', 'gsc_oauth_refresh_token'], true) && self::is_constant($key)) {
+							continue;
 						}
 						$locked  = self::is_constant($key);
 						$cur     = self::get($key);
