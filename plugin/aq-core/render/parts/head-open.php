@@ -41,6 +41,25 @@ if ($aq_fonts) {
 <meta charset="<?php bloginfo('charset'); ?>" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <?php wp_head(); ?>
+<?php if (function_exists('is_admin_bar_showing') && is_admin_bar_showing()) : ?>
+<style id="aq-admin-bar-offset">
+/* HARD RULE: the logged-in WP admin bar must never cover the page. WP core only
+ * pushes the document flow down (html{margin-top}); it does NOT move position:
+ * fixed/sticky chrome, so a fixed site header slides under the toolbar. Offset
+ * that chrome by the toolbar's real height. Emitted only when the bar is showing,
+ * so logged-out parity / Core Web Vitals are untouched. The bar is fixed at 32px
+ * (>=783px) and 46px (601-782px); at <=600px WP makes it position:absolute so it
+ * scrolls away and no offset is needed. Per-design fixed dropdowns/panels anchored
+ * below the header should add var(--wp-admin-bar-h,0px) to their own top calc. */
+body.admin-bar{--wp-admin-bar-h:32px}
+@media screen and (max-width:782px){body.admin-bar{--wp-admin-bar-h:46px}}
+@media screen and (max-width:600px){body.admin-bar{--wp-admin-bar-h:0px}}
+body.admin-bar > header,
+body.admin-bar .site-header,
+body.admin-bar #hdr,
+body.admin-bar [data-aq-fixed-top]{top:var(--wp-admin-bar-h)}
+</style>
+<?php endif; ?>
 <?php if ($aq_fonts) : ?>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
