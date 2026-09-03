@@ -56,11 +56,14 @@ class AQ_Integrations {
 			],
 			'gsc' => [
 				'label'  => 'Google Search Console',
-				'desc'   => 'Service-account access to your Search Console property. Feeds the site\'s REAL Google performance (average position, impressions, clicks) into the same 14-day ranking audit as DataForSEO.',
+				'desc'   => 'Connect your agency Google account once, then pick this site\'s property. Feeds the site\'s REAL Google performance (average position, impressions, clicks) into the same 14-day ranking audit as DataForSEO.',
 				'fields' => [
+					'gsc_oauth_client_id'     => ['label' => 'Google OAuth client ID', 'constant' => 'AQ_GSC_OAUTH_CLIENT_ID', 'hint' => 'The client_id from your Google OAuth client (ends in .apps.googleusercontent.com). Same value for every site.', 'visible' => true, 'tip' => 'Identifies your agency Google app. Not secret.'],
+					'gsc_oauth_client_secret' => ['label' => 'Google OAuth client secret', 'constant' => 'AQ_GSC_OAUTH_CLIENT_SECRET', 'hint' => 'The client_secret from your Google OAuth client. Kept encrypted; paste to replace.', 'tip' => 'Secret that pairs with the client ID. Kept encrypted.'],
+					'gsc_oauth_refresh_token' => ['label' => 'Google OAuth refresh token', 'constant' => 'AQ_GSC_OAUTH_REFRESH_TOKEN', 'hint' => 'The read-only (webmasters.readonly) refresh token for your agency Google account — this is what lets the site list your properties. Kept encrypted; paste to replace.', 'tip' => 'Read-only Google login token. Kept encrypted; never shown again.'],
 					'gsc_client_email' => ['label' => 'Service account email', 'constant' => 'AQ_GSC_CLIENT_EMAIL', 'hint' => 'The client_email from the service-account JSON, e.g. name@project.iam.gserviceaccount.com. Add this account as a user of the Search Console property.', 'visible' => true, 'tip' => 'The service-account email that reads your Search Console data.'],
 					'gsc_private_key'  => ['label' => 'Service account private key (PEM)', 'constant' => 'AQ_GSC_PRIVATE_KEY', 'hint' => 'The private_key value from the service-account JSON — the whole -----BEGIN PRIVATE KEY----- … -----END PRIVATE KEY----- block, newlines and all. Kept encrypted; paste to replace.', 'multiline' => true, 'tip' => 'The private key from the service-account JSON. Multi-line; paste it exactly.'],
-					'gsc_site_url'     => ['label' => 'Search Console property', 'constant' => 'AQ_GSC_SITE_URL', 'hint' => 'Pick the property this site should read. The list is pulled live from the properties the service account can access — save the email + key above first, then choose here.', 'choices' => 'gsc_sites', 'tip' => 'The Search Console property to read — chosen from a live list, not typed.'],
+					'gsc_site_url'     => ['label' => 'Search Console property', 'constant' => 'AQ_GSC_SITE_URL', 'hint' => 'Pick the property this site should read. The list is pulled live from your connected Google account — paste the OAuth login above and Save first, then choose here.', 'choices' => 'gsc_sites', 'tip' => 'The Search Console property to read — chosen from a live list, not typed.'],
 				],
 			],
 			'github' => [
@@ -235,8 +238,20 @@ class AQ_Integrations {
 					<div class="aq-int-svc__head">
 						<h2 style="margin:0;"><?php echo esc_html($ig['label']); ?></h2>
 					</div>
-					<p class="aq-int-hint" style="margin:4px 0 14px;"><?php echo esc_html($ig['desc']); ?></p>
+					<?php
+						// GSC: when the agency Google login is connected (constants set via the
+						// private mu-plugin), hide the service-account credential fields — that
+						// account already sees every property, so only the picker is needed.
+						$gsc_oauth = ($svc === 'gsc') && class_exists('AQ_Ranking_Audit') && AQ_Ranking_Audit::has_gsc_oauth();
+						?>
+						<p class="aq-int-hint" style="margin:4px 0 14px;"><?php echo esc_html($gsc_oauth ? 'Feeds the site\'s REAL Google performance (average position, impressions, clicks) into the 14-day ranking audit.' : $ig['desc']); ?></p>
+						<?php if ($gsc_oauth) : ?>
+							<p style="margin:0 0 14px;color:#1a8f4f;font-weight:600;font-size:13px;">✓ Connected via your agency Google account — pick this site's property below.</p>
+						<?php endif; ?>
 					<?php foreach ($ig['fields'] as $key => $def) :
+						if ($key === 'gsc_client_email' || $key === 'gsc_private_key') {
+							continue; // legacy service-account path — settable via wp-config constant only, not shown in the UI
+						}
 						$locked  = self::is_constant($key);
 						$cur     = self::get($key);
 						$set     = $cur !== '';
@@ -445,17 +460,17 @@ class AQ_Integrations {
 				return rest_ensure_response(['ok' => false, 'message' => 'Ranking audit unavailable.']);
 			}
 			if (!AQ_Ranking_Audit::has_gsc_connection()) {
-				return rest_ensure_response(['ok' => false, 'message' => 'Add the service account email and private key (and enable PHP OpenSSL).']);
+				return rest_ensure_response(['ok' => false, 'message' => 'Paste your Google OAuth login (client ID, secret, refresh token) and Save first.']);
 			}
 			// Authorize AND list — a live property count is far more useful than a bare "authorized".
-			$list = AQ_Ranking_Audit::gsc_sites(true); // fresh: reflect just-saved creds
+			$list = AQ_Ranking_Audit::gsc_sites(true); // fresh: reflect the just-saved login
 			if (empty($list['ok'])) {
-				return rest_ensure_response(['ok' => false, 'message' => 'Google rejected the service account: ' . (string) ($list['error'] ?? 'unknown error')]);
+				return rest_ensure_response(['ok' => false, 'message' => 'Google rejected the login: ' . (string) ($list['error'] ?? 'unknown error')]);
 			}
 			$n = count((array) $list['sites']);
 			return rest_ensure_response(['ok' => true, 'message' => $n === 0
-				? 'Authorized, but this service account has access to 0 properties. In Search Console → Settings → Users and permissions, add the service-account email to your property, then Refresh the list.'
-				: 'Authorized — ' . $n . ' propert' . ($n === 1 ? 'y' : 'ies') . ' available. Pick yours from the dropdown, then Save.']);
+				? 'Connected, but this Google account can see 0 Search Console properties. Confirm the account has access, then Refresh the list.'
+				: 'Connected — ' . $n . ' propert' . ($n === 1 ? 'y' : 'ies') . ' available. Pick this site\'s property from the dropdown, then Save.']);
 		}
 		if ($svc === 'github') {
 			$token = self::get('github_token');

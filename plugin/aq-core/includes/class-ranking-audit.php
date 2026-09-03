@@ -604,18 +604,90 @@ class AQ_Ranking_Audit {
 	}
 
 	/**
-	 * Enough to AUTHENTICATE and list properties: service-account email + private
-	 * key + the openssl_sign() the JWT needs. Deliberately does NOT require a
-	 * chosen property — discovering the property (sites.list) is what happens
-	 * BEFORE one is picked, so the token path must work without site_url.
+	 * Enough to AUTHENTICATE and list properties. Two supported ways in:
+	 *   1. Agency OAuth (preferred) — one Google login that already sees every
+	 *      client property, so there is ZERO per-client Google setup. The three
+	 *      values live in wp-config-level constants (via a private Pressable
+	 *      mu-plugin), never in the DB, the public repo, or the browser.
+	 *   2. Service account — a per-property grant; the original method, kept as a
+	 *      fallback for a site not run under the agency account.
+	 * Deliberately does NOT require a chosen property — discovering the property
+	 * (sites.list) is what happens BEFORE one is picked.
 	 */
 	public static function has_gsc_connection(): bool {
+		if (self::has_gsc_oauth()) {
+			return true;
+		}
 		if (!class_exists('AQ_Integrations') || !function_exists('openssl_sign')) {
 			return false;
 		}
 		$c = AQ_Integrations::gsc();
 		return (string) ($c['client_email'] ?? '') !== ''
 			&& (string) ($c['private_key'] ?? '') !== '';
+	}
+
+	/**
+	 * The agency OAuth login, read ONLY from constants (never the DB). Set by the
+	 * private Pressable mu-plugin. Returns empty strings when not configured.
+	 * @return array{client_id:string,client_secret:string,refresh_token:string}
+	 */
+	public static function gsc_oauth(): array {
+		if (!class_exists('AQ_Integrations')) {
+			return ['client_id' => '', 'client_secret' => '', 'refresh_token' => ''];
+		}
+		// AQ_Integrations::get() returns the wp-config constant if defined, else the
+		// AES-encrypted DB value — so a pasted login and a constant both work, and the
+		// secret is never autoloaded, never REST-exposed, never sent to the browser.
+		return [
+			'client_id'     => AQ_Integrations::get('gsc_oauth_client_id'),
+			'client_secret' => AQ_Integrations::get('gsc_oauth_client_secret'),
+			'refresh_token' => AQ_Integrations::get('gsc_oauth_refresh_token'),
+		];
+	}
+
+	/** True when all three agency-OAuth constants are present. */
+	public static function has_gsc_oauth(): bool {
+		$o = self::gsc_oauth();
+		return $o['client_id'] !== '' && $o['client_secret'] !== '' && $o['refresh_token'] !== '';
+	}
+
+	/**
+	 * Exchange the agency refresh token for a short-lived access token. Cached in
+	 * memory for THIS request only — the read-only access token is never written to
+	 * the database, and the refresh token never leaves the constant. Never throws.
+	 * @return array{ok:bool,token:string,error:string}
+	 */
+	public static function gsc_oauth_access_token(): array {
+		static $cache = null; // per-request memo; no DB persistence of the credential
+		if (is_array($cache)) {
+			return $cache;
+		}
+		$o = self::gsc_oauth();
+		if ($o['client_id'] === '' || $o['client_secret'] === '' || $o['refresh_token'] === '') {
+			return ['ok' => false, 'token' => '', 'error' => 'no agency OAuth credentials'];
+		}
+		$resp = wp_remote_post('https://oauth2.googleapis.com/token', [
+			'timeout' => 30,
+			'headers' => ['Content-Type' => 'application/x-www-form-urlencoded'],
+			'body'    => [
+				'grant_type'    => 'refresh_token',
+				'client_id'     => $o['client_id'],
+				'client_secret' => $o['client_secret'],
+				'refresh_token' => $o['refresh_token'],
+			],
+		]);
+		if (is_wp_error($resp)) {
+			return ['ok' => false, 'token' => '', 'error' => 'transport: ' . $resp->get_error_message()];
+		}
+		$code = (int) wp_remote_retrieve_response_code($resp);
+		$data = json_decode((string) wp_remote_retrieve_body($resp), true);
+		if ($code !== 200 || !is_array($data) || empty($data['access_token'])) {
+			// error_description may name the failure but never contains the refresh token.
+			$err = is_array($data) ? (string) ($data['error_description'] ?? ($data['error'] ?? ('HTTP ' . $code))) : ('HTTP ' . $code);
+			return ['ok' => false, 'token' => '', 'error' => $err];
+		}
+		$cache = ['ok' => true, 'token' => (string) $data['access_token'], 'error' => ''];
+		return $cache;
 	}
 
 	/** base64url (no padding) — for JWT segments. Pure. */
@@ -629,6 +701,11 @@ class AQ_Ranking_Audit {
 	 * @return array{ok:bool,token:string,error:string}
 	 */
 	public static function gsc_access_token(): array {
+		// Prefer the agency OAuth login when present — one account that already sees
+		// every property, so no per-client Google setup and no service-account JWT.
+		if (self::has_gsc_oauth()) {
+			return self::gsc_oauth_access_token();
+		}
 		if (!self::has_gsc_connection()) {
 			return ['ok' => false, 'token' => '', 'error' => 'no GSC credentials'];
 		}
