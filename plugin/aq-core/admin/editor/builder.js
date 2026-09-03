@@ -694,7 +694,7 @@
 		state.base = clone(state.sections);
 		state.review = null; state.decisions = {}; state.confirmed = {};
 		if (state.selected >= state.sections.length) { state.selected = -1; }
-		renderStructure();
+		renderTree();
 		renderInspector();
 		histSeed(); // committed state becomes the new undo baseline
 	}
@@ -709,41 +709,94 @@
 	}
 
 	/* ---------------- structure pane ---------------- */
-	function renderStructure() {
+	function treeIcon(name) {
+		var d = {
+			text: 'M4 6h16M4 12h16M4 18h10', list: 'M8 6h12M8 12h12M8 18h12M3 6h.01M3 12h.01M3 18h.01',
+			check: 'M4 12l4 4L20 6', card: 'M4 5h16v14H4z M4 9h16', form: 'M5 4h14v16H5z M8 8h8M8 12h8M8 16h4',
+			image: 'M4 5h16v14H4z M8 13l3-3 5 5', link: 'M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1',
+			gear: 'M12 8a4 4 0 100 8 4 4 0 000-8z M2 12h3M19 12h3M12 2v3M12 19v3', section: 'M4 5h16v4H4z M4 13h16v6H4z'
+		};
+		var el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		el.setAttribute('class', 'aqb-nodeico'); el.setAttribute('viewBox', '0 0 24 24');
+		el.setAttribute('fill', 'none'); el.setAttribute('stroke', 'currentColor'); el.setAttribute('stroke-width', '1.7');
+		el.setAttribute('stroke-linecap', 'round'); el.setAttribute('stroke-linejoin', 'round');
+		var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		p.setAttribute('d', d[name] || d.text); el.appendChild(p);
+		return el;
+	}
+
+	function isExpanded(key) { return !!state.tree.expanded[key]; }
+	function toggleExpand(key) { state.tree.expanded[key] = !state.tree.expanded[key]; renderTree(); }
+
+	// One clickable node row (used for element nodes and repeater items).
+	function nodeRow(i, n, depth) {
+		var active = state.node && state.node.section === i && samePath(state.node, n.path);
+		var row = ce('div', 'aqb-node' + (active ? ' is-active' : '') + (n.kind === 'fixed' ? ' is-fixed' : ''));
+		row.style.paddingLeft = (10 + depth * 14) + 'px';
+		if (n.expandable) {
+			var tw = ce('button', 'aqb-tw' + (isExpanded(n.key) ? ' is-open' : ''), '▸');
+			tw.title = 'Expand'; tw.addEventListener('click', function (e) { e.stopPropagation(); toggleExpand(n.key); });
+			row.appendChild(tw);
+		} else {
+			row.appendChild(ce('span', 'aqb-tw aqb-tw--leaf', ''));
+		}
+		row.appendChild(treeIcon(n.icon));
+		var name = ce('button', 'aqb-nodename', n.label + (n.expandable && n.children.length ? ' (' + n.children.length + ')' : ''));
+		name.addEventListener('click', function () {
+			if (n.kind === 'repeater') { toggleExpand(n.key); }
+			selectNode(i, n.path);
+		});
+		row.appendChild(name);
+		// Repeater-item tools (add handled at the group; item gets remove/reorder).
+		if (n.kind === 'item') {
+			var tools = ce('div', 'aqb-sectools');
+			tools.appendChild(iconBtn('↑', 'Move up', function () { moveItem(i, n.path.repeater, n.path.rindex, -1); }));
+			tools.appendChild(iconBtn('↓', 'Move down', function () { moveItem(i, n.path.repeater, n.path.rindex, 1); }));
+			tools.appendChild(iconBtn('✕', 'Remove', function () { removeItem(i, n.path.repeater, n.path.rindex); }, true));
+			row.appendChild(tools);
+		}
+		return row;
+	}
+
+	function renderTree() {
 		var p = els.structure;
 		p.innerHTML = '';
-		p.appendChild(ce('h3', 'aqb-h', 'Sections'));
-
+		p.appendChild(ce('h3', 'aqb-h', 'Structure'));
 		var list = ce('div', 'aqb-seclist');
 		state.sections.forEach(function (s, i) {
-			var row = ce('div', 'aqb-secrow' + (i === state.selected ? ' is-active' : ''));
+			var secKey = 'sec:' + i;
+			var openSec = i === state.selected || isExpanded(secKey);
+			var srow = ce('div', 'aqb-secrow' + (i === state.selected ? ' is-active' : ''));
+			var stw = ce('button', 'aqb-tw' + (openSec ? ' is-open' : ''), '▸');
+			stw.title = 'Expand section';
+			stw.addEventListener('click', function (e) { e.stopPropagation(); state.tree.expanded[secKey] = !openSec; renderTree(); });
+			srow.appendChild(stw);
 			var name = ce('button', 'aqb-secname', labelFor(s.type));
-			name.addEventListener('click', function () { selectSection(i, true); });
+			name.addEventListener('click', function () { selectNode(i, {}); });
 			var tools = ce('div', 'aqb-sectools');
 			tools.appendChild(iconBtn('↑', 'Move up', function () { move(i, -1); }));
 			tools.appendChild(iconBtn('↓', 'Move down', function () { move(i, 1); }));
 			tools.appendChild(iconBtn('⧉', 'Duplicate', function () { duplicate(i); }));
 			tools.appendChild(iconBtn('✕', 'Delete', function () { removeSection(i); }, true));
-			row.appendChild(name);
-			row.appendChild(tools);
-			list.appendChild(row);
+			srow.appendChild(name); srow.appendChild(tools);
+			list.appendChild(srow);
+			if (openSec) {
+				nodesForSection(i).forEach(function (n) {
+					list.appendChild(nodeRow(i, n, 1));
+					if (n.expandable && isExpanded(n.key)) {
+						n.children.forEach(function (c) { list.appendChild(nodeRow(i, c, 2)); });
+					}
+				});
+			}
 		});
 		p.appendChild(list);
 
-		// Add-section
 		var addWrap = ce('div', 'aqb-addwrap');
 		var sel = ce('select', 'aqb-addsel');
 		sel.appendChild(new Option('+ Add section…', ''));
-		// Alphabetize the add-section picker by human label (A→Z) — only this list;
-		// the page's section structure above stays in page order.
-		Object.keys(CFG.labels || {})
-			.sort(function (a, b) { return labelFor(a).localeCompare(labelFor(b)); })
-			.forEach(function (type) {
-				sel.appendChild(new Option(labelFor(type), type));
-			});
-		sel.addEventListener('change', function () {
-			if (sel.value) { addSection(sel.value); sel.value = ''; }
-		});
+		Object.keys(CFG.labels || {}).sort(function (a, b) { return labelFor(a).localeCompare(labelFor(b)); })
+			.forEach(function (type) { sel.appendChild(new Option(labelFor(type), type)); });
+		sel.addEventListener('change', function () { if (sel.value) { addSection(sel.value); sel.value = ''; } });
 		addWrap.appendChild(sel);
 		p.appendChild(addWrap);
 	}
@@ -757,7 +810,7 @@
 	/* ---------------- inspector ---------------- */
 	function selectSection(i, tellCanvas) {
 		state.selected = i;
-		renderStructure();
+		renderTree();
 		renderInspector();
 		if (tellCanvas) { postCanvas({ type: 'highlight', index: i }); }
 	}
@@ -1033,6 +1086,28 @@
 		});
 	}
 
+	function repArray(i, rep) {
+		var s = state.sections[i];
+		if (!Array.isArray(s[rep])) { s[rep] = []; }
+		return s[rep];
+	}
+	function moveItem(i, rep, ri, dir) {
+		var arr = repArray(i, rep), j = ri + dir;
+		if (j < 0 || j >= arr.length) { return; }
+		var t = arr[ri]; arr[ri] = arr[j]; arr[j] = t;
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
+	}
+	function removeItem(i, rep, ri) {
+		var arr = repArray(i, rep);
+		arr.splice(ri, 1);
+		if (state.node && state.node.repeater === rep && state.node.rindex === ri) { state.node = { section: i }; }
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
+	}
+	function addItem(i, rep) {
+		repArray(i, rep).push({});
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
+	}
+
 	function renderRepeater(obj, f) {
 		if (!Array.isArray(obj[f.name])) { obj[f.name] = []; }
 		var rows = obj[f.name];
@@ -1066,19 +1141,19 @@
 		var j = i + dir;
 		if (j < 0 || j >= state.sections.length) { return; }
 		var tmp = state.sections[i]; state.sections[i] = state.sections[j]; state.sections[j] = tmp;
-		state.selected = j; setDirty(true); renderStructure(); renderInspector(); pushChange();
+		state.selected = j; setDirty(true); renderTree(); renderInspector(); pushChange();
 	}
 	function duplicate(i) {
 		var copy = JSON.parse(JSON.stringify(state.sections[i]));
 		copy._uid = ++uid;
 		state.sections.splice(i + 1, 0, copy);
-		state.selected = i + 1; setDirty(true); renderStructure(); renderInspector(); pushChange();
+		state.selected = i + 1; setDirty(true); renderTree(); renderInspector(); pushChange();
 	}
 	function removeSection(i) {
 		if (!window.confirm('Remove this ' + labelFor(state.sections[i].type) + ' section?')) { return; }
 		state.sections.splice(i, 1);
 		if (state.selected >= state.sections.length) { state.selected = state.sections.length - 1; }
-		setDirty(true); renderStructure(); renderInspector(); pushChange();
+		setDirty(true); renderTree(); renderInspector(); pushChange();
 	}
 	function addSection(type) {
 		var s = { type: type, v: 1, _uid: ++uid };
@@ -1578,7 +1653,7 @@
 			state.galleryImages = (d && d.galleryImages) ? d.galleryImages : {};
 			state.sections = (d && d.sections ? d.sections : []).map(function (s) { s._uid = ++uid; return s; });
 			state.base = clone(state.sections); // snapshot the loaded page to diff against at review time
-			renderStructure();
+			renderTree();
 			renderInspector();
 			setDirty(false);
 			histSeed(); // baseline history step (undo returns here)
