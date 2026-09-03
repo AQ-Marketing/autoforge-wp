@@ -126,7 +126,8 @@ class AQ_Editor {
 		wp_enqueue_style('aq-fonts', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap', [], null);
 		wp_enqueue_style('aq-builder', $base . 'builder.css', [], self::ver($dir . 'builder.css'));
 		wp_enqueue_script('aq-history', $base . 'history.js', [], self::ver($dir . 'history.js'), true);
-		wp_enqueue_script('aq-builder', $base . 'builder.js', ['jquery', 'aq-history'], self::ver($dir . 'builder.js'), true);
+		wp_enqueue_script('aq-tree', $base . 'tree-model.js', [], self::ver($dir . 'tree-model.js'), true);
+		wp_enqueue_script('aq-builder', $base . 'builder.js', ['jquery', 'aq-history', 'aq-tree'], self::ver($dir . 'builder.js'), true);
 		wp_localize_script('aq-builder', 'AQ_EDITOR', [
 			'restRoot'  => esc_url_raw(rest_url('aq/v1/editor')),
 			'nonce'     => wp_create_nonce('wp_rest'),
