@@ -35,18 +35,26 @@
 	}
 	function samePath(a, b) {
 		a = a || {}; b = b || {};
-		return a.field === b.field && a.repeater === b.repeater &&
-			(a.rindex == null ? b.rindex == null : a.rindex === b.rindex) && a.group === b.group;
+		// Normalize null/undefined so a node path {repeater} (field undefined) still
+		// matches a want {field:null}. Mismatched null-vs-undefined was dropping matches.
+		return (a.field || null) === (b.field || null) &&
+			(a.repeater || null) === (b.repeater || null) &&
+			(a.rindex == null ? b.rindex == null : a.rindex === b.rindex) &&
+			(a.group || null) === (b.group || null);
 	}
 	// Find the node in section i whose path matches m {field,repeater,rindex}. Falls back to null.
 	function findNodePath(i, m) {
-		var want = { field: m && m.field, repeater: m && m.repeater, rindex: (m && m.rindex != null) ? m.rindex : null, group: undefined };
+		var wantRep = (m && m.repeater) || null;
+		var wantRi = (m && m.rindex != null) ? m.rindex : null;
+		// A canvas click on a repeater item (or a field inside one) carries
+		// repeater+rindex — select that item node, regardless of the subfield clicked.
+		if (wantRep != null && wantRi != null) { return { repeater: wantRep, rindex: wantRi }; }
+		var want = { field: (m && m.field) || null, repeater: wantRep, rindex: null, group: null };
 		var hit = null;
 		nodesForSection(i).forEach(function (n) {
 			if (!hit && samePath(n.path, want)) { hit = n.path; }
-			(n.children || []).forEach(function (c) { if (!hit && samePath(c.path, want)) { hit = c.path; } });
 			// a field that lives inside a group node
-			if (!hit && n.fields) { n.fields.forEach(function (f) { if (want.field && f.name === want.field) { hit = n.path; } }); }
+			if (!hit && want.field && n.fields) { n.fields.forEach(function (f) { if (f.name === want.field) { hit = n.path; } }); }
 		});
 		return hit;
 	}
@@ -727,6 +735,10 @@
 
 	function isExpanded(key) { return !!state.tree.expanded[key]; }
 	function toggleExpand(key) { state.tree.expanded[key] = !state.tree.expanded[key]; renderTree(); }
+	// Node keys from AQTree are section-agnostic (e.g. "sec/rep:services"); namespace
+	// the expand state by section index so same-named nodes in different sections
+	// (duplicated sections, multiple service-cards) don't share one expand flag.
+	function ekey(i, key) { return i + '|' + key; }
 
 	// One clickable node row (used for element nodes and repeater items).
 	function nodeRow(i, n, depth) {
@@ -734,8 +746,8 @@
 		var row = ce('div', 'aqb-node' + (active ? ' is-active' : '') + (n.kind === 'fixed' ? ' is-fixed' : ''));
 		row.style.paddingLeft = (10 + depth * 14) + 'px';
 		if (n.expandable) {
-			var tw = ce('button', 'aqb-tw' + (isExpanded(n.key) ? ' is-open' : ''), '▸');
-			tw.title = 'Expand'; tw.addEventListener('click', function (e) { e.stopPropagation(); toggleExpand(n.key); });
+			var tw = ce('button', 'aqb-tw' + (isExpanded(ekey(i, n.key)) ? ' is-open' : ''), '▸');
+			tw.title = 'Expand'; tw.addEventListener('click', function (e) { e.stopPropagation(); toggleExpand(ekey(i, n.key)); });
 			row.appendChild(tw);
 		} else {
 			row.appendChild(ce('span', 'aqb-tw aqb-tw--leaf', ''));
@@ -743,7 +755,7 @@
 		row.appendChild(treeIcon(n.icon));
 		var name = ce('button', 'aqb-nodename', n.label + (n.expandable && n.children.length ? ' (' + n.children.length + ')' : ''));
 		name.addEventListener('click', function () {
-			if (n.kind === 'repeater') { toggleExpand(n.key); }
+			if (n.kind === 'repeater') { toggleExpand(ekey(i, n.key)); }
 			selectNode(i, n.path);
 		});
 		row.appendChild(name);
@@ -783,7 +795,7 @@
 			if (openSec) {
 				nodesForSection(i).forEach(function (n) {
 					list.appendChild(nodeRow(i, n, 1));
-					if (n.expandable && isExpanded(n.key)) {
+					if (n.expandable && isExpanded(ekey(i, n.key))) {
 						n.children.forEach(function (c) { list.appendChild(nodeRow(i, c, 2)); });
 					}
 				});
@@ -918,7 +930,12 @@
 			return;
 		}
 		if (node.kind === 'item') {
-			collapsibleGroupInto(p, 'Content', node.fields, s, { repeater: node.path.repeater, rindex: node.path.rindex });
+			// Bind to the repeater ROW, not the section — renderField reads obj[f.name]
+			// and the ctx carries repeater/rindex for the canvas highlight + settext.
+			var arr = Array.isArray(s[node.path.repeater]) ? s[node.path.repeater] : [];
+			var row = arr[node.path.rindex];
+			if (!row || typeof row !== 'object') { p.appendChild(ce('p', 'aqb-muted', 'This item no longer exists.')); return; }
+			collapsibleGroupInto(p, 'Content', node.fields, row, { repeater: node.path.repeater, rindex: node.path.rindex });
 			return;
 		}
 		// field or group node
@@ -1172,18 +1189,21 @@
 		var j = i + dir;
 		if (j < 0 || j >= state.sections.length) { return; }
 		var tmp = state.sections[i]; state.sections[i] = state.sections[j]; state.sections[j] = tmp;
-		state.selected = j; setDirty(true); renderTree(); renderNodeInspector(); pushChange();
+		state.selected = j; state.node = { section: j };
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function duplicate(i) {
 		var copy = JSON.parse(JSON.stringify(state.sections[i]));
 		copy._uid = ++uid;
 		state.sections.splice(i + 1, 0, copy);
-		state.selected = i + 1; setDirty(true); renderTree(); renderNodeInspector(); pushChange();
+		state.selected = i + 1; state.node = { section: i + 1 };
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function removeSection(i) {
 		if (!window.confirm('Remove this ' + labelFor(state.sections[i].type) + ' section?')) { return; }
 		state.sections.splice(i, 1);
 		if (state.selected >= state.sections.length) { state.selected = state.sections.length - 1; }
+		state.node = state.selected >= 0 ? { section: state.selected } : null;
 		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function addSection(type) {
