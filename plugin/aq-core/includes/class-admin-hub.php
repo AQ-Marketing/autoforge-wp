@@ -132,9 +132,10 @@ class AQ_Admin_Hub {
 		return [
 			['type' => 'link', 'slug' => 'aq-dashboard', 'label' => 'Overview', 'icon' => 'dashboard'],
 			['type' => 'group', 'label' => 'Content', 'icon' => 'edit', 'items' => [
-				'aq-pages' => 'Pages', 'aq-media' => 'Media', 'aq-styles' => 'Styles', 'aq-navigation' => 'Navigation',
+				'aq-pages' => 'Pages', 'aq-styles' => 'Styles', 'aq-navigation' => 'Navigation',
 				'aq-footer' => 'Footer', 'aq-logo' => 'Logo', 'aq-legal' => 'Legal Pages',
 			]],
+			['type' => 'link', 'slug' => 'aq-media', 'label' => 'Media', 'icon' => 'format-image'],
 			['type' => 'group', 'label' => 'SEO', 'icon' => 'search', 'items' => [
 				'aq-seo' => 'SEO', 'aq-knowledge' => 'Knowledge', 'aq-seo-agent' => 'SEO Agent', 'aq-redirects' => 'Redirects',
 			]],
