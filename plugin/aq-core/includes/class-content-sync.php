@@ -514,8 +514,21 @@ class AQ_Content_Sync {
 	 * apply_sections so the editor and the import path share one mapping
 	 * (type→layout, single-image filename→attachment ID).
 	 */
-	public static function update_sections(int $id, array $sections): void {
-		self::apply_sections($id, $sections);
+	public static function update_sections(int $id, array $sections, bool $allow_empty = false): void {
+		self::apply_sections($id, $sections, $allow_empty);
+		// A successful section write changes what visitors see. clean_post_cache()
+		// alone leaves WP Rocket's cached PAGE and — critically — its minified /
+		// combined JS+CSS bundle (wp-content/cache/min/) intact, so real visitors keep
+		// being served the old/broken bundle after an editor save until a manual purge.
+		// That is the recurring "saving broke the page" (the min bundle is shared across
+		// pages, so only a domain + minify purge rebuilds it — a per-page purge cannot).
+		// Runs only on success (apply_sections throws on a blocked/rolled-back save, so
+		// we never purge after a no-op). Covers every editor save path: rest_save and
+		// the gated rest_commit. AQ_Performance::purge_caches() = rocket_clean_domain()
+		// + rocket_clean_minify() + wp_cache_flush(), each guarded by function_exists.
+		if (class_exists('AQ_Performance') && method_exists('AQ_Performance', 'purge_caches')) {
+			AQ_Performance::purge_caches();
+		}
 	}
 
 	/**
@@ -935,7 +948,7 @@ class AQ_Content_Sync {
 		return $rows;
 	}
 
-	private static function apply_sections(int $id, array $sections): void {
+	private static function apply_sections(int $id, array $sections, bool $allow_empty = false): void {
 		if (!function_exists('update_field')) {
 			return;
 		}
@@ -954,25 +967,125 @@ class AQ_Content_Sync {
 
 			$rows[] = $row;
 		}
+
+		// CATCH-ALL WIPE GUARD: refuse to clear every section off a page that
+		// currently has content. This is the single chokepoint for ALL section
+		// writes (editor save, client review-commit, CLI import), so it catches a
+		// zero-section payload no matter which upstream layer produced it — a client
+		// that posted [] after a failed load, an allow-list that stripped every
+		// section, a review reconstruct that collapsed to nothing. No legitimate
+		// flow empties a page by saving zero sections (you delete the page or
+		// replace its content), so treat it as a bug and abort BEFORE touching meta.
+		// A deliberate clear passes $allow_empty = true.
+		if (!$allow_empty && empty($rows)) {
+			$existing = self::read_sections($id);
+			if (!empty($existing)) {
+				throw new \RuntimeException(sprintf(
+					'Section save aborted for post %d: the save carried zero sections but the page currently has %d. Refusing to wipe the page. (Pass allow_empty to clear intentionally.)',
+					$id,
+					count($existing)
+				));
+			}
+		}
+
+		// SAFETY: snapshot the current section meta *before* we destroy it. ACF's
+		// flexible-content update_field() silently DROPS any row whose acf_fc_layout
+		// is not a registered layout at write time — and because we clear the old
+		// meta first (below), a partial/empty write would otherwise leave the page
+		// wiped down to header+footer with no recovery. A save must NEVER shrink a
+		// page it did not mean to. So we keep the raw meta and, if the write loses
+		// sections we intended to persist, roll the snapshot back and fail loudly.
+		$snapshot = self::snapshot_section_meta($id);
+
 		// Clear ALL prior flexible-content meta first so a re-import never leaves
 		// orphaned sub-field meta behind (a section that changed shape/type/index
 		// between imports otherwise keeps stale nested repeater rows — e.g. an
 		// empty paragraph or a leftover intro). delete_field() alone does not
 		// recurse into nested repeater meta, so wipe every sections_* key.
-		// Fetch every meta key for the post and filter in PHP — LIKE with an
-		// esc_like() backslash escape is a MySQL-ism SQLite (Studio) ignores.
+		self::delete_section_meta($id);
+
+		update_field('field_aq_sections', $rows, $id);
+
+		// Verify the write preserved every section we intended to persist. If ACF
+		// dropped rows (unregistered layout, ACF not initialised, theme layout
+		// filter not applied in this request context, version skew mid auto-update,
+		// …) the readback is shorter than $rows — restore the snapshot and abort.
+		// Writing a deliberately empty page (count($rows) === 0) is allowed.
+		$intended  = count($rows);
+		$persisted = count(self::read_sections($id));
+		if ($intended > 0 && $persisted < $intended) {
+			self::delete_section_meta($id);
+			self::restore_section_meta($id, $snapshot);
+			throw new \RuntimeException(sprintf(
+				'Section save aborted for post %d: the write persisted %d of %d sections (a registered layout was dropped at write time). The page was left unchanged.',
+				$id,
+				$persisted,
+				$intended
+			));
+		}
+	}
+
+	/**
+	 * Every section-related postmeta key. Shared by the snapshot/restore/delete
+	 * helpers so the "what counts as section meta" rule lives in one place. Fetch
+	 * every meta key for the post and filter in PHP — a LIKE with an esc_like()
+	 * backslash escape is a MySQL-ism SQLite (Studio) ignores.
+	 *
+	 * @return array<int,string>
+	 */
+	private static function section_meta_keys(int $id): array {
 		global $wpdb;
 		$keys = $wpdb->get_col($wpdb->prepare(
 			"SELECT DISTINCT meta_key FROM {$wpdb->postmeta} WHERE post_id = %d",
 			$id
 		));
+		$out = [];
 		foreach ((array) $keys as $k) {
 			if ($k === 'sections' || $k === '_sections'
 				|| strpos($k, 'sections_') === 0 || strpos($k, '_sections_') === 0) {
-				delete_post_meta($id, $k);
+				$out[] = $k;
 			}
 		}
-		update_field('field_aq_sections', $rows, $id);
+		return $out;
+	}
+
+	/**
+	 * Capture the raw (key => list-of-values) section meta so it can be restored
+	 * byte-for-byte if a write turns out destructive. Raw values sidestep ACF's
+	 * layout validation entirely on restore, so the rollback can never itself be
+	 * dropped the way update_field() rows can.
+	 *
+	 * @return array<string,array<int,mixed>>
+	 */
+	private static function snapshot_section_meta(int $id): array {
+		$snapshot = [];
+		foreach (self::section_meta_keys($id) as $k) {
+			$snapshot[$k] = get_post_meta($id, $k, false);
+		}
+		return $snapshot;
+	}
+
+	private static function delete_section_meta(int $id): void {
+		foreach (self::section_meta_keys($id) as $k) {
+			delete_post_meta($id, $k);
+		}
+	}
+
+	/**
+	 * Re-add captured meta directly (no ACF layer), then flush the post-meta
+	 * cache so subsequent reads see the restored values.
+	 *
+	 * @param array<string,array<int,mixed>> $snapshot
+	 */
+	private static function restore_section_meta(int $id, array $snapshot): void {
+		foreach ($snapshot as $k => $values) {
+			foreach ((array) $values as $v) {
+				add_post_meta($id, $k, $v);
+			}
+		}
+		if (function_exists('clean_post_cache')) {
+			clean_post_cache($id);
+		}
 	}
 
 	/**

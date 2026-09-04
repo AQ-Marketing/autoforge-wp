@@ -126,7 +126,8 @@ class AQ_Editor {
 		wp_enqueue_style('aq-fonts', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap', [], null);
 		wp_enqueue_style('aq-builder', $base . 'builder.css', [], self::ver($dir . 'builder.css'));
 		wp_enqueue_script('aq-history', $base . 'history.js', [], self::ver($dir . 'history.js'), true);
-		wp_enqueue_script('aq-builder', $base . 'builder.js', ['jquery', 'aq-history'], self::ver($dir . 'builder.js'), true);
+		wp_enqueue_script('aq-tree', $base . 'tree-model.js', [], self::ver($dir . 'tree-model.js'), true);
+		wp_enqueue_script('aq-builder', $base . 'builder.js', ['jquery', 'aq-history', 'aq-tree'], self::ver($dir . 'builder.js'), true);
 		wp_localize_script('aq-builder', 'AQ_EDITOR', [
 			'restRoot'  => esc_url_raw(rest_url('aq/v1/editor')),
 			'nonce'     => wp_create_nonce('wp_rest'),
@@ -225,9 +226,30 @@ class AQ_Editor {
 	 * header + footer. Union with the registered layouts so a save can never
 	 * destroy a section the engine still renders. Single source of truth for both
 	 * write paths — clean_sections() and AQ_Editor_Review::sanitize_sections().
+	 *
+	 * The registered layouts come from TWO sources, unioned for resilience:
+	 *   1. $GLOBALS['aq_core_section_layouts'] — the resolved layout schema (theme
+	 *      `aq_section_layouts` filter included), set unconditionally on acf/init in
+	 *      includes/fields/sections.php. This is the SAME set the render path trusts,
+	 *      so the save allow-list is always at least as wide as what the site renders.
+	 *   2. acf_get_field('field_aq_sections')['layouts'] — the live ACF field group.
+	 * (1) is the reliable floor: acf_get_field() can return an incomplete or empty
+	 * field in some request contexts (ACF not fully booted, field cache cold), and
+	 * relying on it alone is exactly what let a save silently strip — then wipe — a
+	 * registered section. Never gate a destructive save on timing-sensitive state.
 	 */
 	public static function save_allowed_layouts(): array {
 		$allowed = array_keys(self::field_schema());
+		if (isset($GLOBALS['aq_core_section_layouts']) && is_array($GLOBALS['aq_core_section_layouts'])) {
+			foreach ($GLOBALS['aq_core_section_layouts'] as $name => $layout) {
+				$name = is_string($name) && $name !== ''
+					? $name
+					: (is_array($layout) ? (string) ($layout['name'] ?? '') : '');
+				if ($name !== '') {
+					$allowed[] = $name;
+				}
+			}
+		}
 		if (function_exists('acf_get_field')) {
 			$fg = acf_get_field('field_aq_sections');
 			if (is_array($fg) && !empty($fg['layouts']) && is_array($fg['layouts'])) {
@@ -445,7 +467,14 @@ class AQ_Editor {
 		// A successful save supersedes any pending live-preview snapshot.
 		delete_transient(self::preview_key($id));
 
-		AQ_Content_Sync::update_sections($id, $clean);
+		// The write path aborts (throws) rather than let a save wipe or shrink the
+		// page — surface that as a clean 409 the editor can show, and leave the page
+		// exactly as it was (the write path rolled back before throwing).
+		try {
+			AQ_Content_Sync::update_sections($id, $clean);
+		} catch (\Throwable $e) {
+			return new WP_Error('aq_save_blocked', $e->getMessage(), ['status' => 409]);
+		}
 
 		return rest_ensure_response([
 			'ok'       => true,

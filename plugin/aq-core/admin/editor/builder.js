@@ -18,8 +18,46 @@
 	// agency admin). Gated users get "Review & Publish"; bypass users keep "Save".
 	var GATED = !!CFG.reviewEnabled && !CFG.canBypass;
 
-	var state = { sections: [], base: [], selected: -1, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null, gallerySel: null, gallerySelUid: null, galleryBulkCat: '' };
+	var state = { sections: [], base: [], selected: -1, node: null, tree: { expanded: {} }, dirty: false, device: 'desktop', rehighlight: -1, images: {}, galleryImages: {}, review: null, decisions: {}, confirmed: {}, hist: { stack: [], ptr: -1, cap: 50 }, previewTimer: null, histTimer: null, gallerySel: null, gallerySelUid: null, galleryBulkCat: '' };
 	var HIST = (typeof window !== 'undefined' && window.AQHistory) ? window.AQHistory : null;
+	// --- element-tree helpers ---
+	function schemaEntry(type) { return (CFG.schema && CFG.schema[type]) || null; }
+	function fieldsForType(type, s) {
+		var e = schemaEntry(type);
+		var f = (e && e.fields) ? e.fields : [];
+		return f.length ? f : inferFields(s);
+	}
+	function elementsHintFor(type) { var e = schemaEntry(type); return (e && e.elements) ? e.elements : null; }
+	function nodesForSection(i) {
+		var s = state.sections[i];
+		if (!s) { return []; }
+		return window.AQTree.deriveNodes(fieldsForType(s.type, s), elementsHintFor(s.type), s);
+	}
+	function samePath(a, b) {
+		a = a || {}; b = b || {};
+		// Normalize null/undefined so a node path {repeater} (field undefined) still
+		// matches a want {field:null}. Mismatched null-vs-undefined was dropping matches.
+		return (a.field || null) === (b.field || null) &&
+			(a.repeater || null) === (b.repeater || null) &&
+			(a.rindex == null ? b.rindex == null : a.rindex === b.rindex) &&
+			(a.group || null) === (b.group || null);
+	}
+	// Find the node in section i whose path matches m {field,repeater,rindex}. Falls back to null.
+	function findNodePath(i, m) {
+		var wantRep = (m && m.repeater) || null;
+		var wantRi = (m && m.rindex != null) ? m.rindex : null;
+		// A canvas click on a repeater item (or a field inside one) carries
+		// repeater+rindex — select that item node, regardless of the subfield clicked.
+		if (wantRep != null && wantRi != null) { return { repeater: wantRep, rindex: wantRi }; }
+		var want = { field: (m && m.field) || null, repeater: wantRep, rindex: null, group: null };
+		var hit = null;
+		nodesForSection(i).forEach(function (n) {
+			if (!hit && samePath(n.path, want)) { hit = n.path; }
+			// a field that lives inside a group node
+			if (!hit && want.field && n.fields) { n.fields.forEach(function (f) { if (f.name === want.field) { hit = n.path; } }); }
+		});
+		return hit;
+	}
 	var uid = 0;
 	var els = {};
 	function clone(x) { return JSON.parse(JSON.stringify(x)); }
@@ -120,7 +158,7 @@
 	}
 
 	/* ---------------- undo / redo history ---------------- */
-	function snapshot() { return { sections: clone(state.sections), selected: state.selected }; }
+	function snapshot() { return { sections: clone(state.sections), selected: state.selected, node: state.node }; }
 	function histSeed() { state.hist = { stack: [snapshot()], ptr: 0, cap: 50 }; updateHistButtons(); }
 	// Record the current working state as a new history step (dropping any redo
 	// tail first, then trimming the oldest past the cap). Coalesces rapid typing
@@ -145,8 +183,9 @@
 		if (!snap) { return; }
 		state.sections = (snap.sections || []).map(function (s) { s._uid = ++uid; return s; });
 		state.selected = (snap.selected != null && snap.selected < state.sections.length) ? snap.selected : -1;
-		renderStructure();
-		renderInspector();
+		state.node = (snap.node && snap.node.section === state.selected) ? snap.node : (state.selected >= 0 ? { section: state.selected } : null);
+		renderTree();
+		renderNodeInspector();
 	}
 	function undo() {
 		if (!HIST) { return; }
@@ -663,8 +702,8 @@
 		state.base = clone(state.sections);
 		state.review = null; state.decisions = {}; state.confirmed = {};
 		if (state.selected >= state.sections.length) { state.selected = -1; }
-		renderStructure();
-		renderInspector();
+		renderTree();
+		renderNodeInspector();
 		histSeed(); // committed state becomes the new undo baseline
 	}
 
@@ -678,41 +717,98 @@
 	}
 
 	/* ---------------- structure pane ---------------- */
-	function renderStructure() {
+	function treeIcon(name) {
+		var d = {
+			text: 'M4 6h16M4 12h16M4 18h10', list: 'M8 6h12M8 12h12M8 18h12M3 6h.01M3 12h.01M3 18h.01',
+			check: 'M4 12l4 4L20 6', card: 'M4 5h16v14H4z M4 9h16', form: 'M5 4h14v16H5z M8 8h8M8 12h8M8 16h4',
+			image: 'M4 5h16v14H4z M8 13l3-3 5 5', link: 'M10 13a5 5 0 007 0l2-2a5 5 0 00-7-7l-1 1',
+			gear: 'M12 8a4 4 0 100 8 4 4 0 000-8z M2 12h3M19 12h3M12 2v3M12 19v3', section: 'M4 5h16v4H4z M4 13h16v6H4z'
+		};
+		var el = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		el.setAttribute('class', 'aqb-nodeico'); el.setAttribute('viewBox', '0 0 24 24');
+		el.setAttribute('fill', 'none'); el.setAttribute('stroke', 'currentColor'); el.setAttribute('stroke-width', '1.7');
+		el.setAttribute('stroke-linecap', 'round'); el.setAttribute('stroke-linejoin', 'round');
+		var p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+		p.setAttribute('d', d[name] || d.text); el.appendChild(p);
+		return el;
+	}
+
+	function isExpanded(key) { return !!state.tree.expanded[key]; }
+	function toggleExpand(key) { state.tree.expanded[key] = !state.tree.expanded[key]; renderTree(); }
+	// Node keys from AQTree are section-agnostic (e.g. "sec/rep:services"); namespace
+	// the expand state by section index so same-named nodes in different sections
+	// (duplicated sections, multiple service-cards) don't share one expand flag.
+	function ekey(i, key) { return i + '|' + key; }
+
+	// One clickable node row (used for element nodes and repeater items).
+	function nodeRow(i, n, depth) {
+		var active = state.node && state.node.section === i && samePath(state.node, n.path);
+		var row = ce('div', 'aqb-node' + (active ? ' is-active' : '') + (n.kind === 'fixed' ? ' is-fixed' : ''));
+		row.style.paddingLeft = (10 + depth * 14) + 'px';
+		if (n.expandable) {
+			var tw = ce('button', 'aqb-tw' + (isExpanded(ekey(i, n.key)) ? ' is-open' : ''), '▸');
+			tw.title = 'Expand'; tw.addEventListener('click', function (e) { e.stopPropagation(); toggleExpand(ekey(i, n.key)); });
+			row.appendChild(tw);
+		} else {
+			row.appendChild(ce('span', 'aqb-tw aqb-tw--leaf', ''));
+		}
+		row.appendChild(treeIcon(n.icon));
+		var name = ce('button', 'aqb-nodename', n.label + (n.expandable && n.children.length ? ' (' + n.children.length + ')' : ''));
+		name.addEventListener('click', function () {
+			if (n.kind === 'repeater') { toggleExpand(ekey(i, n.key)); }
+			selectNode(i, n.path);
+		});
+		row.appendChild(name);
+		// Repeater-item tools (add handled at the group; item gets remove/reorder).
+		if (n.kind === 'item') {
+			var tools = ce('div', 'aqb-sectools');
+			tools.appendChild(iconBtn('↑', 'Move up', function () { moveItem(i, n.path.repeater, n.path.rindex, -1); }));
+			tools.appendChild(iconBtn('↓', 'Move down', function () { moveItem(i, n.path.repeater, n.path.rindex, 1); }));
+			tools.appendChild(iconBtn('✕', 'Remove', function () { removeItem(i, n.path.repeater, n.path.rindex); }, true));
+			row.appendChild(tools);
+		}
+		return row;
+	}
+
+	function renderTree() {
 		var p = els.structure;
 		p.innerHTML = '';
-		p.appendChild(ce('h3', 'aqb-h', 'Sections'));
-
+		p.appendChild(ce('h3', 'aqb-h', 'Structure'));
 		var list = ce('div', 'aqb-seclist');
 		state.sections.forEach(function (s, i) {
-			var row = ce('div', 'aqb-secrow' + (i === state.selected ? ' is-active' : ''));
+			var secKey = 'sec:' + i;
+			var openSec = i === state.selected || isExpanded(secKey);
+			var srow = ce('div', 'aqb-secrow' + (i === state.selected ? ' is-active' : ''));
+			var stw = ce('button', 'aqb-tw' + (openSec ? ' is-open' : ''), '▸');
+			stw.title = 'Expand section';
+			stw.addEventListener('click', function (e) { e.stopPropagation(); state.tree.expanded[secKey] = !openSec; renderTree(); });
+			srow.appendChild(stw);
 			var name = ce('button', 'aqb-secname', labelFor(s.type));
-			name.addEventListener('click', function () { selectSection(i, true); });
+			name.addEventListener('click', function () { selectNode(i, {}); });
 			var tools = ce('div', 'aqb-sectools');
 			tools.appendChild(iconBtn('↑', 'Move up', function () { move(i, -1); }));
 			tools.appendChild(iconBtn('↓', 'Move down', function () { move(i, 1); }));
 			tools.appendChild(iconBtn('⧉', 'Duplicate', function () { duplicate(i); }));
 			tools.appendChild(iconBtn('✕', 'Delete', function () { removeSection(i); }, true));
-			row.appendChild(name);
-			row.appendChild(tools);
-			list.appendChild(row);
+			srow.appendChild(name); srow.appendChild(tools);
+			list.appendChild(srow);
+			if (openSec) {
+				nodesForSection(i).forEach(function (n) {
+					list.appendChild(nodeRow(i, n, 1));
+					if (n.expandable && isExpanded(ekey(i, n.key))) {
+						n.children.forEach(function (c) { list.appendChild(nodeRow(i, c, 2)); });
+					}
+				});
+			}
 		});
 		p.appendChild(list);
 
-		// Add-section
 		var addWrap = ce('div', 'aqb-addwrap');
 		var sel = ce('select', 'aqb-addsel');
 		sel.appendChild(new Option('+ Add section…', ''));
-		// Alphabetize the add-section picker by human label (A→Z) — only this list;
-		// the page's section structure above stays in page order.
-		Object.keys(CFG.labels || {})
-			.sort(function (a, b) { return labelFor(a).localeCompare(labelFor(b)); })
-			.forEach(function (type) {
-				sel.appendChild(new Option(labelFor(type), type));
-			});
-		sel.addEventListener('change', function () {
-			if (sel.value) { addSection(sel.value); sel.value = ''; }
-		});
+		Object.keys(CFG.labels || {}).sort(function (a, b) { return labelFor(a).localeCompare(labelFor(b)); })
+			.forEach(function (type) { sel.appendChild(new Option(labelFor(type), type)); });
+		sel.addEventListener('change', function () { if (sel.value) { addSection(sel.value); sel.value = ''; } });
 		addWrap.appendChild(sel);
 		p.appendChild(addWrap);
 	}
@@ -725,10 +821,24 @@
 
 	/* ---------------- inspector ---------------- */
 	function selectSection(i, tellCanvas) {
-		state.selected = i;
-		renderStructure();
-		renderInspector();
+		selectNode(i, {});
 		if (tellCanvas) { postCanvas({ type: 'highlight', index: i }); }
+	}
+
+	function selectNode(i, path, opts) {
+		state.selected = i;
+		state.node = Object.assign({ section: i }, path || {});
+		renderTree();
+		renderNodeInspector();
+		// Only echo a highlight (which scrolls + flashes the element) to the canvas when
+		// the selection originated in the BUILDER (tree node / inspector focus). A
+		// selection that came FROM a canvas click is already visible and locally
+		// selected there — echoing it back makes the canvas scroll/flash the very
+		// element the user just clicked, which is the "jarring scroll on every click".
+		if (!(opts && opts.fromCanvas)) {
+			postCanvas({ type: 'highlight', index: i, field: state.node.field || null,
+				repeater: state.node.repeater || null, rindex: (state.node.rindex != null) ? state.node.rindex : null });
+		}
 	}
 
 	// Whether a section type is edited via bespoke inspector controls (aq_gallery).
@@ -751,12 +861,15 @@
 			target = insp.querySelector('.aqb-field--top[data-aqf="' + cssEsc(m.field) + '"]');
 		}
 		if (!target) { return; }
-		try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { target.scrollIntoView(); }
 		flashWrap(target);
-		// When the canvas is starting in-place editing, do NOT focus the inspector
-		// input — moving focus to the parent window would blur (and end) the
+		// When the canvas is starting in-place editing, do NOT scroll or focus the
+		// inspector — the user is typing on the canvas; moving the inspector is
+		// pointless, and moving focus to the parent window would blur (and end) the
 		// contentEditable edit in the iframe.
 		if (m && m.editing) { return; }
+		// block:'nearest' (no smooth, no centering) so this only nudges the field into
+		// view when it's actually clipped — never a page-level jump.
+		try { target.scrollIntoView({ block: 'nearest' }); } catch (e) { /* best-effort */ }
 		var input = target.querySelector('input, textarea, select');
 		if (input && input.focus) { try { input.focus({ preventScroll: true }); } catch (e2) { input.focus(); } }
 	}
@@ -769,7 +882,29 @@
 		return String(s).replace(/["\\\]\[]/g, '\\$&');
 	}
 
-	function renderInspector() {
+	// Find the active node object (not just its path) for the current selection.
+	function activeNode() {
+		if (state.selected < 0 || !state.node) { return null; }
+		var found = null, want = state.node;
+		nodesForSection(state.selected).forEach(function (n) {
+			if (!found && samePath(n.path, want)) { found = n; }
+			(n.children || []).forEach(function (c) { if (!found && samePath(c.path, want)) { found = c; } });
+		});
+		return found;
+	}
+
+	function collapsibleGroup(title, fieldsArr, s, ctx) {
+		var grp = ce('div', 'aqb-group is-open');
+		var head = ce('button', 'aqb-grouph', title);
+		head.addEventListener('click', function () { grp.classList.toggle('is-open'); });
+		grp.appendChild(head);
+		var bodyEl = ce('div', 'aqb-groupbody');
+		fieldsArr.forEach(function (f) { bodyEl.appendChild(renderField(s, f, ctx)); });
+		grp.appendChild(bodyEl);
+		return grp;
+	}
+
+	function renderNodeInspector() {
 		var p = els.inspector;
 		p.innerHTML = '';
 		if (state.selected < 0 || !state.sections[state.selected]) {
@@ -777,34 +912,50 @@
 			return;
 		}
 		var s = state.sections[state.selected];
-		p.appendChild(ce('h3', 'aqb-h', labelFor(s.type)));
-		// In-place sections (aq_gallery) are edited on the canvas via a floating
-		// overlay, not here. Show a short pointer + a re-open button instead of the
-		// raw persistence fields (which would surface attachment IDs as text boxes).
-		if (inplaceOf(s.type) === 'gallery') {
-			renderGalleryInspector(p, s);
+
+		// aq_gallery stays on-canvas (unchanged behavior).
+		if (inplaceOf(s.type) === 'gallery') { p.appendChild(ce('h3', 'aqb-h', labelFor(s.type))); renderGalleryInspector(p, s); return; }
+
+		var node = activeNode();
+
+		// Section root: summary only.
+		if (!node) {
+			p.appendChild(ce('h3', 'aqb-h', labelFor(s.type)));
+			var count = nodesForSection(state.selected).length;
+			p.appendChild(ce('p', 'aqb-muted', count + (count === 1 ? ' element' : ' elements') + ' — pick one from the tree on the left to edit it.'));
 			return;
 		}
-		var fields = schemaFor(s.type);
-		var inferred = false;
-		if (!fields.length) { fields = inferFields(s); inferred = true; }
-		if (!fields.length) {
-			p.appendChild(ce('p', 'aqb-muted', 'This section has no editable fields.'));
+
+		p.appendChild(ce('h3', 'aqb-h', node.label));
+
+		if (node.kind === 'fixed') {
+			p.appendChild(ce('p', 'aqb-muted', 'This element is built in code and maintained by your developer. It has no editable settings here.'));
 			return;
 		}
-		if (inferred) {
-			var note = ce('p', 'aqb-muted aqb-auto-note', 'Fields detected automatically from this section.');
-			p.appendChild(note);
+		if (node.kind === 'repeater') {
+			p.appendChild(ce('p', 'aqb-muted', node.children.length + ' item(s). Expand this in the tree to edit each one.'));
+			var add = ce('button', 'aqb-btn', '+ Add item');
+			add.addEventListener('click', function () { addItem(state.selected, node.path.repeater); });
+			p.appendChild(add);
+			return;
 		}
-		var content = fields.filter(function (f) { return f.group !== 'design'; });
-		var design = fields.filter(function (f) { return f.group === 'design'; });
-		content.forEach(function (f) { p.appendChild(renderField(s, f)); });
-		if (design.length) {
-			var grp = ce('div', 'aqb-group');
-			grp.appendChild(ce('h4', 'aqb-grouph', 'Design'));
-			p.appendChild(grp);
-			design.forEach(function (f) { p.appendChild(renderField(s, f)); });
+		if (node.kind === 'item') {
+			// Bind to the repeater ROW, not the section — renderField reads obj[f.name]
+			// and the ctx carries repeater/rindex for the canvas highlight + settext.
+			var arr = Array.isArray(s[node.path.repeater]) ? s[node.path.repeater] : [];
+			var row = arr[node.path.rindex];
+			if (!row || typeof row !== 'object') { p.appendChild(ce('p', 'aqb-muted', 'This item no longer exists.')); return; }
+			collapsibleGroupInto(p, 'Content', node.fields, row, { repeater: node.path.repeater, rindex: node.path.rindex });
+			return;
 		}
+		// field or group node
+		var title = node.path.group === 'design' ? 'Design' : 'Content';
+		collapsibleGroupInto(p, title, node.fields, s, null);
+	}
+
+	function collapsibleGroupInto(p, title, fieldsArr, s, ctx) {
+		if (!fieldsArr.length) { p.appendChild(ce('p', 'aqb-muted', 'No editable settings.')); return; }
+		p.appendChild(collapsibleGroup(title, fieldsArr, s, ctx));
 	}
 
 	function renderField(obj, f, ctx) {
@@ -993,6 +1144,28 @@
 		});
 	}
 
+	function repArray(i, rep) {
+		var s = state.sections[i];
+		if (!Array.isArray(s[rep])) { s[rep] = []; }
+		return s[rep];
+	}
+	function moveItem(i, rep, ri, dir) {
+		var arr = repArray(i, rep), j = ri + dir;
+		if (j < 0 || j >= arr.length) { return; }
+		var t = arr[ri]; arr[ri] = arr[j]; arr[j] = t;
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
+	}
+	function removeItem(i, rep, ri) {
+		var arr = repArray(i, rep);
+		arr.splice(ri, 1);
+		if (state.node && state.node.repeater === rep && state.node.rindex === ri) { state.node = { section: i }; }
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
+	}
+	function addItem(i, rep) {
+		repArray(i, rep).push({});
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
+	}
+
 	function renderRepeater(obj, f) {
 		if (!Array.isArray(obj[f.name])) { obj[f.name] = []; }
 		var rows = obj[f.name];
@@ -1003,9 +1176,9 @@
 			var head = ce('div', 'aqb-rephead');
 			head.appendChild(ce('span', 'aqb-repnum', '#' + (ri + 1)));
 			var tools = ce('div', 'aqb-sectools');
-			tools.appendChild(iconBtn('↑', 'Up', function () { if (ri > 0) { rows.splice(ri - 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderInspector(); pushChange(); } }));
-			tools.appendChild(iconBtn('↓', 'Down', function () { if (ri < rows.length - 1) { rows.splice(ri + 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderInspector(); pushChange(); } }));
-			tools.appendChild(iconBtn('✕', 'Remove', function () { rows.splice(ri, 1); setDirty(true); renderInspector(); pushChange(); }, true));
+			tools.appendChild(iconBtn('↑', 'Up', function () { if (ri > 0) { rows.splice(ri - 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderNodeInspector(); pushChange(); } }));
+			tools.appendChild(iconBtn('↓', 'Down', function () { if (ri < rows.length - 1) { rows.splice(ri + 1, 0, rows.splice(ri, 1)[0]); setDirty(true); renderNodeInspector(); pushChange(); } }));
+			tools.appendChild(iconBtn('✕', 'Remove', function () { rows.splice(ri, 1); setDirty(true); renderNodeInspector(); pushChange(); }, true));
 			head.appendChild(tools);
 			card.appendChild(head);
 			(f.subfields || []).forEach(function (sf) { card.appendChild(renderField(row, sf, { repeater: f.name, rindex: ri })); });
@@ -1015,7 +1188,7 @@
 		add.addEventListener('click', function () {
 			var blank = {};
 			(f.subfields || []).forEach(function (sf) { blank[sf.name] = sf.type === 'toggle' ? false : ''; });
-			rows.push(blank); setDirty(true); renderInspector(); pushChange();
+			rows.push(blank); setDirty(true); renderNodeInspector(); pushChange();
 		});
 		box.appendChild(add);
 		return box;
@@ -1026,19 +1199,22 @@
 		var j = i + dir;
 		if (j < 0 || j >= state.sections.length) { return; }
 		var tmp = state.sections[i]; state.sections[i] = state.sections[j]; state.sections[j] = tmp;
-		state.selected = j; setDirty(true); renderStructure(); renderInspector(); pushChange();
+		state.selected = j; state.node = { section: j };
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function duplicate(i) {
 		var copy = JSON.parse(JSON.stringify(state.sections[i]));
 		copy._uid = ++uid;
 		state.sections.splice(i + 1, 0, copy);
-		state.selected = i + 1; setDirty(true); renderStructure(); renderInspector(); pushChange();
+		state.selected = i + 1; state.node = { section: i + 1 };
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function removeSection(i) {
 		if (!window.confirm('Remove this ' + labelFor(state.sections[i].type) + ' section?')) { return; }
 		state.sections.splice(i, 1);
 		if (state.selected >= state.sections.length) { state.selected = state.sections.length - 1; }
-		setDirty(true); renderStructure(); renderInspector(); pushChange();
+		state.node = state.selected >= 0 ? { section: state.selected } : null;
+		setDirty(true); renderTree(); renderNodeInspector(); pushChange();
 	}
 	function addSection(type) {
 		var s = { type: type, v: 1, _uid: ++uid };
@@ -1174,7 +1350,7 @@
 			p.appendChild(gRow('Order by', gSelect(String(sec[cfg.order_by]), {
 				manual: 'Manual (drag on page)', title: 'Title A–Z', date_desc: 'Newest first',
 				date_asc: 'Oldest first', filename: 'Filename A–Z', random: 'Random'
-			}, function (v) { sec[cfg.order_by] = v; setDirty(true); renderInspector(); pushChange(); })));
+			}, function (v) { sec[cfg.order_by] = v; setDirty(true); renderNodeInspector(); pushChange(); })));
 		}
 		if (cfg.columns) {
 			p.appendChild(gRow('Columns', gSelect(String(sec[cfg.columns]), { '2': '2', '3': '3', '4': '4', '5': '5' }, function (v) { sec[cfg.columns] = v; setDirty(true); pushChange(); })));
@@ -1188,7 +1364,7 @@
 		// Filter-bar toggle only when `filters` maps to a real bool field (not always/off).
 		var filtersField = cfg.filters && cfg.filters !== 'always' && cfg.filters !== 'off';
 		if (galHasCats(cfg) && filtersField) {
-			p.appendChild(gRow('Category filter bar', gToggle(sec[cfg.filters], function (v) { sec[cfg.filters] = v; setDirty(true); renderInspector(); pushChange(); })));
+			p.appendChild(gRow('Category filter bar', gToggle(sec[cfg.filters], function (v) { sec[cfg.filters] = v; setDirty(true); renderNodeInspector(); pushChange(); })));
 		}
 		// Categories manager (tab-order editor) — only for a STORED categories field,
 		// and only when the bar is on. In 'derive' mode categories come from items.
@@ -1220,11 +1396,11 @@
 		allBtn.addEventListener('click', function () {
 			state.gallerySel = {};
 			for (var i = 0; i < items.length; i++) { state.gallerySel[i] = true; }
-			renderInspector();
+			renderNodeInspector();
 		});
 		var clrBtn = ce('button', 'aqb-btn aqb-btn--ghost aqb-gbulk__sm', 'Clear'); clrBtn.type = 'button';
 		clrBtn.disabled = !count;
-		clrBtn.addEventListener('click', function () { galSelClear(); renderInspector(); });
+		clrBtn.addEventListener('click', function () { galSelClear(); renderNodeInspector(); });
 		top.appendChild(ce('span', 'aqb-gbulk__count', count + ' selected'));
 		top.appendChild(allBtn);
 		top.appendChild(clrBtn);
@@ -1255,7 +1431,7 @@
 							&& !(sec[cfg.categories] || []).some(function (r) { return catLabel(r) === nv; })) {
 							sec[cfg.categories].push({ label: nv });
 						}
-						state.galleryBulkCat = nv; setDirty(true); renderInspector();
+						state.galleryBulkCat = nv; setDirty(true); renderNodeInspector();
 					} else { catSel.value = state.galleryBulkCat || ''; }
 					return;
 				}
@@ -1268,7 +1444,7 @@
 				if (!galSelCount() || !HIST || typeof HIST.applyCategory !== 'function') { return; }
 				sec[cfg.items] = HIST.applyCategory(items, galSelIndices(), state.galleryBulkCat || '', cfg.category);
 				galSelClear();
-				setDirty(true); renderInspector(); pushChange();
+				setDirty(true); renderNodeInspector(); pushChange();
 			});
 			actions.appendChild(catSel);
 			actions.appendChild(applyBtn);
@@ -1282,7 +1458,7 @@
 			var drop = state.gallerySel || {};
 			sec[cfg.items] = items.filter(function (_img, i) { return !drop[i]; });
 			galSelClear();
-			setDirty(true); renderInspector(); pushChange();
+			setDirty(true); renderNodeInspector(); pushChange();
 		});
 		actions.appendChild(rmBtn);
 		bar.appendChild(actions);
@@ -1298,7 +1474,7 @@
 		check.addEventListener('change', function () {
 			var s = galSelSet(sec);
 			if (check.checked) { s[idx] = true; } else { delete s[idx]; }
-			renderInspector();
+			renderNodeInspector();
 		});
 		row.appendChild(check);
 
@@ -1321,7 +1497,7 @@
 		row.appendChild(fields);
 
 		var rm = ce('button', 'aqb-gimgrow__x', '×'); rm.title = 'Remove'; rm.type = 'button';
-		rm.addEventListener('click', function () { galItems(sec, cfg).splice(idx, 1); galSelClear(); setDirty(true); renderInspector(); pushChange(); });
+		rm.addEventListener('click', function () { galItems(sec, cfg).splice(idx, 1); galSelClear(); setDirty(true); renderNodeInspector(); pushChange(); });
 		row.appendChild(rm);
 		return row;
 	}
@@ -1348,7 +1524,7 @@
 					img[cfg.category] = nv;
 				} else { sel.value = img[cfg.category] || ''; return; }
 			} else { img[cfg.category] = sel.value; }
-			setDirty(true); renderInspector(); pushChange();
+			setDirty(true); renderNodeInspector(); pushChange();
 		});
 		return sel;
 	}
@@ -1361,7 +1537,7 @@
 		store.forEach(function (row, i) {
 			var chip = ce('span', 'aqb-gchip', catLabel(row));
 			var x = ce('button', 'aqb-gchip__x', '×'); x.title = 'Remove';
-			x.addEventListener('click', function () { store.splice(i, 1); setDirty(true); renderInspector(); pushChange(); });
+			x.addEventListener('click', function () { store.splice(i, 1); setDirty(true); renderNodeInspector(); pushChange(); });
 			chip.appendChild(x);
 			list.appendChild(chip);
 		});
@@ -1370,7 +1546,7 @@
 		var input = ce('input', 'aqb-ginput'); input.type = 'text'; input.placeholder = 'Add category…';
 		function commit() {
 			var v = input.value.trim();
-			if (v && !store.some(function (r) { return catLabel(r) === v; })) { store.push({ label: v }); setDirty(true); renderInspector(); pushChange(); }
+			if (v && !store.some(function (r) { return catLabel(r) === v; })) { store.push({ label: v }); setDirty(true); renderNodeInspector(); pushChange(); }
 			else { input.value = ''; }
 		}
 		input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); commit(); } });
@@ -1405,7 +1581,7 @@
 					var v = basenameFmt ? t : parseInt(t, 10);
 					if (basenameFmt ? !!v : v > 0) { items.push(galNewRow(cfg, v)); }
 				});
-				galSelClear(); setDirty(true); renderInspector(); pushChange();
+				galSelClear(); setDirty(true); renderNodeInspector(); pushChange();
 			}
 			return;
 		}
@@ -1418,7 +1594,7 @@
 				state.galleryImages[String(value)] = { id: a.id, url: a.url, thumb: thumb, alt: a.alt || '' };
 				items.push(galNewRow(cfg, value));
 			});
-			galSelClear(); setDirty(true); renderInspector(); pushChange();
+			galSelClear(); setDirty(true); renderNodeInspector(); pushChange();
 		});
 		frame.open();
 	}
@@ -1433,7 +1609,7 @@
 		sec[cfg.items] = HIST.reorder(sec[cfg.items], m.order);
 		galSelClear(); // indices shifted → drop the transient multi-selection
 		if (state.selected !== m.index) { selectSection(m.index, false); }
-		else { renderInspector(); }
+		else { renderNodeInspector(); }
 		// The canvas already reordered the tiles in place (see canvas.js galApplyDomOrder),
 		// so DON'T livePreview() — a reload here is exactly the "page refresh" we want to
 		// avoid. Just record the change for undo, like text/image edits do.
@@ -1480,7 +1656,8 @@
 		if (e.origin !== ORIGIN || !e.data || e.data.source !== 'aq-canvas') { return; }
 		var m = e.data;
 		if (m.type === 'select') {
-			selectSection(m.index, false);
+			var np = findNodePath(m.index, m);
+			selectNode(m.index, np || {}, { fromCanvas: true }); // don't echo a scroll back to the canvas
 			if (m.field || m.repeater) { focusField(m); }
 		} else if (m.type === 'gallery-reorder') {
 			// Tiles were drag-reordered on the canvas → apply the new image order.
@@ -1500,19 +1677,32 @@
 	function applyEdit(m) {
 		var s = state.sections[m.index];
 		if (!s) { return; }
+		var cur;
 		if (m.repeater != null && m.rindex != null) {
 			if (!Array.isArray(s[m.repeater]) || !s[m.repeater][m.rindex]) { return; }
-			s[m.repeater][m.rindex][m.field] = m.value;
+			cur = s[m.repeater][m.rindex][m.field];
 		} else if (m.field) {
-			s[m.field] = m.value;
+			cur = s[m.field];
 		} else {
 			return;
 		}
+		// Ignore a commit that didn't actually change the value. endEdit() posts a
+		// done-commit on EVERY blur/click-away, even when the user only clicked in and
+		// out without typing — without this guard that would mark the page "unsaved"
+		// and (below) reload the canvas for nothing.
+		var a = (cur == null) ? '' : String(cur);
+		var b = (m.value == null) ? '' : String(m.value);
+		if (a === b) { return; }
+		if (m.repeater != null && m.rindex != null) { s[m.repeater][m.rindex][m.field] = m.value; }
+		else { s[m.field] = m.value; }
 		setDirty(true);
 		syncInspectorInput(m); // keep the inspector field in step (no re-render → no focus loss)
-		// The canvas already shows this text live. Snapshot history (coalesced while
-		// typing); on commit (blur/Enter → m.done) refresh the true render too.
-		if (m.done) { histRecord(); livePreview(); } else { histRecordDebounced(); }
+		// The canvas already shows this text live via contentEditable, so DON'T reload
+		// the iframe here — a reload flashes the canvas and scrolls it back to the top,
+		// then re-scrolls to the element (the "page refresh" jump). Record for undo
+		// only; the true server render refreshes on the next discrete change or on Save.
+		// Mirrors the gallery-reorder decision in applyGalleryReorder().
+		if (m.done) { histRecord(); } else { histRecordDebounced(); }
 	}
 	function syncInspectorInput(m) {
 		if (state.selected !== m.index) { return; }
@@ -1537,8 +1727,8 @@
 			state.galleryImages = (d && d.galleryImages) ? d.galleryImages : {};
 			state.sections = (d && d.sections ? d.sections : []).map(function (s) { s._uid = ++uid; return s; });
 			state.base = clone(state.sections); // snapshot the loaded page to diff against at review time
-			renderStructure();
-			renderInspector();
+			renderTree();
+			renderNodeInspector();
 			setDirty(false);
 			histSeed(); // baseline history step (undo returns here)
 		});
