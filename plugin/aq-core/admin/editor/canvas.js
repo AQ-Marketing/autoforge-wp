@@ -169,7 +169,10 @@
 		// Commit any edit on a different element before moving on.
 		if (editingEl && editingEl !== info.el) { endEdit(); }
 
-		select(idx, true);
+		// No scroll on a canvas click: the user just clicked this element, so it's
+		// already in view. Scrolling-into-view is only for tree-node selection (the
+		// 'highlight' message), where the target may be off-screen.
+		select(idx, false);
 		parentWin.postMessage({
 			source: 'aq-canvas', type: 'select', index: idx,
 			field: info.field, repeater: info.repeater, rindex: rindex,
@@ -198,7 +201,7 @@
 		el.addEventListener('keydown', onEditKey);
 		el.addEventListener('paste', onEditPaste);
 		el.addEventListener('blur', onEditBlur);
-		el.focus();
+		el.focus({ preventScroll: true }); // don't let focus yank the viewport — the element is already where the user clicked
 		placeCaret(lastClick.x, lastClick.y);
 		position(selBox, elFor(selectedIndex));
 		fieldBox.style.display = 'none';
@@ -463,8 +466,13 @@
 		var m = e.data;
 		if (m.type === 'schema') { schema = m.schema || null; }
 		else if (m.type === 'highlight') {
-			select(m.index, true);
-			if (m.field || m.repeater) { setTimeout(function () { flashField(m); }, 60); }
+			// Tree-node selection: the target may be off-screen, so scroll it in.
+			// For a specific sub-field, let flashField do the scrolling (to the exact
+			// field) and don't also center the whole section — that double-scroll is
+			// what threw the element back out of view.
+			var toField = !!(m.field || m.repeater);
+			select(m.index, !toField);
+			if (toField) { setTimeout(function () { flashField(m); }, 60); }
 		}
 		else if (m.type === 'settext') {
 			// Inspector edited a field → reflect it live on the canvas (unless that

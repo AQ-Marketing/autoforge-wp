@@ -825,13 +825,20 @@
 		if (tellCanvas) { postCanvas({ type: 'highlight', index: i }); }
 	}
 
-	function selectNode(i, path) {
+	function selectNode(i, path, opts) {
 		state.selected = i;
 		state.node = Object.assign({ section: i }, path || {});
 		renderTree();
 		renderNodeInspector();
-		postCanvas({ type: 'highlight', index: i, field: state.node.field || null,
-			repeater: state.node.repeater || null, rindex: (state.node.rindex != null) ? state.node.rindex : null });
+		// Only echo a highlight (which scrolls + flashes the element) to the canvas when
+		// the selection originated in the BUILDER (tree node / inspector focus). A
+		// selection that came FROM a canvas click is already visible and locally
+		// selected there — echoing it back makes the canvas scroll/flash the very
+		// element the user just clicked, which is the "jarring scroll on every click".
+		if (!(opts && opts.fromCanvas)) {
+			postCanvas({ type: 'highlight', index: i, field: state.node.field || null,
+				repeater: state.node.repeater || null, rindex: (state.node.rindex != null) ? state.node.rindex : null });
+		}
 	}
 
 	// Whether a section type is edited via bespoke inspector controls (aq_gallery).
@@ -854,12 +861,15 @@
 			target = insp.querySelector('.aqb-field--top[data-aqf="' + cssEsc(m.field) + '"]');
 		}
 		if (!target) { return; }
-		try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { target.scrollIntoView(); }
 		flashWrap(target);
-		// When the canvas is starting in-place editing, do NOT focus the inspector
-		// input — moving focus to the parent window would blur (and end) the
+		// When the canvas is starting in-place editing, do NOT scroll or focus the
+		// inspector — the user is typing on the canvas; moving the inspector is
+		// pointless, and moving focus to the parent window would blur (and end) the
 		// contentEditable edit in the iframe.
 		if (m && m.editing) { return; }
+		// block:'nearest' (no smooth, no centering) so this only nudges the field into
+		// view when it's actually clipped — never a page-level jump.
+		try { target.scrollIntoView({ block: 'nearest' }); } catch (e) { /* best-effort */ }
 		var input = target.querySelector('input, textarea, select');
 		if (input && input.focus) { try { input.focus({ preventScroll: true }); } catch (e2) { input.focus(); } }
 	}
@@ -1647,7 +1657,7 @@
 		var m = e.data;
 		if (m.type === 'select') {
 			var np = findNodePath(m.index, m);
-			selectNode(m.index, np || {});
+			selectNode(m.index, np || {}, { fromCanvas: true }); // don't echo a scroll back to the canvas
 			if (m.field || m.repeater) { focusField(m); }
 		} else if (m.type === 'gallery-reorder') {
 			// Tiles were drag-reordered on the canvas → apply the new image order.
