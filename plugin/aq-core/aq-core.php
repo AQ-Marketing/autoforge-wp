@@ -3,7 +3,7 @@
  * Plugin Name: AutoForge
  * Plugin URI: https://aqmarketing.com
  * Description: Client-agnostic WordPress platform — one plugin owns front-end rendering (structured sections, header/footer, the visual builder), site config (NAP/license), SEO meta + titles, JSON-LD, ACF section schema, robots, JSON content sync, and the embedded Boost performance module. Every site is driven entirely from its own data; the theme is a near-empty stub.
- * Version: 0.3.66
+ * Version: 0.3.67
  * Requires PHP: 8.0
  * Author: AQ Marketing
  * Text Domain: aq-core
@@ -15,7 +15,7 @@ if (!defined('ABSPATH')) {
 
 define('AQ_CORE_DIR', plugin_dir_path(__FILE__));
 define('AQ_CORE_FILE', __FILE__);
-define('AQ_CORE_VERSION', '0.3.66');
+define('AQ_CORE_VERSION', '0.3.67');
 
 /**
  * Agency email domain whose ADMINS bypass the visual-editor SEO review gate
@@ -117,6 +117,7 @@ require_once AQ_CORE_DIR . 'includes/class-logo-settings.php';
 require_once AQ_CORE_DIR . 'includes/class-lead-capture.php';
 require_once AQ_CORE_DIR . 'includes/class-lead-store.php';
 require_once AQ_CORE_DIR . 'includes/class-lead-stats.php';
+require_once AQ_CORE_DIR . 'includes/class-places-autocomplete.php';
 require_once AQ_CORE_DIR . 'includes/class-hcaptcha.php';
 require_once AQ_CORE_DIR . 'includes/class-turnstile.php';
 require_once AQ_CORE_DIR . 'includes/class-legal.php';
@@ -165,6 +166,7 @@ AQ_Performance::register();
 AQ_Editor::register();
 AQ_Editor_Review::register();
 AQ_Integrations::register();
+AQ_Places_Autocomplete::register();
 AQ_Alt_Text::register();
 AQ_Image_Optimizer::register(); // OFF by default; on-upload resize+compress+WebP (shares the Media screen)
 AQ_Knowledge::register();

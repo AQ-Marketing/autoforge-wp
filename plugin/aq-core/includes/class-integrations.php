@@ -66,6 +66,13 @@ class AQ_Integrations {
 					'gsc_site_url'     => ['label' => 'Search Console property', 'constant' => 'AQ_GSC_SITE_URL', 'hint' => 'Pick the property this site should read. The list is pulled live from your connected Google account — paste the OAuth login above and Save first, then choose here.', 'choices' => 'gsc_sites', 'tip' => 'The Search Console property to read — chosen from a live list, not typed.'],
 				],
 			],
+			'google_maps' => [
+				'label'  => 'Google Maps (address autocomplete)',
+				'desc'   => 'Optional. A Google Maps JavaScript API key turns the address field on lead / contact forms into a type-ahead that autofills street, city, state and ZIP as the visitor types.',
+				'fields' => [
+					'google_maps_key' => ['label' => 'Maps JavaScript API key', 'constant' => 'AQ_GOOGLE_MAPS_KEY', 'hint' => 'A browser key with the "Maps JavaScript API" and "Places API (New)" enabled, restricted to this site\'s domain (HTTP referrers). It appears in the page source — that is expected and safe for a domain-restricted browser key.', 'visible' => true, 'tip' => 'Public browser key that powers the address type-ahead. Restrict it to your domain in Google Cloud.'],
+				],
+			],
 		];
 	}
 
@@ -132,6 +139,11 @@ class AQ_Integrations {
 
 	public static function github_token(): string {
 		return self::get('github_token');
+	}
+
+	/** Public Google Maps browser key for the front-end address autocomplete. */
+	public static function maps_key(): string {
+		return self::get('google_maps_key');
 	}
 
 	/* ---------------- encryption at rest ---------------- */

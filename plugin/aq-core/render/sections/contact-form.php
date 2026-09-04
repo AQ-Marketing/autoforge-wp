@@ -75,6 +75,16 @@ $consent_text        = (string) ($s['consent_text'] ?? '');
 						</div>
 					</div>
 
+					<?php if (class_exists('AQ_Places_Autocomplete') && AQ_Places_Autocomplete::key() !== '') : ?>
+					<div>
+						<label for="cf-addr-search" class="block text-sm font-semibold text-brand-800 mb-1.5">Search Address <span class="font-normal text-brand-500">(type to autofill)</span></label>
+						<div class="aq-addr-ac">
+							<input id="cf-addr-search" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-aq-address-autocomplete role="combobox" aria-autocomplete="list" aria-expanded="false" placeholder="Start typing your address&hellip;" class="w-full rounded-lg border border-brand-200 px-3.5 py-2.5 text-brand-900 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-accent-500">
+							<ul class="aq-addr-ac__list" role="listbox" hidden></ul>
+						</div>
+					</div>
+					<?php endif; ?>
+
 					<div>
 						<label for="cf-address" class="block text-sm font-semibold text-brand-800 mb-1.5">Property Street Address *</label>
 						<input id="cf-address" name="address" required autocomplete="address-line1" placeholder="Enter your full address" class="w-full rounded-lg border border-brand-200 px-3.5 py-2.5 text-brand-900 focus:outline-none focus:ring-2 focus:ring-accent-500 focus:border-accent-500">
