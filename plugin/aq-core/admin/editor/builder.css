@@ -56,15 +56,26 @@
 .aqb-body { flex: 1 1 auto; display: flex; min-height: 0; }
 .aqb-pane { background: #fff; overflow-y: auto; }
 .aqb-structure { width: 240px; flex: 0 0 240px; border-right: 1px solid #e6e8eb; padding: 14px; }
-.aqb-inspector { width: 340px; flex: 0 0 340px; border-left: 1px solid #e6e8eb; padding: 16px; }
+.aqb-inspector { width: 352px; flex: 0 0 352px; border-left: 1px solid #e6e8eb; padding: 0 18px 24px; }
 .aqb-canvaswrap { flex: 1 1 auto; background: #eef1f5; display: flex; justify-content: center; padding: 16px; min-width: 0; }
 .aqb-canvasinner { width: 100%; max-width: 100%; background: #fff; box-shadow: 0 6px 24px rgba(13,16,20,.12);
 	border-radius: 8px; overflow: hidden; transition: max-width .2s ease; }
 .aqb-canvas { width: 100%; height: 100%; border: 0; display: block; }
 
 .aqb-h { font-family: Poppins, Inter, system-ui, sans-serif; font-size: 14px; margin: 0 0 12px; color: #0d1014; }
-.aqb-muted, .aqb-empty { color: #5b6471; font-size: 13px; }
-.aqb-empty { padding: 24px 4px; text-align: center; }
+.aqb-muted, .aqb-empty { color: #5b6471; font-size: 13px; line-height: 1.5; }
+.aqb-empty { padding: 40px 12px; text-align: center; }
+
+/* Inspector header (sticky) — section/element title + back-to-section link */
+.aqb-insp__head { position: sticky; top: 0; z-index: 6; background: #fff;
+	margin: 0 -18px 16px; padding: 15px 18px 13px; border-bottom: 1px solid #eef1f5; }
+.aqb-insp__back { display: inline-flex; align-items: center; border: 0; background: none;
+	color: #c8102e; font-size: 12px; font-weight: 700; cursor: pointer; padding: 0; margin: 0 0 7px; }
+.aqb-insp__back:hover { text-decoration: underline; }
+.aqb-insp__title { font-family: Poppins, Inter, system-ui, sans-serif; font-size: 15.5px; font-weight: 600;
+	margin: 0; color: #0d1014; line-height: 1.3; }
+.aqb-insp__sub { margin: 3px 0 0; font-size: 11px; font-weight: 600; text-transform: uppercase;
+	letter-spacing: .04em; color: #a2abb6; }
 
 /* Structure list */
 .aqb-seclist { display: flex; flex-direction: column; gap: 4px; }
@@ -84,7 +95,8 @@
 	font-size: 13px; color: #15191f; background: #fafbfc; cursor: pointer; }
 
 /* Inspector fields */
-.aqb-field { margin-bottom: 14px; border-radius: 8px; }
+.aqb-field { margin-bottom: 15px; border-radius: 8px; }
+.aqb-field:last-child { margin-bottom: 0; }
 /* Flash a field/row when it's reached by clicking its element on the canvas. */
 .aqb-field.aqb-flash, .aqb-repitem.aqb-flash { animation: aqb-flash 1.4s ease-out; }
 @keyframes aqb-flash {
@@ -92,17 +104,22 @@
 	100% { box-shadow: 0 0 0 3px rgba(37,99,235,0);   background: transparent; }
 }
 .aqb-label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
-	color: #5b6471; font-weight: 700; margin-bottom: 5px; }
-.aqb-input { width: 100%; padding: 8px 10px; border: 1px solid #c9cfd6; border-radius: 8px;
-	font-size: 13px; color: #0d1014; background: #fff; font-family: inherit; }
+	color: #5b6471; font-weight: 700; margin-bottom: 6px; }
+.aqb-input { width: 100%; padding: 9px 11px; border: 1px solid #c9cfd6; border-radius: 8px;
+	font-size: 13px; line-height: 1.5; color: #0d1014; background: #fff; font-family: inherit;
+	transition: border-color .12s ease, box-shadow .12s ease; }
+.aqb-input:hover { border-color: #aab2bc; }
 .aqb-input:focus { outline: 0; border-color: #c8102e; box-shadow: 0 0 0 3px rgba(200,16,46,.18); }
-.aqb-textarea { resize: vertical; }
+.aqb-input::placeholder { color: #aab2bc; }
+.aqb-textarea { resize: vertical; min-height: 88px; }
 .aqb-code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; }
 .aqb-hint { display: block; font-size: 11px; color: #8a94a1; margin-top: 4px; }
 .aqb-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #15191f; cursor: pointer; }
 
-/* Field group divider (e.g. "Design") */
-.aqb-group { margin: 18px 0 12px; border-top: 1px solid #e6e8eb; padding-top: 14px; }
+/* Field group (e.g. "Content" / "Design") — soft card */
+.aqb-group { margin: 0 0 14px; border: 1px solid #e9ecf0; border-radius: 12px;
+	padding: 4px 14px 14px; background: #fcfcfd; }
+.aqb-group:last-child { margin-bottom: 0; }
 .aqb-grouph { margin: 0 0 2px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: #8a94a1; font-weight: 700; }
 
 /* Repeater */
@@ -242,7 +259,9 @@
 .aqb-tw--leaf { visibility:hidden; }
 .aqb-secrow .aqb-tw { opacity:.8; }
 /* ---- collapsible inspector groups ---- */
-.aqb-group .aqb-grouph { display:block; width:100%; text-align:left; background:none; border:0; font-weight:600; padding:8px 0; cursor:pointer; color:inherit; }
-.aqb-group .aqb-grouph::before { content:'▾ '; }
-.aqb-group:not(.is-open) .aqb-grouph::before { content:'▸ '; }
+.aqb-group .aqb-grouph { display:flex; align-items:center; gap:6px; width:100%; text-align:left;
+	background:none; border:0; padding:11px 0; cursor:pointer; color:#8a94a1; }
+.aqb-group .aqb-grouph::before { content:'▾'; font-size:10px; color:#b6bdc6; }
+.aqb-group:not(.is-open) .aqb-grouph::before { content:'▸'; }
+.aqb-group:not(.is-open) { padding-bottom:4px; }
 .aqb-group:not(.is-open) .aqb-groupbody { display:none; }

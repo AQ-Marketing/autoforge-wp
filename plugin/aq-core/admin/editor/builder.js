@@ -828,8 +828,25 @@
 	function selectNode(i, path, opts) {
 		state.selected = i;
 		state.node = Object.assign({ section: i }, path || {});
+		// Make the selected node visible in the tree before rendering: open its
+		// section and, when it is a repeater item, expand the parent repeater group.
+		// Without this a canvas click sets is-active on a row that is collapsed out
+		// of view, so the click appears not to highlight anything in the tree.
+		state.tree.expanded['sec:' + i] = true;
+		if (state.node.repeater) {
+			nodesForSection(i).forEach(function (n) {
+				if (n.kind === 'repeater' && n.path && n.path.repeater === state.node.repeater) {
+					state.tree.expanded[ekey(i, n.key)] = true;
+				}
+			});
+		}
 		renderTree();
 		renderNodeInspector();
+		// Bring the freshly highlighted tree row into view within the Structure panel.
+		if (els.structure) {
+			var actRow = els.structure.querySelector('.aqb-node.is-active') || els.structure.querySelector('.aqb-secrow.is-active');
+			if (actRow && actRow.scrollIntoView) { try { actRow.scrollIntoView({ block: 'nearest' }); } catch (e) { /* best-effort */ } }
+		}
 		// Only echo a highlight (which scrolls + flashes the element) to the canvas when
 		// the selection originated in the BUILDER (tree node / inspector focus). A
 		// selection that came FROM a canvas click is already visible and locally
@@ -904,29 +921,55 @@
 		return grp;
 	}
 
+	// Inspector header: section/element title, optional subtitle, and a "back to
+	// the whole section" link when a single element is focused from the tree/canvas.
+	function inspectorHead(p, title, opts) {
+		opts = opts || {};
+		var head = ce('div', 'aqb-insp__head');
+		if (opts.back) {
+			var back = ce('button', 'aqb-insp__back', '‹ All fields');
+			back.addEventListener('click', function () { selectNode(state.selected, {}); });
+			head.appendChild(back);
+		}
+		head.appendChild(ce('h3', 'aqb-insp__title', title));
+		if (opts.sub) { head.appendChild(ce('p', 'aqb-insp__sub', opts.sub)); }
+		p.appendChild(head);
+		return head;
+	}
+
 	function renderNodeInspector() {
 		var p = els.inspector;
 		p.innerHTML = '';
 		if (state.selected < 0 || !state.sections[state.selected]) {
-			p.appendChild(ce('div', 'aqb-empty', 'Click a section on the page to edit it.'));
+			p.appendChild(ce('div', 'aqb-empty', 'Select a section on the page — or in the Structure list — to edit it here.'));
 			return;
 		}
 		var s = state.sections[state.selected];
 
 		// aq_gallery stays on-canvas (unchanged behavior).
-		if (inplaceOf(s.type) === 'gallery') { p.appendChild(ce('h3', 'aqb-h', labelFor(s.type))); renderGalleryInspector(p, s); return; }
+		if (inplaceOf(s.type) === 'gallery') { inspectorHead(p, labelFor(s.type)); renderGalleryInspector(p, s); return; }
 
 		var node = activeNode();
 
-		// Section root: summary only.
+		// Section root: render the WHOLE editable form (all fields) at once, so a
+		// simple section (e.g. a review pull-quote) is one clean form instead of a
+		// field-at-a-time drill-down. Focusing one element from the tree/canvas
+		// still narrows to it (below).
 		if (!node) {
-			p.appendChild(ce('h3', 'aqb-h', labelFor(s.type)));
-			var count = nodesForSection(state.selected).length;
-			p.appendChild(ce('p', 'aqb-muted', count + (count === 1 ? ' element' : ' elements') + ' — pick one from the tree on the left to edit it.'));
+			inspectorHead(p, labelFor(s.type), { sub: 'Editing this section' });
+			var all = fieldsForType(s.type, s).filter(function (f) { return f && f.name; });
+			var content = all.filter(function (f) { return f.group !== 'design'; });
+			var design = all.filter(function (f) { return f.group === 'design'; });
+			if (!content.length && !design.length) {
+				p.appendChild(ce('p', 'aqb-muted', 'This section has no editable settings.'));
+				return;
+			}
+			if (content.length) { p.appendChild(collapsibleGroup('Content', content, s, null)); }
+			if (design.length) { p.appendChild(collapsibleGroup('Design', design, s, null)); }
 			return;
 		}
 
-		p.appendChild(ce('h3', 'aqb-h', node.label));
+		inspectorHead(p, node.label, { back: true, sub: labelFor(s.type) });
 
 		if (node.kind === 'fixed') {
 			p.appendChild(ce('p', 'aqb-muted', 'This element is built in code and maintained by your developer. It has no editable settings here.'));
