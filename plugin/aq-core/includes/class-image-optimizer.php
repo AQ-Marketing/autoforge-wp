@@ -52,8 +52,9 @@ class AQ_Image_Optimizer {
 		// Backfill button on the Media screen — processes existing images in small
 		// AJAX batches so a large library never times out a single request.
 		add_action('wp_ajax_aq_image_backfill', [__CLASS__, 'ajax_backfill']);
-		// Rendered onto the existing AutoForge → Media screen (see AQ_Alt_Text::render).
-		add_action('aq_media_admin_after', [__CLASS__, 'render_panel']);
+		// Rendered at the TOP of the AutoForge → Media screen, above the alt-text
+		// panels (see AQ_Alt_Text::render's aq_media_admin_before slot).
+		add_action('aq_media_admin_before', [__CLASS__, 'render_panel']);
 		if (defined('WP_CLI') && WP_CLI && class_exists('WP_CLI')) {
 			\WP_CLI::add_command('aq optimize_images', [__CLASS__, 'cli']);
 		}

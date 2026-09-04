@@ -838,6 +838,12 @@ class AQ_Alt_Text {
 			table.aq-alt-table img{width:44px;height:44px;object-fit:cover;border-radius:6px}
 		</style>
 
+		<?php
+		// Top slot on the Media screen — modules that should lead the page render
+		// here (the image optimizer / resizing panel). Alt-text content follows.
+		do_action('aq_media_admin_before');
+		?>
+
 		<?php if (isset($_GET['updated'])) : ?>
 			<div class="notice notice-success is-dismissible"><p>Saved.</p></div>
 		<?php endif; ?>
