@@ -118,7 +118,7 @@ class AQ_Admin_Hub {
 			['type' => 'link', 'slug' => 'aq-chatbot', 'label' => 'Chatbot', 'icon' => 'format-chat'],
 			['type' => 'link', 'slug' => 'aq-assistant', 'label' => 'Assistant', 'icon' => 'admin-comments'],
 			['type' => 'group', 'label' => 'Settings', 'icon' => 'admin-generic', 'items' => [
-				'aq-integrations' => 'Integrations', 'aq-import' => 'Import',
+				'aq-integrations' => 'Integrations',
 				'aq-performance' => 'Performance', 'aq-help' => 'Help',
 			]],
 		];
