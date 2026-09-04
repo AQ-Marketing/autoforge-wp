@@ -28,6 +28,8 @@ class AQ_Admin_Hub {
 		add_action('admin_init', [__CLASS__, 'block_boost_page']);
 		// Hide the flat WP submenu (CSS only, keeps page access); the accordion is the nav.
 		add_action('admin_head', [__CLASS__, 'hide_wp_submenu']);
+		// Make the top-level "AutoForge" menu item tappable on mobile/touch (see method).
+		add_action('admin_footer', [__CLASS__, 'nav_mobile_fix_script']);
 	}
 
 	public static function menu(): void {
@@ -83,9 +85,39 @@ class AQ_Admin_Hub {
 	 * from the $submenu global also strips WP's capability grant (denies page
 	 * access, as a prior version learned); hiding them visually keeps every page
 	 * fully reachable. The top-level "AutoForge" link still opens Overview.
+	 *
+	 * Scoped to DESKTOP (min-width:783px). On touch/mobile WP core makes the first
+	 * tap on a top-level item that has a submenu OPEN that submenu instead of
+	 * following the link — so with the submenu hidden, tapping "AutoForge" did
+	 * nothing. Below WP's 782px breakpoint we leave the native submenu visible so
+	 * tap-to-open-then-tap-an-item always works; nav_mobile_fix_script() adds the
+	 * nicer single-tap-navigates behaviour on top.
 	 */
 	public static function hide_wp_submenu(): void {
-		echo '<style id="aq-hide-submenu">#toplevel_page_' . esc_attr(self::SLUG) . ' ul.wp-submenu{display:none!important;}</style>';
+		echo '<style id="aq-hide-submenu">@media (min-width:783px){#toplevel_page_' . esc_attr(self::SLUG) . ' ul.wp-submenu{display:none!important;}}</style>';
+	}
+
+	/**
+	 * Restore a working "AutoForge" menu tap on touch devices. WP core binds a
+	 * delegated touch handler to `a.wp-has-submenu` that swallows the first tap
+	 * (to reveal the — here hidden — submenu). Stripping that class from our
+	 * top-level item makes a single tap simply navigate to Overview, where the
+	 * in-page accordion (which already stacks responsively) takes over. Runs in the
+	 * footer, after the menu markup exists; core's handler is delegated, so it stops
+	 * matching the moment the class is gone. Pure DOM, dependency-free.
+	 */
+	public static function nav_mobile_fix_script(): void {
+		?>
+		<script id="aq-af-nav-fix">
+		(function(){
+			var li = document.getElementById('toplevel_page_<?php echo esc_js(self::SLUG); ?>');
+			if(!li){ return; }
+			li.classList.remove('wp-has-submenu');
+			var a = li.querySelector('a');
+			if(a){ a.classList.remove('wp-has-submenu'); a.removeAttribute('aria-haspopup'); }
+		})();
+		</script>
+		<?php
 	}
 
 	/* ---------------- navigation model ---------------- */
